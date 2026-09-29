@@ -180,6 +180,49 @@ describe("local server", () => {
     expect(children[0]!.stdinLines).toEqual([]);
   });
 
+  it("opens terminals at the pane's own size when none is requested", async () => {
+    herdr.handlers["pane.layout"] = ({ pane_id }) => ({
+      type: "pane_layout",
+      layout: { panes: [{ pane_id, rect: { x: 0, y: 0, width: 132, height: 41 } }] },
+    });
+    const c = await open();
+    c.send({ type: "terminal.open", streamId: "s1", paneId: "w1:p1", mode: "observe" });
+    await until(() => children.length === 1);
+    expect(children[0]!.args).toEqual(terminalSessionArgs({ paneId: "w1:p1", mode: "observe", cols: 132, rows: 41 }));
+  });
+
+  it("restores the pane size after a phone-sized controller closes", async () => {
+    herdr.handlers["pane.layout"] = ({ pane_id }) => ({
+      type: "pane_layout",
+      layout: { panes: [{ pane_id, rect: { x: 0, y: 0, width: 132, height: 41 } }] },
+    });
+    const c = await open();
+    c.send({ type: "terminal.open", streamId: "s1", paneId: "w1:p1", mode: "control", cols: 48, rows: 30 });
+    await until(() => children.length === 1);
+    expect(children[0]!.args).toContain("48");
+
+    c.send({ type: "terminal.close", streamId: "s1" });
+    await until(() => children.length === 2);
+    const restorer = children[1]!;
+    expect(restorer.args).toEqual(terminalSessionArgs({ paneId: "w1:p1", mode: "control", cols: 132, rows: 41 }));
+    restorer.frame(1, "");
+    await until(() => restorer.stdinLines.some((l) => JSON.parse(l).type === "terminal.release"));
+  });
+
+  it("does not restore when the controller used the pane's own size", async () => {
+    herdr.handlers["pane.layout"] = ({ pane_id }) => ({
+      type: "pane_layout",
+      layout: { panes: [{ pane_id, rect: { x: 0, y: 0, width: 132, height: 41 } }] },
+    });
+    const c = await open();
+    c.send({ type: "terminal.open", streamId: "s1", paneId: "w1:p1", mode: "control" });
+    await until(() => children.length === 1);
+    c.send({ type: "terminal.close", streamId: "s1" });
+    await until(() => find(c, "terminal.closed") !== undefined);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(children).toHaveLength(1);
+  });
+
   it("closes a client's terminals when it disconnects", async () => {
     const c = await open();
     c.send({ type: "terminal.open", streamId: "s1", paneId: "w1:p1", mode: "observe", cols: 60, rows: 20 });

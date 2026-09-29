@@ -16,8 +16,11 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" options={{ title: "Agents" }} />
-        <Stack.Screen name="connect" options={{ title: "Connect to host" }} />
+        <Stack.Screen name="connect" options={{ title: "Host" }} />
         <Stack.Screen name="agent/[paneId]" options={{ title: "Agent" }} />
+        <Stack.Screen name="new" options={{ title: "New agent" }} />
+        <Stack.Screen name="scan" options={{ title: "Scan QR code", presentation: "modal" }} />
+        <Stack.Screen name="pair" options={{ title: "Pairing" }} />
       </Stack>
     </ConnectionProvider>
   );

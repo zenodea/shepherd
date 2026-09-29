@@ -13,7 +13,7 @@ type ConnectionContextValue = {
 
 const ConnectionContext = createContext<ConnectionContextValue | null>(null);
 
-const IDLE: HostState = { status: "idle", error: null, host: null, agents: [] };
+const IDLE: HostState = { status: "idle", error: null, host: null, activeUrl: null, agents: [] };
 const noopSubscribe = () => () => {};
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {

@@ -1,14 +1,15 @@
-import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Stack, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { PaneReadResult } from "@sheperd/protocol";
 import { StatusBadge } from "../../components/StatusBadge";
+import { TerminalView, type TerminalViewHandle, type TerminalViewMode } from "../../components/TerminalView";
+import type { TerminalHandle } from "../../lib/host-client";
 import { agentName, shortPath } from "../../lib/agents";
 import { useConnection, useHostState } from "../../lib/connection";
 import { usePalette } from "../../theme";
 
-const POLL_MS = 2000;
+const REOPEN_MS = 1500;
 const MONO = Platform.select({ android: "monospace", default: "Menlo" });
 
 /** Keys for answering agent prompts; values are herdr key-combo names. */
@@ -34,48 +35,58 @@ export default function AgentScreen() {
   const state = useHostState();
   const agent = state.agents.find((a) => a.pane_id === paneId) ?? null;
 
-  const [output, setOutput] = useState("");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
-
-  const read = useCallback(async () => {
-    if (!client || !paneId) return;
-    try {
-      const { read } = await client.call<{ read: PaneReadResult }>("agent.read", {
-        target: paneId,
-        source: "recent",
-        lines: 200,
-        format: "text",
-      });
-      setOutput(read.text.replace(/\s+$/, ""));
-    } catch {
-      // keep the last output; the list screen shows connection state
-    }
-  }, [client, paneId]);
-
-  // Poll while this screen is focused; the live terminal view will replace this.
-  useFocusEffect(
-    useCallback(() => {
-      void read();
-      const timer = setInterval(read, POLL_MS);
-      return () => clearInterval(timer);
-    }, [read]),
-  );
+  const [viewMode, setViewMode] = useState<TerminalViewMode>("native");
+  const [ready, setReady] = useState(false);
+  const [fitSize, setFitSize] = useState<{ cols: number; rows: number } | null>(null);
+  const [closedReason, setClosedReason] = useState<string | null>(null);
+  const [epoch, setEpoch] = useState(0);
+  const terminal = useRef<TerminalViewHandle>(null);
+  const stream = useRef<TerminalHandle | null>(null);
+  const online = state.status === "online";
 
   useEffect(() => {
-    if (!client) return;
-    return client.onStatusChange((change) => {
-      if (change.paneId === paneId) void read();
-    });
-  }, [client, paneId, read]);
+    if (ready) terminal.current?.setMode(viewMode);
+  }, [ready, viewMode]);
+
+  // (Re)open the stream whenever the view, size or connection changes.
+  const fitCols = fitSize?.cols;
+  const fitRows = fitSize?.rows;
+  useEffect(() => {
+    if (!client || !paneId || !ready || !online) return;
+    if (viewMode === "fit" && (!fitCols || !fitRows)) return;
+
+    terminal.current?.reset();
+    let reopen: ReturnType<typeof setTimeout> | null = null;
+    const handle = client.openTerminal(
+      paneId,
+      viewMode === "fit" ? { mode: "control", cols: fitCols, rows: fitRows } : { mode: "observe" },
+      {
+        onFrame: (frame) => {
+          setClosedReason(null);
+          terminal.current?.write(frame);
+        },
+        onClosed: (reason) => {
+          stream.current = null;
+          setClosedReason(reason);
+          if (reason !== "disconnected") reopen = setTimeout(() => setEpoch((e) => e + 1), REOPEN_MS);
+        },
+      },
+    );
+    stream.current = handle;
+    return () => {
+      if (reopen) clearTimeout(reopen);
+      handle?.close();
+      stream.current = null;
+    };
+  }, [client, paneId, ready, online, viewMode, fitCols, fitRows, epoch]);
 
   const sendKeys = async (keys: string[], confirm?: string) => {
     if (!client || !paneId) return;
     const go = async () => {
       try {
         await client.call("agent.send_keys", { target: paneId, keys });
-        setTimeout(read, 300);
       } catch (err) {
         Alert.alert("Couldn't send keys", (err as Error).message);
       }
@@ -91,7 +102,6 @@ export default function AgentScreen() {
     try {
       await client.call("agent.prompt", { target: paneId, text });
       setDraft("");
-      setTimeout(read, 300);
     } catch (err) {
       Alert.alert("Couldn't send prompt", (err as Error).message);
     } finally {
@@ -108,19 +118,31 @@ export default function AgentScreen() {
           {paneId}
           {agent ? `  ·  ${shortPath(agent.foreground_cwd ?? agent.cwd) ?? ""}` : "  ·  gone"}
         </Text>
-        {agent ? <StatusBadge status={agent.agent_status} /> : null}
+        <View style={styles.headerRight}>
+          {agent ? <StatusBadge status={agent.agent_status} /> : null}
+          <Pressable
+            onPress={() => setViewMode((m) => (m === "native" ? "fit" : "native"))}
+            style={[styles.toggle, { borderColor: palette.border }]}
+            hitSlop={8}
+          >
+            <Text style={{ color: palette.accent, fontSize: 12, fontWeight: "600" }}>
+              {viewMode === "native" ? "Fit to phone" : "Full width"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        style={{ flex: 1, backgroundColor: palette.terminal }}
-        contentContainerStyle={{ padding: 10 }}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
-      >
-        <Text selectable style={[styles.output, { color: palette.terminalText }]}>
-          {output || "…"}
-        </Text>
-      </ScrollView>
+      <View style={{ flex: 1, backgroundColor: palette.terminal }}>
+        <TerminalView
+          ref={terminal}
+          onReady={() => setReady(true)}
+          onFitSize={(cols, rows) => setFitSize((prev) => (prev?.cols === cols && prev.rows === rows ? prev : { cols, rows }))}
+          onInput={(data) => stream.current?.input(data)}
+        />
+        {closedReason && closedReason !== "closed by client" ? (
+          <Text style={[styles.notice, { color: palette.muted }]}>Terminal closed: {closedReason}</Text>
+        ) : null}
+      </View>
 
       <ScrollView
         horizontal
@@ -171,7 +193,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
   },
-  output: { fontFamily: MONO, fontSize: 12, lineHeight: 16 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  toggle: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  notice: { position: "absolute", bottom: 8, left: 8, right: 8, fontSize: 12, textAlign: "center" },
   keysBar: { flexGrow: 0, borderTopWidth: 1 },
   keys: { gap: 6, paddingHorizontal: 8, paddingVertical: 6 },
   key: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },

@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { defaultSocketPath } from "./herdr-client.ts";
+import type { NotifyConfig } from "./notifier.ts";
 
 /** Persisted in ~/.config/sheperd/host.json (mode 0600). */
 export type StoredConfig = {
@@ -13,6 +14,8 @@ export type StoredConfig = {
   relayUrl?: string;
   /** Shared secret the host presents to the relay's control endpoint. */
   relayHostToken?: string;
+  /** Push notifications through ntfy. */
+  notify?: NotifyConfig;
 };
 
 export type HostConfig = StoredConfig & {

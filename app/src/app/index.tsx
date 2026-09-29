@@ -2,9 +2,13 @@ import { Link, Redirect, Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { AgentInfo } from "@sheperd/protocol";
+import { PromptCard } from "../components/PromptCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { agentName, agentTitle, shortPath } from "../lib/agents";
 import { useConnection, useHostState } from "../lib/connection";
+import type { HostClient } from "../lib/host-client";
+import type { BlockedPrompt } from "../lib/prompt-options";
+import { useBlockedPrompts } from "../lib/use-blocked-prompts";
 import { statusRank, usePalette } from "../theme";
 
 export default function AgentsScreen() {
@@ -13,6 +17,7 @@ export default function AgentsScreen() {
   const { settings, client } = useConnection();
   const state = useHostState();
   const [refreshing, setRefreshing] = useState(false);
+  const prompts = useBlockedPrompts(client, state.agents);
 
   const agents = useMemo(
     () =>
@@ -42,9 +47,16 @@ export default function AgentsScreen() {
         options={{
           title: state.host?.name ?? "Agents",
           headerRight: () => (
-            <Link href="/connect" style={{ color: palette.accent, fontSize: 15 }}>
-              Host
-            </Link>
+            <View style={styles.headerButtons}>
+              {state.status === "online" ? (
+                <Link href="/new" style={{ color: palette.accent, fontSize: 15, fontWeight: "600" }}>
+                  + New
+                </Link>
+              ) : null}
+              <Link href="/connect" style={{ color: palette.accent, fontSize: 15 }}>
+                Host
+              </Link>
+            </View>
           ),
         }}
       />
@@ -56,18 +68,38 @@ export default function AgentsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         ListEmptyComponent={
           state.status === "online" ? (
-            <Text style={[styles.empty, { color: palette.muted }]}>No agents running in herdr.</Text>
+            <View style={styles.emptyBox}>
+              <Text style={[styles.empty, { color: palette.muted }]}>No agents running in herdr.</Text>
+              <Link href="/new" style={{ color: palette.accent, fontSize: 16, fontWeight: "600" }}>
+                Start one
+              </Link>
+            </View>
           ) : null
         }
         renderItem={({ item }) => (
-          <AgentRow agent={item} onPress={() => router.push({ pathname: "/agent/[paneId]", params: { paneId: item.pane_id } })} />
+          <AgentRow
+            agent={item}
+            client={client}
+            prompt={prompts[item.pane_id]}
+            onPress={() => router.push({ pathname: "/agent/[paneId]", params: { paneId: item.pane_id } })}
+          />
         )}
       />
     </View>
   );
 }
 
-function AgentRow({ agent, onPress }: { agent: AgentInfo; onPress: () => void }) {
+function AgentRow({
+  agent,
+  client,
+  prompt,
+  onPress,
+}: {
+  agent: AgentInfo;
+  client: HostClient | null;
+  prompt: BlockedPrompt | undefined;
+  onPress: () => void;
+}) {
   const palette = usePalette();
   const title = agentTitle(agent);
   const path = shortPath(agent.foreground_cwd ?? agent.cwd);
@@ -94,6 +126,14 @@ function AgentRow({ agent, onPress }: { agent: AgentInfo; onPress: () => void })
         {agent.pane_id}
         {path ? `  ·  ${path}` : ""}
       </Text>
+      {agent.agent_status === "blocked" && prompt ? (
+        <PromptCard
+          key={JSON.stringify(prompt)}
+          client={client}
+          paneId={agent.pane_id}
+          prompt={prompt}
+        />
+      ) : null}
     </Pressable>
   );
 }
@@ -120,6 +160,8 @@ const styles = StyleSheet.create({
   rowHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   name: { fontSize: 16, fontWeight: "600", flexShrink: 1 },
   meta: { fontSize: 12 },
-  empty: { textAlign: "center", marginTop: 32 },
+  empty: { textAlign: "center" },
+  emptyBox: { alignItems: "center", gap: 12, marginTop: 32 },
+  headerButtons: { flexDirection: "row", gap: 18, alignItems: "center" },
   banner: { borderBottomWidth: 1, paddingHorizontal: 16, paddingVertical: 8 },
 });

@@ -24,11 +24,51 @@ export const FORWARDED_METHODS = [
 ] as const;
 export type ForwardedMethod = (typeof FORWARDED_METHODS)[number];
 
+/** Methods the host implements itself, with validated, narrow parameters. */
+export const HOST_METHODS = ["sheperd.projects", "sheperd.start_agent"] as const;
+export type HostMethod = (typeof HOST_METHODS)[number];
+export type CallMethod = ForwardedMethod | HostMethod;
+
+export type Project = {
+  workspaceId: string;
+  label: string;
+  cwd: string | null;
+  /** Set when the workspace is a git worktree herdr manages. */
+  repoName: string | null;
+};
+
+export type ProjectsResult = {
+  /** Agent kinds herdr supports that are installed on the host. */
+  kinds: string[];
+  projects: Project[];
+};
+
+export type StartAgentParams = {
+  kind: string;
+  workspaceId: string;
+  /** Start in a new git worktree of the project instead of a new tab. */
+  newWorktree?: boolean;
+  /** Sent once the agent is ready for input. */
+  prompt?: string;
+};
+
+export type StartAgentResult = {
+  paneId: string;
+  workspaceId: string;
+  /** false when the agent is waiting on something (e.g. a trust prompt) first. */
+  ready: boolean;
+};
+
 export type TerminalMode = "observe" | "control";
 
 export type ClientMessage =
-  | { type: "call"; id: string; method: ForwardedMethod; params: Record<string, unknown> }
-  | { type: "terminal.open"; streamId: string; paneId: string; mode: TerminalMode; cols: number; rows: number }
+  | { type: "call"; id: string; method: CallMethod; params: Record<string, unknown> }
+  /**
+   * Without cols/rows the stream uses the pane's current size (nothing is
+   * resized). A `control` stream with cols/rows resizes the pane for the phone;
+   * the host restores the original size when the stream closes.
+   */
+  | { type: "terminal.open"; streamId: string; paneId: string; mode: TerminalMode; cols?: number; rows?: number }
   | { type: "terminal.input"; streamId: string; text: string }
   | { type: "terminal.input"; streamId: string; bytes: string }
   | { type: "terminal.resize"; streamId: string; cols: number; rows: number }
@@ -36,7 +76,12 @@ export type ClientMessage =
   | { type: "terminal.close"; streamId: string }
   | { type: "ping"; t: number };
 
-export type HostInfo = { name: string; herdrVersion: string };
+export type HostInfo = {
+  name: string;
+  herdrVersion: string;
+  /** ntfy subscribe link, when the host sends push notifications. */
+  notifyUrl?: string;
+};
 
 export type ServerMessage =
   | { type: "hello"; protocol: number; host: HostInfo; agents: AgentInfo[] }
@@ -99,14 +144,15 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "call": {
       const { id, method, params = {} } = msg;
       if (typeof id !== "string" || id.length === 0 || id.length > 128) return null;
-      if (!(FORWARDED_METHODS as readonly unknown[]).includes(method)) return null;
+      if (![...FORWARDED_METHODS, ...HOST_METHODS].includes(method as CallMethod)) return null;
       if (!isRecord(params)) return null;
-      return { type: "call", id, method: method as ForwardedMethod, params };
+      return { type: "call", id, method: method as CallMethod, params };
     }
     case "terminal.open": {
       const { streamId, paneId, mode, cols, rows } = msg;
       if (!isStreamId(streamId) || !isPaneId(paneId)) return null;
       if (mode !== "observe" && mode !== "control") return null;
+      if (cols === undefined && rows === undefined) return { type: "terminal.open", streamId, paneId, mode };
       if (!isDim(cols) || !isDim(rows)) return null;
       return { type: "terminal.open", streamId, paneId, mode, cols, rows };
     }

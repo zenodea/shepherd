@@ -1,16 +1,33 @@
-import type { AgentInfo, ClientMessage, HostInfo, ServerMessage, StatusChange, TerminalMode } from "@sheperd/protocol";
+import type {
+  AgentInfo,
+  CallMethod,
+  ClientMessage,
+  HostInfo,
+  ServerMessage,
+  StartAgentParams,
+  StatusChange,
+  TerminalMode,
+} from "@sheperd/protocol";
 import { WIRE_PROTOCOL_VERSION, parseClientMessage } from "@sheperd/protocol";
 import type { AgentTracker } from "./agent-tracker.ts";
 import { HerdrRequestError, type HerdrClient } from "./herdr-client.ts";
+import { LaunchError, type Launcher } from "./launcher.ts";
 import type { TerminalStream } from "./terminal-stream.ts";
 
 export const MAX_STREAMS_PER_SESSION = 8;
+/** Used when herdr can't report a pane's size. */
+const FALLBACK_SIZE = { cols: 120, rows: 40 };
+const RESTORE_TIMEOUT_MS = 2000;
+
+type Size = { cols: number; rows: number };
 
 export type SessionDeps = {
   herdr: HerdrClient;
   tracker: AgentTracker;
   host: HostInfo;
   openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) => TerminalStream;
+  /** Implements `sheperd.*` methods; without it they report unsupported. */
+  launcher?: Launcher;
 };
 
 /**
@@ -19,6 +36,7 @@ export type SessionDeps = {
  */
 export class AppSession {
   private streams = new Map<string, TerminalStream>();
+  private opening = new Set<string>();
   private closed = false;
   private readonly send: (msg: ServerMessage) => void;
   private readonly deps: SessionDeps;
@@ -48,7 +66,7 @@ export class AppSession {
     this.closed = true;
     this.deps.tracker.off("agents", this.onAgents);
     this.deps.tracker.off("status", this.onStatus);
-    for (const stream of this.streams.values()) stream.close();
+    for (const stream of [...this.streams.values()]) stream.close();
     this.streams.clear();
   }
 
@@ -56,17 +74,22 @@ export class AppSession {
     switch (msg.type) {
       case "call":
         try {
-          const result = await this.deps.herdr.request(msg.method, msg.params);
+          const result = await this.call(msg.method, msg.params);
           this.send({ type: "result", id: msg.id, result });
         } catch (err) {
-          const code = err instanceof HerdrRequestError ? err.code : "internal";
+          const code = err instanceof HerdrRequestError || err instanceof LaunchError ? err.code : "internal";
           const message = err instanceof Error ? err.message : String(err);
           this.send({ type: "error", id: msg.id, error: { code, message } });
         }
         return;
 
       case "terminal.open":
-        this.openStream(msg.streamId, msg.paneId, msg.mode, msg.cols, msg.rows);
+        await this.openStream(
+          msg.streamId,
+          msg.paneId,
+          msg.mode,
+          msg.cols !== undefined && msg.rows !== undefined ? { cols: msg.cols, rows: msg.rows } : null,
+        );
         return;
 
       case "terminal.input": {
@@ -100,16 +123,37 @@ export class AppSession {
     }
   }
 
-  private openStream(streamId: string, paneId: string, mode: TerminalMode, cols: number, rows: number): void {
-    if (this.streams.has(streamId)) {
+  private call(method: CallMethod, params: Record<string, unknown>): Promise<unknown> {
+    if (!method.startsWith("sheperd.")) return this.deps.herdr.request(method, params);
+    const launcher = this.deps.launcher;
+    if (!launcher) return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
+    if (method === "sheperd.projects") return launcher.projects();
+    return launcher.start(params as StartAgentParams);
+  }
+
+  private async openStream(streamId: string, paneId: string, mode: TerminalMode, requested: Size | null): Promise<void> {
+    if (this.streams.has(streamId) || this.opening.has(streamId)) {
       this.streamError(streamId, "stream id already in use");
       return;
     }
-    if (this.streams.size >= MAX_STREAMS_PER_SESSION) {
+    if (this.streams.size + this.opening.size >= MAX_STREAMS_PER_SESSION) {
       this.send({ type: "terminal.closed", streamId, reason: `too many open terminals (max ${MAX_STREAMS_PER_SESSION})` });
       return;
     }
-    const stream = this.deps.openTerminal(paneId, mode, cols, rows);
+
+    this.opening.add(streamId);
+    const native = await this.paneSize(paneId);
+    this.opening.delete(streamId);
+    if (this.closed) return;
+
+    const size = requested ?? native ?? FALLBACK_SIZE;
+    // A controller at a different size resizes the real pane; put it back afterwards.
+    const restoreTo =
+      mode === "control" && requested && native && (native.cols !== requested.cols || native.rows !== requested.rows)
+        ? native
+        : null;
+
+    const stream = this.deps.openTerminal(paneId, mode, size.cols, size.rows);
     this.streams.set(streamId, stream);
     stream.on("frame", (frame) => {
       if (this.closed) return;
@@ -125,7 +169,34 @@ export class AppSession {
     });
     stream.on("closed", (reason) => {
       this.streams.delete(streamId);
+      if (restoreTo) this.restorePaneSize(paneId, restoreTo);
       if (!this.closed) this.send({ type: "terminal.closed", streamId, reason });
+    });
+  }
+
+  /** The pane's current size, from its tab layout. */
+  private async paneSize(paneId: string): Promise<Size | null> {
+    try {
+      const result = await this.deps.herdr.request<{
+        layout: { panes: { pane_id: string; rect: { width: number; height: number } }[] };
+      }>("pane.layout", { pane_id: paneId });
+      const rect = result.layout.panes.find((p) => p.pane_id === paneId)?.rect;
+      return rect && rect.width > 0 && rect.height > 0 ? { cols: rect.width, rows: rect.height } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * herdr keeps a pane at the last controller's size, so briefly take control
+   * at the original size and release it.
+   */
+  private restorePaneSize(paneId: string, size: Size): void {
+    const restorer = this.deps.openTerminal(paneId, "control", size.cols, size.rows);
+    const timer = setTimeout(() => restorer.close(), RESTORE_TIMEOUT_MS);
+    restorer.once("frame", () => {
+      clearTimeout(timer);
+      restorer.close();
     });
   }
 

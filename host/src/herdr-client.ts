@@ -33,39 +33,61 @@ export function lineReader(onLine: (line: string) => void): (chunk: Buffer | str
   };
 }
 
-type Pending = { resolve: (result: unknown) => void; reject: (err: Error) => void; timer: NodeJS.Timeout };
-
 export type Subscription = { close: () => void; closed: Promise<void> };
 
 /**
  * Client for herdr's newline-delimited JSON socket API.
  *
- * Requests share one connection. Each `subscribe` opens its own connection,
- * since herdr keeps a subscribed connection open for pushed events only.
+ * herdr answers one request per connection and then closes it, so every
+ * request opens its own connection. Subscriptions keep theirs open.
  */
 export class HerdrClient {
   readonly socketPath: string;
-  private conn: Socket | null = null;
-  private connecting: Promise<Socket> | null = null;
-  private pending = new Map<string, Pending>();
-  private nextId = 0;
   private readonly timeoutMs: number;
+  private open = new Set<Socket>();
+  private nextId = 0;
 
   constructor(socketPath: string = defaultSocketPath(), timeoutMs = 15_000) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }
 
-  async request<T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-    const conn = await this.connection();
+  request<T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     const id = `sheperd:${++this.nextId}`;
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new HerdrRequestError("timeout", `herdr ${method} timed out after ${this.timeoutMs}ms`));
-      }, this.timeoutMs);
-      this.pending.set(id, { resolve: resolve as (r: unknown) => void, reject, timer });
-      conn.write(JSON.stringify({ id, method, params }) + "\n");
+      const conn = createConnection(this.socketPath);
+      this.open.add(conn);
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.open.delete(conn);
+        conn.destroy();
+        fn();
+      };
+      const timer = setTimeout(
+        () => settle(() => reject(new HerdrRequestError("timeout", `herdr ${method} timed out after ${this.timeoutMs}ms`))),
+        this.timeoutMs,
+      );
+
+      conn.on("connect", () => conn.write(JSON.stringify({ id, method, params }) + "\n"));
+      conn.on(
+        "data",
+        lineReader((line) => {
+          let msg: HerdrResponse;
+          try {
+            msg = JSON.parse(line);
+          } catch {
+            return;
+          }
+          if (msg.id !== id) return;
+          if ("error" in msg) settle(() => reject(new HerdrRequestError(msg.error.code, msg.error.message)));
+          else settle(() => resolve(msg.result as T));
+        }),
+      );
+      conn.on("error", (err) => settle(() => reject(err)));
+      conn.on("close", () => settle(() => reject(new HerdrRequestError("disconnected", `herdr closed the connection during ${method}`))));
     });
   }
 
@@ -114,57 +136,9 @@ export class HerdrClient {
     });
   }
 
+  /** Abort in-flight requests. Subscriptions are closed through their own handles. */
   close(): void {
-    this.conn?.destroy();
-    this.conn = null;
-  }
-
-  private connection(): Promise<Socket> {
-    if (this.conn && !this.conn.destroyed) return Promise.resolve(this.conn);
-    if (this.connecting) return this.connecting;
-
-    this.connecting = new Promise<Socket>((resolve, reject) => {
-      const conn = createConnection(this.socketPath);
-      conn.on("data", lineReader((line) => this.handleLine(line)));
-      conn.once("connect", () => {
-        this.conn = conn;
-        this.connecting = null;
-        resolve(conn);
-      });
-      conn.on("error", (err) => {
-        if (this.connecting) {
-          this.connecting = null;
-          reject(err);
-        }
-      });
-      conn.on("close", () => {
-        if (this.conn === conn) this.conn = null;
-        this.failPending(new HerdrRequestError("disconnected", "herdr socket closed"));
-      });
-    });
-    return this.connecting;
-  }
-
-  private handleLine(line: string): void {
-    let msg: HerdrResponse;
-    try {
-      msg = JSON.parse(line);
-    } catch {
-      return;
-    }
-    const pending = this.pending.get(msg.id);
-    if (!pending) return;
-    this.pending.delete(msg.id);
-    clearTimeout(pending.timer);
-    if ("error" in msg) pending.reject(new HerdrRequestError(msg.error.code, msg.error.message));
-    else pending.resolve(msg.result);
-  }
-
-  private failPending(err: Error): void {
-    for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.reject(err);
-      this.pending.delete(id);
-    }
+    for (const conn of this.open) conn.destroy();
+    this.open.clear();
   }
 }

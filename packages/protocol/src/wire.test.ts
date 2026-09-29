@@ -19,8 +19,14 @@ describe("parseClientMessage", () => {
     });
   });
 
+  it("accepts host methods", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "call", id: "1", method: "sheperd.projects" }))).toMatchObject({
+      method: "sheperd.projects",
+    });
+  });
+
   it("rejects methods outside the allowlist", () => {
-    for (const method of ["pane.run", "server.stop", "plugin.action.invoke", "__proto__"]) {
+    for (const method of ["pane.run", "server.stop", "plugin.action.invoke", "__proto__", "tab.create", "agent.start", "sheperd.nope"]) {
       expect(parseClientMessage(JSON.stringify({ type: "call", id: "1", method, params: {} }))).toBeNull();
     }
   });
@@ -32,6 +38,9 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ ...ok, mode: "own" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ ...ok, cols: 0 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ ...ok, rows: 2.5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ ...ok, cols: undefined }))).toBeNull();
+    const { cols: _c, rows: _r, ...native } = ok;
+    expect(parseClientMessage(JSON.stringify(native))).toEqual(native);
   });
 
   it("requires exactly one of text or bytes for terminal.input", () => {

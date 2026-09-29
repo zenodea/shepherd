@@ -14,6 +14,8 @@ export class FakeHerdr {
   readonly requests: { method: string; params: Record<string, unknown> }[] = [];
   agents: AgentInfo[] = [];
   handlers: Record<string, Handler> = {};
+  /** Return a herdr error (e.g. `agent_not_ready`) for a method instead of handling it. */
+  errorFor: (method: string) => { code: string; message: string } | null = () => null;
   private server: Server;
   private subs: Sub[] = [];
   private dir: string;
@@ -78,11 +80,17 @@ export class FakeHerdr {
       lineReader((line) => {
         const req = JSON.parse(line) as { id: string; method: string; params: Record<string, unknown> };
         this.requests.push({ method: req.method, params: req.params });
-        const reply = (body: Record<string, unknown>) => socket.write(JSON.stringify({ id: req.id, ...body }) + "\n");
+        // Like herdr: one request per connection, closed after the response.
+        const reply = (body: Record<string, unknown>) => socket.end(JSON.stringify({ id: req.id, ...body }) + "\n");
 
         if (req.method === "events.subscribe") {
           this.subs.push({ socket, subscriptions: req.params.subscriptions as Record<string, unknown>[] });
-          reply({ result: { type: "subscription_started" } });
+          socket.write(JSON.stringify({ id: req.id, result: { type: "subscription_started" } }) + "\n");
+          return;
+        }
+        const error = this.errorFor(req.method);
+        if (error) {
+          reply({ error });
           return;
         }
         const handler = this.handlers[req.method];
