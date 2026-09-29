@@ -1,0 +1,23 @@
+{
+  "name": "@sheperd/relay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "wrangler types >/dev/null && tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sheperd/protocol": "*"
+  },
+  "devDependencies": {
+    "@sheperd/host": "*",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2",
+    "wrangler": "^4.143.0",
+    "ws": "^8.22.0"
+  }
+}
