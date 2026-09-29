@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dimensions, Keyboard, Platform } from "react-native";
 
 /** Breathing room between the composer and the top of the keyboard. */
-const MARGIN = 8;
+const MARGIN = 14;
 
 /**
  * How much bottom space the keyboard needs. On Android the window may shrink

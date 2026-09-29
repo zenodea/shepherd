@@ -127,14 +127,19 @@ const MODES: { id: ThemeMode; label: string }[] = [
   { id: "light", label: "Light" },
 ];
 
+const SWATCH_DOT = 7;
+const SWATCH_GAP = 3;
+
 /** A theme at a glance: its background with the text, accent and status colours on it. */
 function Swatch({ palette }: { palette: Palette }) {
   const dots = [palette.text, palette.brand, palette.status.working, palette.status.done];
   return (
     <View style={[styles.swatch, { backgroundColor: palette.background, borderColor: palette.border }]}>
-      {dots.map((c, i) => (
-        <View key={i} style={[styles.swatchDot, { backgroundColor: c }]} />
-      ))}
+      <View style={styles.swatchGrid}>
+        {dots.map((c, i) => (
+          <View key={i} style={[styles.swatchDot, { backgroundColor: c }]} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -148,6 +153,8 @@ const styles = themed(() => StyleSheet.create({
   modeActive: { backgroundColor: colors.raised },
   modeText: { fontSize: 14, fontWeight: "500", color: colors.muted },
   modeTextActive: { color: colors.text },
-  swatch: { flexDirection: "row", flexWrap: "wrap", width: 28, height: 28, padding: 5, gap: 2, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
-  swatchDot: { width: 7, height: 7, borderRadius: 4 },
+  swatch: { width: 28, height: 28, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
+  // Exactly two dots wide, so the 2×2 grid sits in the middle of the tile.
+  swatchGrid: { width: SWATCH_DOT * 2 + SWATCH_GAP, flexDirection: "row", flexWrap: "wrap", gap: SWATCH_GAP },
+  swatchDot: { width: SWATCH_DOT, height: SWATCH_DOT, borderRadius: SWATCH_DOT / 2 },
 }));
