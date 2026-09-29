@@ -3,7 +3,56 @@
 
 import { AGENT_STATUSES, type AgentInfo, type AgentStatus } from "./herdr.ts";
 
-export const WIRE_PROTOCOL_VERSION = 1;
+export const WIRE_PROTOCOL_VERSION = 3;
+
+/** WebSocket close codes the host uses when it turns an app away. */
+export const CLOSE_CODES = {
+  /** Unknown token. */
+  unauthorized: 4001,
+  /** The pairing QR code is older than its time limit or was already used. */
+  pairingExpired: 4002,
+  /** This device was revoked on the host. */
+  revoked: 4003,
+  /** No `auth` message arrived in time. */
+  authTimeout: 4004,
+  /** The encryption handshake failed, or a frame failed to decrypt. */
+  insecure: 4005,
+} as const;
+
+/**
+ * Plaintext messages before the encrypted channel exists (see secure.ts).
+ * Everything else travels as encrypted binary frames.
+ */
+export type HostHello = {
+  type: "ready";
+  protocol: number;
+  /** Host static key (pinned by the app at pairing) and this connection's ephemeral key, hex. */
+  e2e: { version: number; hostKey: string; ephemeral: string };
+};
+export type AppHandshake = { type: "handshake"; ephemeral: string };
+
+const HEX_KEY = /^[0-9a-f]{64}$/;
+
+export function parseHostHello(raw: string): HostHello | null {
+  try {
+    const m = JSON.parse(raw) as Partial<HostHello>;
+    if (m?.type !== "ready" || typeof m.protocol !== "number" || !m.e2e) return null;
+    const { version, hostKey, ephemeral } = m.e2e;
+    if (typeof version !== "number" || !HEX_KEY.test(String(hostKey)) || !HEX_KEY.test(String(ephemeral))) return null;
+    return { type: "ready", protocol: m.protocol, e2e: { version, hostKey, ephemeral } };
+  } catch {
+    return null;
+  }
+}
+
+export function parseAppHandshake(raw: string): AppHandshake | null {
+  try {
+    const m = JSON.parse(raw) as Partial<AppHandshake>;
+    return m?.type === "handshake" && HEX_KEY.test(String(m.ephemeral)) ? { type: "handshake", ephemeral: m.ephemeral! } : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * herdr methods the host will forward on behalf of the app. Anything not in
@@ -61,7 +110,15 @@ export type StartAgentResult = {
 
 export type TerminalMode = "observe" | "control";
 
+export type DeviceInfo = { id: string; name: string };
+
 export type ClientMessage =
+  /**
+   * Must be the first encrypted message. `token` is either this device's token or a
+   * one-time pairing code from the host's QR code, which the host exchanges
+   * for a device token (returned in `hello.credentials`).
+   */
+  | { type: "auth"; token: string; device: { name: string } }
   | { type: "call"; id: string; method: CallMethod; params: Record<string, unknown> }
   /**
    * Without cols/rows the stream uses the pane's current size (nothing is
@@ -81,10 +138,21 @@ export type HostInfo = {
   herdrVersion: string;
   /** ntfy subscribe link, when the host sends push notifications. */
   notifyUrl?: string;
+  /** Every address the host is currently reachable on; the app adopts these. */
+  addresses?: string[];
 };
 
 export type ServerMessage =
-  | { type: "hello"; protocol: number; host: HostInfo; agents: AgentInfo[] }
+  | {
+      type: "hello";
+      protocol: number;
+      host: HostInfo;
+      device: DeviceInfo;
+      /** Present after pairing: the token this device should use from now on. */
+      credentials?: { token: string };
+      agents: AgentInfo[];
+    }
+  | { type: "auth.error"; code: "invalid" | "expired" | "revoked"; message: string }
   | { type: "result"; id: string; result: unknown }
   | { type: "error"; id: string | null; error: { code: string; message: string } }
   | { type: "agents"; agents: AgentInfo[] }
@@ -141,6 +209,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (!isRecord(msg)) return null;
 
   switch (msg.type) {
+    case "auth": {
+      const { token, device } = msg;
+      if (typeof token !== "string" || token.length === 0 || token.length > 256) return null;
+      const name = isRecord(device) && typeof device.name === "string" ? device.name.replace(/[\u0000-\u001f]/g, "").trim().slice(0, 64) : "";
+      return { type: "auth", token, device: { name: name || "Unnamed device" } };
+    }
     case "call": {
       const { id, method, params = {} } = msg;
       if (typeof id !== "string" || id.length === 0 || id.length > 128) return null;

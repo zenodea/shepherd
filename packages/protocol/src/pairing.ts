@@ -12,6 +12,8 @@ export type PairingInfo = {
   token: string;
   /** Every address the host might be reachable on; the app tries them all. */
   urls: string[];
+  /** Host's static public key (hex), pinned for end-to-end encryption. */
+  hostKey?: string;
 };
 
 /** Like encodeURIComponent, but keeps `:` and `/` readable to shrink the QR code. */
@@ -20,7 +22,13 @@ function encode(value: string): string {
 }
 
 export function encodePairingLink(info: PairingInfo, scheme = "sheperd"): string {
-  const params = [`v=${PAIRING_VERSION}`, `n=${encode(info.name)}`, `t=${encode(info.token)}`, ...info.urls.map((u) => `u=${encode(u)}`)];
+  const params = [
+    `v=${PAIRING_VERSION}`,
+    `n=${encode(info.name)}`,
+    `t=${encode(info.token)}`,
+    ...(info.hostKey ? [`k=${info.hostKey}`] : []),
+    ...info.urls.map((u) => `u=${encode(u)}`),
+  ];
   return `${scheme}://pair?${params.join("&")}`;
 }
 
@@ -35,6 +43,7 @@ export function parsePairingLink(text: string): PairingInfo | null {
   let version: string | undefined;
   let name = "";
   let token = "";
+  let hostKey: string | undefined;
   const urls: string[] = [];
   for (const pair of match[1]!.split("&")) {
     const eq = pair.indexOf("=");
@@ -55,6 +64,10 @@ export function parsePairingLink(text: string): PairingInfo | null {
       case "t":
         token = value;
         break;
+      case "k":
+        if (!/^[0-9a-f]{64}$/.test(value)) return null;
+        hostKey = value;
+        break;
       case "u":
         try {
           urls.push(normaliseHostUrl(value));
@@ -65,7 +78,7 @@ export function parsePairingLink(text: string): PairingInfo | null {
     }
   }
   if (version !== String(PAIRING_VERSION) || !token || urls.length === 0) return null;
-  return { name: name || "host", token, urls: [...new Set(urls)] };
+  return { name: name || "host", token, urls: [...new Set(urls)], ...(hostKey ? { hostKey } : {}) };
 }
 
 /**

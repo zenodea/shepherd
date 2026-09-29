@@ -1,0 +1,2 @@
+# Copy to .dev.vars for `npm run relay`
+HOST_TOKEN=dev-host-token

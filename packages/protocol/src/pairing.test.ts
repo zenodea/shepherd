@@ -5,25 +5,31 @@ const info = {
   name: "Zeno's MacBook",
   token: "mHcESZyjRzFjhGBlDaMCPjQbadzEzn8daXOLwnIYyso",
   urls: [
-    "ws://10.22.53.106:7420/connect",
-    "ws://100.95.112.5:7420/connect",
+    "ws://192.168.1.20:7420/connect",
+    "ws://100.101.102.103:7420/connect",
     "wss://sheperd-relay.example.workers.dev/hosts/6l7uJofGV0Nw/connect",
   ],
 };
 
 describe("pairing links", () => {
+  it("carries the host key when present", () => {
+    const withKey = { ...info, hostKey: "ab".repeat(32) };
+    expect(parsePairingLink(encodePairingLink(withKey))).toEqual(withKey);
+    expect(parsePairingLink(encodePairingLink(withKey).replace("k=abab", "k=zzab"))).toBeNull();
+  });
+
   it("round-trips", () => {
     expect(parsePairingLink(encodePairingLink(info))).toEqual(info);
   });
 
   it("keeps URLs compact", () => {
     const link = encodePairingLink(info);
-    expect(link).toContain("u=ws://10.22.53.106:7420/connect");
+    expect(link).toContain("u=ws://192.168.1.20:7420/connect");
     expect(link.startsWith("sheperd://pair?v=1&")).toBe(true);
   });
 
   it("accepts Expo Go deep links", () => {
-    const link = encodePairingLink(info, "sheperd").replace("sheperd://", "exp://100.95.112.5:8081/--/");
+    const link = encodePairingLink(info, "sheperd").replace("sheperd://", "exp://100.101.102.103:8081/--/");
     expect(parsePairingLink(link)).toEqual(info);
   });
 

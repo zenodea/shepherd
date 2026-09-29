@@ -23,13 +23,15 @@ export const TUNNEL_PONG = '{"type":"pong"}';
 
 export type RelayToHost = { type: "dial"; ticket: string } | { type: "registered" };
 
+export const MAX_CLIENT_TOKENS = 256;
+
 export type HostToRelay =
   /**
-   * Sent right after the control socket opens. The relay admits app
-   * connections whose token hashes to `clientTokenHash` (hex SHA-256), so it
-   * never learns the token itself.
+   * Sent when the control socket opens and whenever the host's devices or
+   * pairing codes change. The relay admits app connections whose token hashes
+   * (hex SHA-256) to one of these, so it never learns the tokens themselves.
    */
-  { type: "register"; clientTokenHash: string };
+  { type: "register"; clientTokenHashes: string[] };
 
 function parseObject(raw: string): Record<string, unknown> | null {
   try {
@@ -49,8 +51,7 @@ export function parseRelayToHost(raw: string): RelayToHost | null {
 
 export function parseHostToRelay(raw: string): HostToRelay | null {
   const m = parseObject(raw);
-  if (m?.type === "register" && typeof m.clientTokenHash === "string" && /^[0-9a-f]{64}$/.test(m.clientTokenHash)) {
-    return { type: "register", clientTokenHash: m.clientTokenHash };
-  }
-  return null;
+  if (m?.type !== "register" || !Array.isArray(m.clientTokenHashes) || m.clientTokenHashes.length > MAX_CLIENT_TOKENS) return null;
+  if (!m.clientTokenHashes.every((h) => typeof h === "string" && /^[0-9a-f]{64}$/.test(h))) return null;
+  return { type: "register", clientTokenHashes: m.clientTokenHashes as string[] };
 }

@@ -50,6 +50,17 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "terminal.input", streamId: "s" }))).toBeNull();
   });
 
+  it("parses auth and cleans up the device name", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "auth", token: "abc", device: { name: " Pixel 8\u0007 " } }))).toEqual({
+      type: "auth",
+      token: "abc",
+      device: { name: "Pixel 8" },
+    });
+    expect(parseClientMessage(JSON.stringify({ type: "auth", token: "abc" }))).toMatchObject({ device: { name: "Unnamed device" } });
+    expect(parseClientMessage(JSON.stringify({ type: "auth", token: "" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "auth", token: "x".repeat(257) }))).toBeNull();
+  });
+
   it("rejects garbage", () => {
     expect(parseClientMessage("not json")).toBeNull();
     expect(parseClientMessage("[]")).toBeNull();
@@ -74,12 +85,17 @@ describe("tunnel messages", () => {
     expect(parseRelayToHost(JSON.stringify({ type: "dial", ticket: "" }))).toBeNull();
   });
 
-  it("only accepts a hex sha-256 client token hash", () => {
-    const hash = "a".repeat(64);
-    expect(parseHostToRelay(JSON.stringify({ type: "register", clientTokenHash: hash }))).toEqual({
+  it("only accepts hex sha-256 client token hashes", () => {
+    const hashes = ["a".repeat(64), "b".repeat(64)];
+    expect(parseHostToRelay(JSON.stringify({ type: "register", clientTokenHashes: hashes }))).toEqual({
       type: "register",
-      clientTokenHash: hash,
+      clientTokenHashes: hashes,
     });
-    expect(parseHostToRelay(JSON.stringify({ type: "register", clientTokenHash: "plain-token" }))).toBeNull();
+    expect(parseHostToRelay(JSON.stringify({ type: "register", clientTokenHashes: [] }))).toEqual({
+      type: "register",
+      clientTokenHashes: [],
+    });
+    expect(parseHostToRelay(JSON.stringify({ type: "register", clientTokenHashes: ["plain-token"] }))).toBeNull();
+    expect(parseHostToRelay(JSON.stringify({ type: "register", clientTokenHash: hashes[0] }))).toBeNull();
   });
 });

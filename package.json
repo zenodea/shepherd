@@ -4,11 +4,12 @@
   "description": "Control your herdr agents from your phone",
   "workspaces": [
     "packages/*",
-    "host",
-    "relay",
-    "app"
+    "apps/*"
   ],
   "scripts": {
+    "host": "npm start --silent -w @sheperd/host --",
+    "app": "npm start -w @sheperd/mobile",
+    "relay": "npm run dev -w @sheperd/relay",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
