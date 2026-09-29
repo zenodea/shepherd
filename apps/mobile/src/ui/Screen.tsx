@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, space, type } from "./theme";
+import { colors, space, type, themed } from "./theme";
 
-/** Full-screen dark background that respects the status bar. */
+/** Full-screen background that respects the status bar. */
 export function Screen({ children, style, edges = ["top"] }: { children: ReactNode; style?: StyleProp<ViewStyle>; edges?: ("top" | "bottom")[] }) {
   const insets = useSafeAreaInsets();
   return (
@@ -35,7 +35,7 @@ export function SectionHeader({ title, count, right }: { title: string; count?: 
 /** Thin strip under the header for connection problems. */
 export function Banner({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "danger" }) {
   return (
-    <View style={[styles.banner, tone === "danger" && { backgroundColor: "rgba(248,113,113,0.12)" }]}>
+    <View style={[styles.banner, tone === "danger" && { backgroundColor: colors.dangerTint }]}>
       <Text style={[type.sub, tone === "danger" && { color: colors.danger }]}>{children}</Text>
     </View>
   );
@@ -45,7 +45,7 @@ export function Divider({ inset = 0 }: { inset?: number }) {
   return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.hairline, marginLeft: inset }} />;
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   section: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.sm },
   banner: { backgroundColor: colors.surface, paddingHorizontal: space.lg, paddingVertical: 7 },
-});
+}));

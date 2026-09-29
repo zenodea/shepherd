@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AgentInfo, AgentStatus } from "@sheperd/protocol";
+import type { AgentInfo, AgentStatus } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 
 export type WorkspaceTab = {

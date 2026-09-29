@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { WebSocket } from "ws";
-import { TUNNEL_PING, TUNNEL_PONG, parseRelayToHost, relayPaths, type HostToRelay } from "@sheperd/protocol";
+import { TUNNEL_PING, TUNNEL_PONG, parseRelayToHost, relayPaths, type HostToRelay } from "@shepherd/protocol";
 import { attachSession } from "./server.ts";
 import type { SessionDeps } from "./session.ts";
 

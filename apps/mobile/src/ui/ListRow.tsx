@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 import { PressableScale } from "./Pressable";
-import { colors, space, type } from "./theme";
+import { colors, space, type, themed } from "./theme";
 
 /** Settings-style row: icon column, title + optional detail, trailing accessory. */
 export function ListRow({
@@ -45,8 +45,8 @@ export function ListGroup({ children }: { children: ReactNode }) {
   return <View style={styles.group}>{children}</View>;
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: 14, minHeight: 56 },
   icon: { width: 28, alignItems: "center" },
   group: { backgroundColor: colors.surface, borderRadius: 14, overflow: "hidden", marginHorizontal: space.lg },
-});
+}));

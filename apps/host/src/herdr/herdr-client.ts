@@ -1,7 +1,7 @@
 import { createConnection, type Socket } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { HerdrPushedEvent, HerdrResponse } from "@sheperd/protocol";
+import type { HerdrPushedEvent, HerdrResponse } from "@shepherd/protocol";
 
 export function defaultSocketPath(env: NodeJS.ProcessEnv = process.env): string {
   if (env.HERDR_SOCKET_PATH) return env.HERDR_SOCKET_PATH;
@@ -57,7 +57,7 @@ export class HerdrClient {
     params: Record<string, unknown> = {},
     { timeoutMs = this.timeoutMs }: { timeoutMs?: number } = {},
   ): Promise<T> {
-    const id = `sheperd:${++this.nextId}`;
+    const id = `shepherd:${++this.nextId}`;
     return new Promise<T>((resolve, reject) => {
       const conn = createConnection(this.socketPath);
       this.open.add(conn);
@@ -135,7 +135,7 @@ export class HerdrClient {
       });
       conn.on("close", () => resolveClosed());
       conn.on("connect", () => {
-        conn.write(JSON.stringify({ id: "sheperd:sub", method: "events.subscribe", params: { subscriptions } }) + "\n");
+        conn.write(JSON.stringify({ id: "shepherd:sub", method: "events.subscribe", params: { subscriptions } }) + "\n");
       });
     });
   }

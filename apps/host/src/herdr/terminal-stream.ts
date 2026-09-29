@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
-import type { HerdrTerminalCommand, HerdrTerminalRecord, TerminalMode } from "@sheperd/protocol";
-import { isPaneId } from "@sheperd/protocol";
+import type { HerdrTerminalCommand, HerdrTerminalRecord, TerminalMode } from "@shepherd/protocol";
+import { isPaneId } from "@shepherd/protocol";
 import { lineReader } from "./herdr-client.ts";
 
 export type TerminalStreamOptions = {

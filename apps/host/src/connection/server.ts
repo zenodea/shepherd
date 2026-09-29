@@ -15,7 +15,7 @@ import {
   type HostHello,
   type ServerMessage,
   type SessionCiphers,
-} from "@sheperd/protocol";
+} from "@shepherd/protocol";
 import { AppSession, type SessionDeps } from "./session.ts";
 
 const HEARTBEAT_MS = 30_000;
@@ -29,7 +29,7 @@ const HANDSHAKE_TIMEOUT_MS = 10_000;
  *
  * The host speaks first with its keys (`ready`), the app answers with its
  * ephemeral key (`handshake`), and from then on every frame in both directions
- * is encrypted (see @sheperd/protocol secure.ts). The session, including
+ * is encrypted (see @shepherd/protocol secure.ts). The session, including
  * authentication, only exists inside that channel.
  */
 export function attachSession(ws: WebSocket, deps: SessionDeps): void {

@@ -10,7 +10,7 @@ import {
   rgbColor,
   type StyledLine,
   type StyledSpan,
-} from "@sheperd/protocol";
+} from "@shepherd/protocol";
 
 const { Terminal } = xterm;
 type HeadlessTerminal = InstanceType<typeof Terminal>;

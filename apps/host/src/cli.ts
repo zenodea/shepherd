@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
-import { extractPrompt, toHex, type PaneReadResult, type TerminalMode } from "@sheperd/protocol";
+import { extractPrompt, toHex, type PaneReadResult, type TerminalMode } from "@shepherd/protocol";
 import { AgentTracker } from "./herdr/agent-tracker.ts";
 import { generateSecret, hostKeyPair, loadConfig, loadOrCreateStoredConfig, saveStoredConfig, type HostConfig } from "./system/config.ts";
 import { DeviceRegistry } from "./pairing/devices.ts";
@@ -16,7 +16,7 @@ import type { SessionDeps } from "./connection/session.ts";
 import { Service } from "./system/service.ts";
 import { TerminalStream } from "./herdr/terminal-stream.ts";
 
-const USAGE = `sheperd-host — bridge your herdr agents to the sheperd app
+const USAGE = `shepherd-host — bridge your herdr agents to the shepherd app
 
 Usage (from the repo root):
   npm run host                             Run the host; prints a pairing QR code
@@ -24,7 +24,7 @@ Usage (from the repo root):
   npm run host -- info                     Show addresses and paired devices
   npm run host -- devices                  List paired devices
   npm run host -- devices revoke <id|all>  Unpair a device (disconnects it immediately)
-  npm run host -- relay <url> <host-token> Also connect through a sheperd relay
+  npm run host -- relay <url> <host-token> Also connect through a shepherd relay
   npm run host -- relay off                Stop using the relay
   npm run host -- notify on [ntfy-server]  Push notifications via ntfy (default https://ntfy.sh)
   npm run host -- notify test              Send a test notification
@@ -33,9 +33,9 @@ Usage (from the repo root):
   npm run host -- service uninstall|status|logs
 
 Environment:
-  SHEPERD_PORT    Port for direct connections (default 7420)
-  SHEPERD_BIND    Address to listen on (default 0.0.0.0)
-  SHEPERD_CONFIG  Config file (default ~/.config/sheperd/host.json)
+  SHEPHERD_PORT    Port for direct connections (default 7420)
+  SHEPHERD_BIND    Address to listen on (default 0.0.0.0)
+  SHEPHERD_CONFIG  Config file (default ~/.config/shepherd/host.json)
   HERDR_BIN       herdr binary (default "herdr" on PATH)
   HERDR_SESSION / HERDR_SOCKET_PATH  Target a named herdr session or socket
 `;
@@ -88,13 +88,13 @@ async function serve(config: HostConfig): Promise<void> {
 
   const server = await startLocalServer({ port: config.port, bind: config.bind, deps }).catch((err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
-      console.error(`Port ${config.port} is already in use. Is another sheperd host running (a terminal, or \`service status\`)?`);
+      console.error(`Port ${config.port} is already in use. Is another shepherd host running (a terminal, or \`service status\`)?`);
       process.exit(1);
     }
     throw err;
   });
   deps.host.addresses = hostAddresses(config, server.port).map((a) => a.url);
-  console.log(`sheperd-host connected to herdr ${herdrVersion}, tracking ${tracker.list().length} agent(s).`);
+  console.log(`shepherd-host connected to herdr ${herdrVersion}, tracking ${tracker.list().length} agent(s).`);
   // A QR code is only useful to a person at a terminal, not in a service log.
   if (process.stdout.isTTY) await printPairing(config, devices, server.port);
   else console.log("Pair a phone with: npm run host -- pair");
@@ -173,12 +173,12 @@ async function notifyCommand(args: string[]): Promise<void> {
       console.error(`Invalid ntfy server URL: ${server}`);
       process.exit(2);
     }
-    const notify = stored.notify?.server === server ? stored.notify : { server, topic: `sheperd-${generateSecret(15)}` };
+    const notify = stored.notify?.server === server ? stored.notify : { server, topic: `shepherd-${generateSecret(15)}` };
     saveStoredConfig(config.configPath, { ...stored, notify });
     const subscribe = ntfySubscribeUrl(notify);
     console.log("\n  Notifications enabled. On your phone:");
     console.log("   1. Install ntfy (https://ntfy.sh, Play Store or F-Droid)");
-    console.log("   2. Scan this with your camera, or tap Host → Get notifications in sheperd:\n");
+    console.log("   2. Scan this with your camera, or tap Host → Get notifications in Shepherd:\n");
     console.log((await renderQr(subscribe)).trimEnd().replace(/^/gm, "  ") + "\n");
     console.log(`  Topic: ${ntfyBase(notify.server)}/${notify.topic}`);
     console.log("  Treat the topic like a password: anyone who knows it can read your notifications.");
@@ -209,11 +209,11 @@ async function notifyCommand(args: string[]): Promise<void> {
     let failed: Error | null = null;
     await new Notifier({ config: stored.notify, hostName: config.name, onError: (e) => (failed = e) }).publish({
       topic: stored.notify.topic,
-      title: "sheperd test",
+      title: "Shepherd test",
       message: `Notifications from ${config.name} are working.`,
       priority: 3,
       tags: ["tada"],
-      click: "sheperd://",
+      click: "shepherd://",
     });
     if (failed) {
       console.error(`Failed: ${(failed as Error).message}`);

@@ -10,8 +10,8 @@ import type {
   StatusChange,
   TerminalMode,
   TerminalRender,
-} from "@sheperd/protocol";
-import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, parseClientMessage } from "@sheperd/protocol";
+} from "@shepherd/protocol";
+import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, parseClientMessage } from "@shepherd/protocol";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
@@ -41,9 +41,9 @@ export type SessionDeps = {
   hostKey: KeyPair;
   devices: DeviceRegistry;
   openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) => TerminalStream;
-  /** Implements `sheperd.*` methods; without it they report unsupported. */
+  /** Implements `shepherd.*` methods; without it they report unsupported. */
   launcher?: Launcher;
-  /** Backs `sheperd.activity`; without it the feed is empty. */
+  /** Backs `shepherd.activity`; without it the feed is empty. */
   activity?: ActivityLog;
 };
 
@@ -205,11 +205,11 @@ export class AppSession {
 
   private call(method: CallMethod, params: Record<string, unknown>): Promise<unknown> {
     if (method === "agent.read" || method === "pane.read") return this.deps.herdr.request(method, params, { timeoutMs: READ_TIMEOUT_MS });
-    if (!method.startsWith("sheperd.")) return this.deps.herdr.request(method, params);
-    if (method === "sheperd.activity") return Promise.resolve(this.deps.activity?.page(params as ActivityParams) ?? { entries: [] });
+    if (!method.startsWith("shepherd.")) return this.deps.herdr.request(method, params);
+    if (method === "shepherd.activity") return Promise.resolve(this.deps.activity?.page(params as ActivityParams) ?? { entries: [] });
     const launcher = this.deps.launcher;
     if (!launcher) return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
-    if (method === "sheperd.projects") return launcher.projects();
+    if (method === "shepherd.projects") return launcher.projects();
     return launcher.start(params as StartAgentParams);
   }
 

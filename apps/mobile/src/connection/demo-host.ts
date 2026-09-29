@@ -1,6 +1,6 @@
 // A fake host with realistic agents, for trying the app without a computer
-// running sheperd (EXPO_PUBLIC_DEMO=1) and for design previews.
-import type { ActivityEntry, AgentInfo, AgentStatus, CallMethod, ProjectsResult, StatusChange } from "@sheperd/protocol";
+// running shepherd (EXPO_PUBLIC_DEMO=1) and for design previews.
+import type { ActivityEntry, AgentInfo, AgentStatus, CallMethod, ProjectsResult, StatusChange } from "@shepherd/protocol";
 import type { ConnectionSettings, HostConnection, HostState, TerminalHandle, TerminalHandlers } from "./host-client";
 import { parseAnsi, toStyledLines } from "../agents/ansi";
 import { HostCallError } from "./host-client";
@@ -164,7 +164,7 @@ export class DemoHost implements HostConnection {
   private state: HostState = {
     status: "online",
     error: null,
-    host: { name: "studio-mac", herdrVersion: "0.9.1", notifyUrl: "ntfy://ntfy.sh/sheperd-demo?display=sheperd" },
+    host: { name: "studio-mac", herdrVersion: "0.9.1", notifyUrl: "ntfy://ntfy.sh/shepherd-demo?display=Shepherd" },
     activeUrl: DEMO_SETTINGS.urls[1]!,
     urls: DEMO_SETTINGS.urls,
     device: { id: "a1b2c3", name: "Pixel 9" },
@@ -202,11 +202,11 @@ export class DemoHost implements HostConnection {
       case "pane.send_keys":
       case "pane.send_input":
         return { type: "ok" } as T;
-      case "sheperd.activity":
+      case "shepherd.activity":
         return { entries: (params as { before?: number }).before ? [] : demoActivity() } as T;
-      case "sheperd.start_agent":
+      case "shepherd.start_agent":
         return { paneId: "w1:p2", workspaceId: "w1", ready: true } as T;
-      case "sheperd.projects":
+      case "shepherd.projects":
         return {
           kinds: ["claude", "codex", "gemini"],
           projects: [

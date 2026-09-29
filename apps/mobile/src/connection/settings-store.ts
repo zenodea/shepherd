@@ -9,8 +9,12 @@ export type HostList = { hosts: SavedHost[]; activeId: string | null };
 
 // Each host is stored under its own key (SecureStore values should stay
 // small); the index holds the order and which one is in use.
-const INDEX_KEY = "sheperd.hosts";
-const hostKey = (id: string) => `sheperd.host.${id}`;
+const INDEX_KEY = "shepherd.hosts";
+const hostKey = (id: string) => `shepherd.host.${id}`;
+// Before the project was renamed (it was misspelled "sheperd"), the same data
+// lived under these keys; it's moved over on first load so nobody re-pairs.
+const OLD_INDEX_KEY = "sheperd.hosts";
+const oldHostKey = (id: string) => `sheperd.host.${id}`;
 /** v1 stored a single host here. */
 const LEGACY_KEY = "sheperd.connection";
 
@@ -39,8 +43,26 @@ async function saveIndex(list: HostList): Promise<void> {
   await SecureStore.setItemAsync(INDEX_KEY, JSON.stringify({ ids: list.hosts.map((h) => h.id), activeId: list.activeId }));
 }
 
+/** Copy hosts saved under the old spelling to the new keys. Returns the new index, if there was one. */
+async function migrateOldKeys(): Promise<string | null> {
+  const index = await SecureStore.getItemAsync(OLD_INDEX_KEY);
+  if (!index) return null;
+  try {
+    for (const id of (JSON.parse(index) as { ids?: string[] }).ids ?? []) {
+      const host = await SecureStore.getItemAsync(oldHostKey(id));
+      if (host) await SecureStore.setItemAsync(hostKey(id), host);
+      await SecureStore.deleteItemAsync(oldHostKey(id));
+    }
+  } catch {
+    return null;
+  }
+  await SecureStore.setItemAsync(INDEX_KEY, index);
+  await SecureStore.deleteItemAsync(OLD_INDEX_KEY);
+  return index;
+}
+
 export async function loadHosts(): Promise<HostList> {
-  const index = await SecureStore.getItemAsync(INDEX_KEY);
+  const index = (await SecureStore.getItemAsync(INDEX_KEY)) ?? (await migrateOldKeys());
   if (!index) {
     const legacy = parseSettings(await SecureStore.getItemAsync(LEGACY_KEY));
     if (!legacy) return { hosts: [], activeId: null };

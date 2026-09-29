@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
-import { colors } from "./theme";
+import { colors, themed } from "./theme";
 
 /** A recognisable glyph and colour per agent CLI; anything else gets its initial. */
 const MARKS: Record<string, { glyph: string; color: string }> = {
@@ -23,6 +23,6 @@ export function AgentMark({ agent, size = 28 }: { agent: string | null | undefin
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   circle: { backgroundColor: colors.raised, alignItems: "center", justifyContent: "center" },
-});
+}));

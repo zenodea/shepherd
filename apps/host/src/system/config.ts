@@ -3,11 +3,11 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import type { Device, Pairing } from "../pairing/devices.ts";
-import { generateKeyPair, publicKeyFor, fromHex, toHex, type KeyPair } from "@sheperd/protocol";
+import { generateKeyPair, publicKeyFor, fromHex, toHex, type KeyPair } from "@shepherd/protocol";
 import { defaultSocketPath } from "../herdr/herdr-client.ts";
 import type { NotifyConfig } from "../notifications/notifier.ts";
 
-/** Persisted in ~/.config/sheperd/host.json (mode 0600). */
+/** Persisted in ~/.config/shepherd/host.json (mode 0600). */
 export type StoredConfig = {
   hostId: string;
   name: string;
@@ -34,9 +34,29 @@ export type HostConfig = StoredConfig & {
   socketPath: string;
 };
 
+/**
+ * `SHEPHERD_<name>`, or the variable from before the project was renamed
+ * (it was misspelled "sheperd"), so existing setups keep working.
+ */
+export function envVar(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  return env[`SHEPHERD_${name}`] ?? env[`SHEPERD_${name}`];
+}
+
 export function defaultConfigPath(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.SHEPERD_CONFIG) return env.SHEPERD_CONFIG;
-  return join(env.XDG_CONFIG_HOME || join(homedir(), ".config"), "sheperd", "host.json");
+  const explicit = envVar(env, "CONFIG");
+  if (explicit) return explicit;
+  const base = env.XDG_CONFIG_HOME || join(homedir(), ".config");
+  const dir = join(base, "shepherd");
+  // Move the config folder from before the rename; it holds the host's key and paired phones.
+  const old = join(base, "sheperd");
+  if (!existsSync(dir) && existsSync(old)) {
+    try {
+      renameSync(old, dir);
+    } catch {
+      return join(old, "host.json");
+    }
+  }
+  return join(dir, "host.json");
 }
 
 export function generateSecret(bytes = 32): string {
@@ -104,15 +124,15 @@ export function saveStoredConfig(path: string, config: StoredConfig): void {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): HostConfig {
   const configPath = defaultConfigPath(env);
   const stored = loadOrCreateStoredConfig(configPath);
-  const port = Number(env.SHEPERD_PORT ?? 7420);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error(`invalid SHEPERD_PORT: ${env.SHEPERD_PORT}`);
+  const port = Number(envVar(env, "PORT") ?? 7420);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error(`invalid SHEPHERD_PORT: ${envVar(env, "PORT")}`);
   return {
     ...stored,
-    relayUrl: env.SHEPERD_RELAY_URL || stored.relayUrl,
-    relayHostToken: env.SHEPERD_RELAY_HOST_TOKEN || stored.relayHostToken,
+    relayUrl: envVar(env, "RELAY_URL") || stored.relayUrl,
+    relayHostToken: envVar(env, "RELAY_HOST_TOKEN") || stored.relayHostToken,
     configPath,
     port,
-    bind: env.SHEPERD_BIND || "0.0.0.0",
+    bind: envVar(env, "BIND") || "0.0.0.0",
     herdrBin: env.HERDR_BIN || "herdr",
     socketPath: defaultSocketPath(env),
   };

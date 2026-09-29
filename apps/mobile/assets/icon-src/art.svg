@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Full-bleed artwork: the crook fills the frame and runs off the bottom,
+       and a sheep peeks in from the bottom-left corner, looking up at it.
+       render-icons.sh scales this into the adaptive-icon safe zone. -->
+  <defs>
+    <clipPath id="frame"><rect width="1024" height="1024"/></clipPath>
+    <linearGradient id="crook" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD27A"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <radialGradient id="wool" cx="0.62" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D9DEE8"/>
+    </radialGradient>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A3947"/>
+      <stop offset="1" stop-color="#23222C"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#frame)">
+    <!-- the crook -->
+    <path d="M 730 1120 L 730 380 A 205 205 0 0 0 320 380 L 320 430 C 320 560 470 570 482 462"
+          fill="none" stroke="url(#crook)" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- the sheep, peeking in from the corner -->
+    <g transform="translate(-30 1024) scale(0.86) translate(0 -1024)">
+    <!-- a woolly body running off the corner -->
+    <g fill="url(#wool)">
+      <circle cx="120" cy="930" r="190"/>
+      <circle cx="330" cy="1000" r="160"/>
+      <circle cx="10" cy="760" r="140"/>
+      <circle cx="210" cy="790" r="130"/>
+      <circle cx="420" cy="900" r="110"/>
+    </g>
+    <!-- head, tilted up towards the crook -->
+    <g transform="rotate(-18 330 730)">
+      <!-- ears -->
+      <ellipse cx="225" cy="690" rx="62" ry="26" transform="rotate(20 225 690)" fill="#2B2A34"/>
+      <ellipse cx="438" cy="690" rx="62" ry="26" transform="rotate(-20 438 690)" fill="#2B2A34"/>
+      <!-- face -->
+      <ellipse cx="330" cy="740" rx="96" ry="122" fill="url(#face)"/>
+      <!-- wool tuft on top -->
+      <g fill="url(#wool)">
+        <circle cx="282" cy="628" r="46"/>
+        <circle cx="332" cy="610" r="50"/>
+        <circle cx="382" cy="628" r="44"/>
+      </g>
+      <!-- eyes, looking up -->
+      <circle cx="294" cy="712" r="21" fill="#FFFFFF"/>
+      <circle cx="368" cy="712" r="21" fill="#FFFFFF"/>
+      <circle cx="298" cy="704" r="11" fill="#14131A"/>
+      <circle cx="372" cy="704" r="11" fill="#14131A"/>
+      <!-- nose -->
+      <ellipse cx="331" cy="806" rx="20" ry="11" fill="#17161D"/>
+    </g>
+    </g>
+  </g>
+</svg>

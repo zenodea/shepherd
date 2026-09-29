@@ -1,5 +1,5 @@
 // Pairing link the host shows as a QR code and the app scans (or opens as a
-// deep link): sheperd://pair?v=1&n=<name>&t=<token>&u=<url>&u=<url>…
+// deep link): shepherd://pair?v=1&n=<name>&t=<token>&u=<url>&u=<url>…
 //
 // Parsed by hand rather than with URL/URLSearchParams, whose React Native
 // implementations are incomplete.
@@ -21,7 +21,7 @@ function encode(value: string): string {
   return encodeURIComponent(value).replace(/%3A/gi, ":").replace(/%2F/gi, "/");
 }
 
-export function encodePairingLink(info: PairingInfo, scheme = "sheperd"): string {
+export function encodePairingLink(info: PairingInfo, scheme = "shepherd"): string {
   const params = [
     `v=${PAIRING_VERSION}`,
     `n=${encode(info.name)}`,
@@ -33,7 +33,7 @@ export function encodePairingLink(info: PairingInfo, scheme = "sheperd"): string
 }
 
 /**
- * Accepts `sheperd://pair?…` and Expo Go's `exp://host:8081/--/pair?…`.
+ * Accepts `shepherd://pair?…` and Expo Go's `exp://host:8081/--/pair?…`.
  * Returns null for anything that isn't a valid pairing link.
  */
 export function parsePairingLink(text: string): PairingInfo | null {

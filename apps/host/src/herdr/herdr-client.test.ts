@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { HerdrPushedEvent } from "@sheperd/protocol";
+import type { HerdrPushedEvent } from "@shepherd/protocol";
 import { HerdrClient, HerdrRequestError, defaultSocketPath, lineReader } from "./herdr-client.ts";
 import { FakeHerdr, fakeAgent, until } from "../testing/fake-herdr.ts";
 

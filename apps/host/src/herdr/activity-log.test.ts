@@ -65,7 +65,7 @@ describe("ActivityLog", () => {
   });
 
   it("keeps the newest entries and survives a restart", () => {
-    const dir = mkdtempSync(join(tmpdir(), "sheperd-activity-"));
+    const dir = mkdtempSync(join(tmpdir(), "shepherd-activity-"));
     dirs.push(dir);
     const path = join(dir, "activity.json");
     const log = new ActivityLog({ path });

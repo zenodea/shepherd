@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ActivityEntry, ActivityResult } from "@sheperd/protocol";
+import type { ActivityEntry, ActivityResult } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 import { loadPref, savePref } from "../connection/prefs";
 import { NOTEWORTHY } from "./activity";
@@ -25,7 +25,7 @@ export function useActivity(client: HostConnection | null, hostId: string | null
     if (!online || !client) return;
     let cancelled = false;
     const load = () =>
-      client.call<ActivityResult>("sheperd.activity", { limit: PAGE }).then(
+      client.call<ActivityResult>("shepherd.activity", { limit: PAGE }).then(
         ({ entries: latest }) => {
           if (cancelled) return;
           setEntries(latest);
@@ -49,7 +49,7 @@ export function useActivity(client: HostConnection | null, hostId: string | null
     const oldest = entries[entries.length - 1];
     if (!client || !oldest || !more) return;
     try {
-      const { entries: older } = await client.call<ActivityResult>("sheperd.activity", { before: oldest.id, limit: PAGE });
+      const { entries: older } = await client.call<ActivityResult>("shepherd.activity", { before: oldest.id, limit: PAGE });
       setEntries((prev) => [...prev, ...older.filter((e) => e.id < (prev[prev.length - 1]?.id ?? Infinity))]);
       setMore(older.length === PAGE);
     } catch {

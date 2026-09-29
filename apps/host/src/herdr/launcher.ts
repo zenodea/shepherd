@@ -1,7 +1,7 @@
 import { accessSync, constants } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { delimiter, join } from "node:path";
-import { TERMINAL_KIND, type Project, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@sheperd/protocol";
+import { TERMINAL_KIND, type Project, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@shepherd/protocol";
 import { HerdrRequestError, type HerdrClient } from "./herdr-client.ts";
 
 /** Shown first in the app; everything else herdr supports follows alphabetically. */

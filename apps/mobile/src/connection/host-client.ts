@@ -17,7 +17,7 @@ import {
   type StatusChange,
   type TerminalMode,
   type TerminalRender,
-} from "@sheperd/protocol";
+} from "@shepherd/protocol";
 
 export type ConnectionSettings = {
   /** Display name from pairing; the host's own name wins once connected. */
@@ -98,7 +98,7 @@ const AUTH_ERRORS: Record<number, string> = {
 };
 
 const HOST_KEY_CHANGED =
-  "The host's identity key doesn't match the one from pairing, so sheperd refused to connect. If you reinstalled the host, scan a new pairing QR code.";
+  "The host's identity key doesn't match the one from pairing, so Shepherd refused to connect. If you reinstalled the host, scan a new pairing QR code.";
 
 /**
  * The relay gates connections on `relayCredential(token)` (a hash); the real
@@ -124,7 +124,7 @@ export type HostConnection = Pick<
 >;
 
 /**
- * Connection to a sheperd host (directly or through the relay). Reconnects
+ * Connection to a shepherd host (directly or through the relay). Reconnects
  * with backoff and exposes a snapshot for `useSyncExternalStore`.
  */
 export class HostClient {

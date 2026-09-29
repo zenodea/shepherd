@@ -2,14 +2,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { relayCredential } from "@sheperd/protocol";
+import { relayCredential } from "@shepherd/protocol";
 import { loadOrCreateStoredConfig } from "../system/config.ts";
 import { DeviceRegistry, PAIRING_TTL_MS, hashToken } from "./devices.ts";
 import { until } from "../testing/fake-herdr.ts";
 
 const dirs: string[] = [];
 function freshConfig(): string {
-  const dir = mkdtempSync(join(tmpdir(), "sheperd-devices-"));
+  const dir = mkdtempSync(join(tmpdir(), "shepherd-devices-"));
   dirs.push(dir);
   const path = join(dir, "host.json");
   loadOrCreateStoredConfig(path);
@@ -119,7 +119,7 @@ describe("DeviceRegistry", () => {
 
 describe("config migration", () => {
   it("gives configs from before encryption a host key", () => {
-    const dir = mkdtempSync(join(tmpdir(), "sheperd-migrate-"));
+    const dir = mkdtempSync(join(tmpdir(), "shepherd-migrate-"));
     dirs.push(dir);
     const path = join(dir, "host.json");
     writeFileSync(path, JSON.stringify({ hostId: "h", name: "laptop", devices: [] }));
@@ -128,7 +128,7 @@ describe("config migration", () => {
   });
 
   it("turns the old shared token into a revocable device", () => {
-    const dir = mkdtempSync(join(tmpdir(), "sheperd-migrate-"));
+    const dir = mkdtempSync(join(tmpdir(), "shepherd-migrate-"));
     dirs.push(dir);
     const path = join(dir, "host.json");
     writeFileSync(path, JSON.stringify({ hostId: "h", name: "laptop", token: "old-shared-token" }));

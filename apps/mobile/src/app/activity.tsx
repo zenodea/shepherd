@@ -1,23 +1,21 @@
 import { useRouter } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft, RotateCcw, SquareTerminal } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { SectionList, StyleSheet, Text, View } from "react-native";
-import type { ActivityEntry } from "@sheperd/protocol";
+import type { ActivityEntry } from "@shepherd/protocol";
 import { awaySummary, durations, entryVerb, groupByDay, timeLabel } from "../agents/activity";
 import { projectOfPath } from "../agents/agents";
 import { useActivity } from "../agents/use-activity";
 import { useConnection, useHostState } from "../connection/connection";
+import { ActionSheet } from "../ui/ActionSheet";
 import { AgentMark } from "../ui/AgentMark";
 import { IconButton } from "../ui/IconButton";
 import { PressableScale } from "../ui/Pressable";
 import { Screen } from "../ui/Screen";
-import { colors, radii, space, statusColors, type } from "../ui/theme";
+import { colors, radii, space, statusColors, type, themed } from "../ui/theme";
 
-const EVENT_COLORS: Partial<Record<ActivityEntry["event"], string>> = {
-  blocked: statusColors.blocked,
-  done: statusColors.done,
-  working: statusColors.working,
-};
+const eventColor = (event: ActivityEntry["event"]): string | undefined =>
+  event === "blocked" || event === "done" || event === "working" ? statusColors[event] : undefined;
 
 export default function ActivityScreen() {
   const router = useRouter();
@@ -38,6 +36,10 @@ export default function ActivityScreen() {
   const took = useMemo(() => durations(entries), [entries]);
   const summary = since !== null && since > 0 ? awaySummary(entries, since) : null;
   const live = new Set(state.agents.map((a) => a.pane_id));
+  // A closed agent can't be opened; offer to start it again where it was.
+  const [gone, setGone] = useState<ActivityEntry | null>(null);
+  const [goneOpen, setGoneOpen] = useState(false);
+  const goneProject = gone ? projectOfPath(gone.cwd, gone.workspaceId) : "";
 
   return (
     <Screen>
@@ -76,27 +78,61 @@ export default function ActivityScreen() {
             entry={item}
             took={took.get(item.id)}
             unseen={since !== null && item.id > since}
-            onPress={live.has(item.paneId) ? () => router.push({ pathname: "/agent/[paneId]", params: { paneId: item.paneId } }) : undefined}
+            live={live.has(item.paneId)}
+            onPress={() => {
+              if (live.has(item.paneId)) router.push({ pathname: "/agent/[paneId]", params: { paneId: item.paneId } });
+              else {
+                setGone(item);
+                setGoneOpen(true);
+              }
+            }}
           />
         )}
+      />
+      <ActionSheet
+        visible={goneOpen}
+        title={gone ? `${gone.name || gone.agent || "This agent"} has closed` : undefined}
+        onClose={() => setGoneOpen(false)}
+        actions={
+          gone
+            ? [
+                ...(gone.agent
+                  ? [
+                      {
+                        icon: <RotateCcw size={19} color={colors.text} />,
+                        title: `Start ${gone.agent} again`,
+                        detail: `A new ${gone.agent} in ${goneProject}`,
+                        onPress: () => router.push({ pathname: "/new", params: { workspace: gone.workspaceId, kind: gone.agent! } }),
+                      },
+                    ]
+                  : []),
+                {
+                  icon: <SquareTerminal size={19} color={colors.text} />,
+                  title: "Open a terminal there",
+                  detail: goneProject,
+                  onPress: () => router.push({ pathname: "/new", params: { workspace: gone.workspaceId, kind: "terminal" } }),
+                },
+              ]
+            : []
+        }
       />
     </Screen>
   );
 }
 
-function Row({ entry, took, unseen, onPress }: { entry: ActivityEntry; took: string | undefined; unseen: boolean; onPress?: () => void }) {
+function Row({ entry, took, unseen, live, onPress }: { entry: ActivityEntry; took: string | undefined; unseen: boolean; live: boolean; onPress: () => void }) {
   const who = entry.name || entry.agent || "Agent";
-  const color = EVENT_COLORS[entry.event] ?? colors.subtle;
+  const color = eventColor(entry.event) ?? colors.subtle;
   const where = [entry.title, projectOfPath(entry.cwd, entry.workspaceId)].filter(Boolean).join("  ·  ");
   const body = (
-    <View style={[styles.row, !onPress && styles.gone]}>
+    <View style={[styles.row, !live && styles.gone]}>
       <View>
         <AgentMark agent={entry.agent} size={32} />
         <View style={[styles.eventDot, { backgroundColor: color }]} />
       </View>
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={type.row} numberOfLines={1}>
-          {who} <Text style={{ color: EVENT_COLORS[entry.event] ?? colors.muted }}>{entryVerb(entry)}</Text>
+          {who} <Text style={{ color: eventColor(entry.event) ?? colors.muted }}>{entryVerb(entry)}</Text>
         </Text>
         <Text style={type.sub} numberOfLines={1}>
           {where}
@@ -108,10 +144,18 @@ function Row({ entry, took, unseen, onPress }: { entry: ActivityEntry; took: str
       </View>
     </View>
   );
-  return onPress ? <PressableScale onPress={onPress}>{body}</PressableScale> : body;
+  return (
+    <PressableScale
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${who} ${entryVerb(entry)}, ${where}, ${timeLabel(entry.at)}${took ? `, ${took}` : ""}${live ? "" : ", closed"}`}
+    >
+      {body}
+    </PressableScale>
+  );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
   headerTitle: { fontSize: 17, fontWeight: "600", color: colors.text },
   summary: { marginHorizontal: space.lg, marginTop: space.sm, padding: 14, gap: 4, borderRadius: radii.lg, backgroundColor: colors.surface },
@@ -130,4 +174,4 @@ const styles = StyleSheet.create({
   },
   trailing: { alignItems: "flex-end", gap: 3 },
   empty: { alignItems: "center", gap: 6, paddingHorizontal: space.xl, paddingTop: 80 },
-});
+}));

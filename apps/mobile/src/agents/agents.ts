@@ -1,4 +1,4 @@
-import type { AgentInfo } from "@sheperd/protocol";
+import type { AgentInfo } from "@shepherd/protocol";
 
 export function agentName(agent: AgentInfo): string {
   return agent.name || agent.display_agent || agent.agent || "agent";

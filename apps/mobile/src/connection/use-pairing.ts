@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useCallback } from "react";
-import type { PairingInfo } from "@sheperd/protocol";
+import type { PairingInfo } from "@shepherd/protocol";
 import { useConnection } from "./connection";
 
 /** Save a scanned/opened pairing and go to the agent list. */

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { extractPrompt, type AgentInfo, type BlockedPrompt, type PaneReadResult } from "@sheperd/protocol";
+import { extractPrompt, type AgentInfo, type BlockedPrompt, type PaneReadResult } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 
 const REFRESH_MS = 4000;

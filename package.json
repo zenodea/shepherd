@@ -1,5 +1,6 @@
 {
-  "name": "sheperd",
+  "name": "shepherd",
+  "license": "MIT",
   "private": true,
   "description": "Control your herdr agents from your phone",
   "workspaces": [
@@ -7,11 +8,11 @@
     "apps/*"
   ],
   "scripts": {
-    "host": "npm start --silent -w @sheperd/host --",
-    "app": "npm start -w @sheperd/mobile",
-    "app:prod": "npm start -w @sheperd/mobile -- --no-dev --minify",
-    "app:demo": "npm run demo -w @sheperd/mobile",
-    "relay": "npm run dev -w @sheperd/relay",
+    "host": "npm start --silent -w @shepherd/host --",
+    "app": "npm start -w @shepherd/mobile",
+    "app:prod": "npm start -w @shepherd/mobile -- --no-dev --minify",
+    "app:demo": "npm run demo -w @shepherd/mobile",
+    "relay": "npm run dev -w @shepherd/relay",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"

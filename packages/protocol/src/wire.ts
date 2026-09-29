@@ -85,7 +85,7 @@ export const FORWARDED_METHODS = [
 export type ForwardedMethod = (typeof FORWARDED_METHODS)[number];
 
 /** Methods the host implements itself, with validated, narrow parameters. */
-export const HOST_METHODS = ["sheperd.projects", "sheperd.start_agent", "sheperd.activity"] as const;
+export const HOST_METHODS = ["shepherd.projects", "shepherd.start_agent", "shepherd.activity"] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
 
@@ -107,7 +107,7 @@ export type ProjectsResult = {
 export const TERMINAL_KIND = "terminal";
 
 export type StartAgentParams = {
-  /** An agent kind from `sheperd.projects`, or "terminal" for a plain shell. */
+  /** An agent kind from `shepherd.projects`, or "terminal" for a plain shell. */
   kind: string;
   workspaceId: string;
   /** Start in a new git worktree of the project instead of a new tab. */

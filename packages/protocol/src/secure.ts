@@ -24,7 +24,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 export const E2E_VERSION = 1;
-const LABEL = "sheperd-e2e-v1";
+const LABEL = "shepherd-e2e-v1";
 const KEY_BYTES = 32;
 
 export type KeyPair = { secretKey: Uint8Array; publicKey: Uint8Array };

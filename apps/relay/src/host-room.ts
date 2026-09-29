@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { TUNNEL_PING, TUNNEL_PONG, parseHostToRelay, type RelayToHost } from "@sheperd/protocol";
+import { TUNNEL_PING, TUNNEL_PONG, parseHostToRelay, type RelayToHost } from "@shepherd/protocol";
 import { bearerToken, hashesEqual, sha256Hex } from "./auth.ts";
 
 type Attachment =
@@ -24,7 +24,7 @@ export class HostRoom extends DurableObject<Env> {
   }
 
   override async fetch(request: Request): Promise<Response> {
-    switch (request.headers.get("x-sheperd-kind")) {
+    switch (request.headers.get("x-shepherd-kind")) {
       case "control":
         return this.acceptControl();
       case "dial":

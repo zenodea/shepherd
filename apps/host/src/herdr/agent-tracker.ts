@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
-import type { AgentInfo, AgentStatus, PaneAgentStatusChanged, StatusChange } from "@sheperd/protocol";
-import { isAgentStatus } from "@sheperd/protocol";
+import type { AgentInfo, AgentStatus, PaneAgentStatusChanged, StatusChange } from "@shepherd/protocol";
+import { isAgentStatus } from "@shepherd/protocol";
 import type { HerdrClient, Subscription } from "./herdr-client.ts";
 
 const LIFECYCLE_SUBSCRIPTIONS = [

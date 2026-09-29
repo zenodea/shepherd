@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import type { BlockedPrompt } from "@sheperd/protocol";
+import type { BlockedPrompt } from "@shepherd/protocol";
 
 /** ntfy action button (https://docs.ntfy.sh/publish/#action-buttons). */
 export type NtfyAction = { action: "http"; label: string; url: string; method: "POST"; body: string; clear: boolean };
@@ -77,8 +77,8 @@ export class NotificationActions {
 
   constructor(opts: NotificationActionsOptions) {
     this.opts = opts;
-    this.key = createHmac("sha256", Buffer.from(opts.secret)).update("sheperd notification actions v1").digest();
-    this.replyTopic = `sheperd-r-${b64(createHmac("sha256", this.key).update(`reply:${opts.topic}`).digest()).slice(0, 22)}`;
+    this.key = createHmac("sha256", Buffer.from(opts.secret)).update("shepherd notification actions v1").digest();
+    this.replyTopic = `shepherd-r-${b64(createHmac("sha256", this.key).update(`reply:${opts.topic}`).digest()).slice(0, 22)}`;
     this.fetchImpl = opts.fetch ?? (globalThis.fetch as unknown as Fetch);
     this.now = opts.now ?? Date.now;
   }

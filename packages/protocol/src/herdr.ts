@@ -1,4 +1,4 @@
-// Subset of herdr's socket API (protocol 22) used by sheperd.
+// Subset of herdr's socket API (protocol 22) used by shepherd.
 // Full schema: `herdr api schema --json`.
 
 export const AGENT_STATUSES = ["idle", "working", "blocked", "done", "unknown"] as const;

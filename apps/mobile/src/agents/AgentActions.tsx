@@ -2,9 +2,9 @@ import * as Haptics from "expo-haptics";
 import { FolderPen, Pencil, X } from "lucide-react-native";
 import { useState } from "react";
 import { Alert } from "react-native";
-import type { AgentInfo } from "@sheperd/protocol";
+import type { AgentInfo } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
-import { ActionSheet } from "../ui/ActionSheet";
+import { ActionSheet, type SheetAction } from "../ui/ActionSheet";
 import { PromptSheet } from "../ui/PromptSheet";
 import { colors } from "../ui/theme";
 import { agentName, agentTitle, projectOf } from "./agents";
@@ -15,7 +15,10 @@ type Renaming = { kind: "agent" | "workspace"; initial: string } | null;
  * Rename or close an agent (or plain terminal pane), and rename its herdr
  * workspace. Render it once and call `show(target)`, e.g. on long-press.
  */
-export function useAgentActions(client: HostConnection | null, opts: { onClosed?: (paneId: string) => void } = {}) {
+export function useAgentActions(
+  client: HostConnection | null,
+  opts: { onClosed?: (paneId: string) => void; /** Shown before Close, e.g. screen settings. */ extra?: SheetAction[] } = {},
+) {
   const [target, setTarget] = useState<{ paneId: string; workspaceId: string; agent: AgentInfo | null } | null>(null);
   const [sheet, setSheet] = useState(false);
   const [renaming, setRenaming] = useState<Renaming>(null);
@@ -85,6 +88,7 @@ export function useAgentActions(client: HostConnection | null, opts: { onClosed?
             detail: "Its name in herdr's sidebar",
             onPress: () => void renameWorkspace(),
           },
+          ...(opts.extra ?? []),
           {
             icon: <X size={19} color={colors.danger} />,
             title: agent ? "Close agent" : "Close terminal",

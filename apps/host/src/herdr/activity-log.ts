@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ActivityEntry, ActivityEvent, ActivityParams, ActivityResult, AgentInfo, StatusChange } from "@sheperd/protocol";
+import type { ActivityEntry, ActivityEvent, ActivityParams, ActivityResult, AgentInfo, StatusChange } from "@shepherd/protocol";
 import type { AgentTracker } from "./agent-tracker.ts";
 
 /** How many entries are kept (and saved). */

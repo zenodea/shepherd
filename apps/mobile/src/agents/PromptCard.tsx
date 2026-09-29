@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { HostConnection } from "../connection/host-client";
 import { PressableScale } from "../ui/Pressable";
-import { colors, fonts, radii, space, type } from "../ui/theme";
-import type { BlockedPrompt, PromptOption } from "@sheperd/protocol";
+import { colors, fonts, radii, space, type, themed } from "../ui/theme";
+import type { BlockedPrompt, PromptOption } from "@shepherd/protocol";
 
 function keyLabel(key: string): string {
   if (key === "esc") return "esc";
@@ -51,8 +51,16 @@ export function PromptCard({ client, paneId, prompt }: { client: HostConnection 
       ) : prompt.options.length > 0 ? (
         <View style={styles.options}>
           {withEsc(prompt).map((option) => (
-            <PressableScale key={`${option.key}-${option.label}`} onPress={() => send(option)} style={[styles.option, option.selected && styles.optionSelected]}>
-              <Text style={[styles.key, option.selected && { color: colors.onPrimary, borderColor: "rgba(0,0,0,0.15)" }]}>{keyLabel(option.key)}</Text>
+            <PressableScale
+              key={`${option.key}-${option.label}`}
+              onPress={() => send(option)}
+              style={[styles.option, option.selected && styles.optionSelected]}
+              accessibilityRole="button"
+              accessibilityLabel={`Answer: ${option.label}`}
+            >
+              <Text style={[styles.key, option.selected && { color: colors.onPrimary, borderColor: colors.hairline }]} maxFontSizeMultiplier={1.3}>
+                {keyLabel(option.key)}
+              </Text>
               <Text style={[styles.optionLabel, option.selected && { color: colors.onPrimary }]} numberOfLines={2}>
                 {option.label}
               </Text>
@@ -74,8 +82,14 @@ export function PromptChips({ client, paneId, prompt }: { client: HostConnection
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} keyboardShouldPersistTaps="handled">
       {withEsc(prompt).map((option) => (
-        <PressableScale key={`${option.key}-${option.label}`} onPress={() => send(option)} style={[styles.chip, option.selected && styles.optionSelected]}>
-          <Text style={[styles.chipText, option.selected && { color: colors.onPrimary }]} numberOfLines={1}>
+        <PressableScale
+          key={`${option.key}-${option.label}`}
+          onPress={() => send(option)}
+          style={[styles.chip, option.selected && styles.optionSelected]}
+          accessibilityRole="button"
+          accessibilityLabel={`Answer: ${option.label}`}
+        >
+          <Text style={[styles.chipText, option.selected && { color: colors.onPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.4}>
             {option.label}
           </Text>
         </PressableScale>
@@ -84,7 +98,7 @@ export function PromptChips({ client, paneId, prompt }: { client: HostConnection
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   question: { fontSize: 14, lineHeight: 20, color: colors.text },
   options: { gap: 6 },
   option: {
@@ -114,4 +128,4 @@ const styles = StyleSheet.create({
   chips: { gap: 6, paddingHorizontal: space.md, paddingVertical: 8 },
   chip: { backgroundColor: colors.raised, borderRadius: radii.pill, paddingHorizontal: 14, paddingVertical: 8, maxWidth: 260 },
   chipText: { fontSize: 13.5, fontWeight: "500", color: colors.text },
-});
+}));

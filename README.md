@@ -1,29 +1,22 @@
-# sheperd
+<p align="center"><img src="docs/icon.png" width="96" alt="Shepherd icon: a shepherd's crook with a sheep peeking in" /></p>
 
-Check on and steer your [herdr](https://herdr.dev) agents from your Android phone: see which agents need input, read their output, answer prompts, and send new instructions.
+<h1 align="center">Shepherd</h1>
 
-<p>
-  <img src="docs/screenshots/agents.png" width="16%" alt="Agent list with an agent waiting for input" />
-  <img src="docs/screenshots/terminal.png" width="16%" alt="An agent's live terminal with answer chips, tabs, quick keys and composer" />
-  <img src="docs/screenshots/scrollback.png" width="16%" alt="Scrolling back through a shell's output" />
-  <img src="docs/screenshots/new-agent.png" width="16%" alt="Opening a terminal or starting an agent" />
-  <img src="docs/screenshots/host.png" width="16%" alt="Host connection and notifications" />
-  <img src="docs/screenshots/pairing.png" width="16%" alt="Pairing with your computer" />
+<p align="center"><a href="https://github.com/zenodea/shepherd/actions/workflows/ci.yml"><img src="https://github.com/zenodea/shepherd/actions/workflows/ci.yml/badge.svg" alt="CI" /></a></p>
+
+<p align="center">Check on and steer your <a href="https://herdr.dev">herdr</a> agents from your Android phone: see which agents need input, read their output, answer prompts, and send new instructions.</p>
+
+<p align="center">
+  <img src="docs/screenshots/agents.png" width="19%" alt="Agent list, with the agent that needs input first" />
+  <img src="docs/screenshots/terminal.png" width="19%" alt="An agent's live terminal with answer chips, tabs and quick keys" />
+  <img src="docs/screenshots/activity.png" width="19%" alt="Activity feed of what agents did" />
+  <img src="docs/screenshots/new.png" width="19%" alt="Starting an agent, a shell or a worktree" />
+  <img src="docs/screenshots/settings.png" width="19%" alt="Settings with paired computers and app lock" />
 </p>
-<p><sub>Screenshots from demo mode (<code>npm run app:demo</code>): the computer, projects and conversations are made up.</sub>
-</p>
-
-```
- ┌──────── Your computer ─────────┐                                   ┌──── Phone ─────┐
- │ herdr ◄── herdr.sock ── host ══╪═══ same Wi-Fi / Tailscale ═══════►│ sheperd app    │
- │                                 ║                                   │                │
- │                                 ╚══► relay (Cloudflare, optional) ◄═╪═ from anywhere │
- └─────────────────────────────────┘                                   └────────────────┘
-```
 
 - **host**: a small Node service on your computer. It talks to herdr's local socket and only lets in phones you've paired.
 - **app**: the Android app (Expo / React Native).
-- **relay** (optional): a Cloudflare Worker you deploy yourself. It lets your phone reach your computer from anywhere, with no port forwarding.
+- **relay** (optional): a Cloudflare Worker you deploy yourself, so your phone can reach your computer from anywhere.
 
 ## Quick start
 
@@ -50,7 +43,7 @@ npm run host
 It prints a **pairing QR code**, followed by the addresses it can be reached on:
 
 ```
-  Scan with the sheperd app (Host → Scan QR code) to pair a phone:
+  Scan with the Shepherd app (Host → Scan QR code) to pair a phone:
 
   ▄▄▄▄▄▄▄ ▄▄▄▄▄ ▄   ▄▄▄▄ …
 
@@ -72,7 +65,7 @@ Pick one of the three options below.
 
 ```bash
 npx eas-cli@latest login
-npm run build:apk -w @sheperd/mobile
+npm run build:apk -w @shepherd/mobile
 ```
 
 The first run asks to create the EAS project. When the build finishes, open the link it prints on your phone and install the APK. You may need to allow installing apps from your browser.
@@ -80,7 +73,7 @@ The first run asks to create the EAS project. When the build finishes, open the 
 **Option B: Build the APK locally** (needs JDK 17 and the Android SDK, e.g. via Android Studio)
 
 ```bash
-npm run build:apk:local -w @sheperd/mobile
+npm run build:apk:local -w @shepherd/mobile
 adb install apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 ```
 
@@ -106,42 +99,28 @@ The app tries every address in the QR code at once and uses whichever answers fi
 
 ## What you can do
 
-- **See every agent at a glance.** Agents that need input are listed first. For each one, the list shows what it's asking, such as "Do you want to make this edit?", with one button per answer. Tap an answer to reply without opening the agent.
-- **Watch the live terminal.** Tap an agent to see its screen as it updates.
-  - **Phone view** (the default) resizes the agent to your screen and draws it as native text. You scroll up out of the live screen into older output like any Android list, with momentum and text selection. Tap ↓ to jump back to live. Your computer's pane goes back to its normal size when you leave.
-  - **Full width** shows the pane exactly as it looks on your computer, scaled to fit. Pinch to zoom.
-  - For Claude Code and similar full-screen agents, the history above the live screen is the agent's full transcript, loaded when you open it while the agent is idle.
-- **Switch tabs.** The strip above the quick keys lists every herdr tab in the agent's workspace, like tmux windows, including shells. Tap one to switch, or + to start a new agent there.
-- **Steer it.** Type into the message box, answer prompts with the chips that appear when an agent is waiting, or use the quick keys: esc, ↵, tab, ⇧tab, arrows and ^C. Tap ⌨ to type straight into the terminal, like on a laptop.
-- **Open terminals and start agents.** In a workspace, tap **+** on the tab strip to open a new terminal tab straight away, or to start an agent. From the agent list, **+** lets you pick a terminal or an agent (whichever of claude, codex, gemini, … are installed), a project, and optionally a new git worktree so parallel agents don't collide. You can also give it a first message, or for a terminal, a command to run.
-- **Manage agents.** Long-press an agent in the list, or tap ⋯ in its header, to rename it, rename its herdr workspace, or close it.
-- **See what happened.** The activity feed (the pulse icon on the agent list) lists what your agents did: when each one started, finished, needed input or closed. It shows how long they waited for you and how long they worked. A dot on the icon means something new happened since you last looked. The host keeps the last 1000 events in `~/.config/sheperd/activity.json`.
-- **Several computers.** Pair with as many as you like: tap the computer's name at the top of the agent list to switch, or **Add a computer** to scan another host's QR code. Notifications open on the right computer.
-- **App lock.** In **Settings**, turn on App lock to require your fingerprint (or screen lock) when opening sheperd, and again after it's been in the background for a minute.
-- **Get notified** when an agent needs input or finishes, even when the app is closed, and answer straight from the notification. See below.
+- **See every agent at a glance.** Agents that need input come first, with their question and one button per answer.
+- **Watch the live terminal.** The agent is fitted to your screen as native text. Scroll up for the full history, pinch to resize, search, long-press to copy, tap links.
+- **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal.
+- **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project or a fresh git worktree.
+- **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
+- **See what happened.** The activity feed shows what your agents did while you were away, and how long they waited for you.
+- **Several computers.** Pair with as many as you like and switch from the top of the agent list.
+- **App lock.** Require your fingerprint to open Shepherd (Settings).
+- **Get notified** when an agent needs input or finishes, and answer from the notification.
 
 ## Notifications
 
-Notifications go through [ntfy](https://ntfy.sh), a free and open-source push service. There's no Firebase or Google account to set up.
+Notifications go through [ntfy](https://ntfy.sh), a free, open-source push service. No Firebase or Google account needed.
 
 ```bash
 npm run host -- notify on       # or: notify on https://your-ntfy-server
 npm run host                    # restart to apply
 ```
 
-1. Install **ntfy** on your phone (Play Store or F-Droid).
-2. Scan the QR code that `notify on` prints, or in sheperd open **Host → Get notifications (ntfy)**.
-3. Run `npm run host -- notify test` to check it works.
+Install **ntfy** on your phone, scan the QR code `notify on` prints (or tap **Host → Get notifications** in Shepherd), then run `npm run host -- notify test`.
 
-You'll get a high-priority notification when an agent needs input, and a normal one when a working agent finishes. Tapping a notification opens that agent in sheperd (APK builds; Expo Go can't receive `sheperd://` links).
-
-**Answer from the notification.** When an agent asks a question with options, such as "Do you want to make this edit?", the notification shows the question and up to three of its answers as buttons (for example **Yes**, **Yes, allow all**, **No**). Tapping one answers the agent without opening sheperd. Here's how it works and what keeps it safe:
-- **How it reaches your computer:** the ntfy app posts a signed token to a second, private reply topic on the same ntfy server, which the host listens to. Nothing needs to reach your computer directly.
-- **What a button can do:** only pick one of the options the agent offered. It can't type anything else.
-- **Checks before answering:** each button works once and for 30 minutes. It's only applied if the agent is still waiting on that exact question; otherwise you get a "Couldn't answer" notification instead.
-- **Who can press them:** anyone who can read your notification topic could press the buttons, just as they can read the notifications. To keep plain notifications without buttons, run `npm run host -- notify actions off`.
-
-The topic name is random and acts as the password. Notifications contain the agent's name and terminal title. Use a self-hosted ntfy server if you'd rather they didn't pass through ntfy.sh. In the ntfy app, turn on *instant delivery* for real-time notifications.
+When an agent asks a question, the notification shows it with up to three answers as buttons. A button can only pick one of the offered answers, works once, expires after 30 minutes, and is ignored if the agent has moved on. Anyone who can read your topic could press them, so treat the topic like a password, or run `npm run host -- notify actions off`.
 
 ## Keep the host running in the background
 
@@ -154,14 +133,19 @@ npm run host -- service logs      # follow the log
 npm run host -- service uninstall
 ```
 
-On macOS this installs a launchd agent (`~/Library/LaunchAgents/dev.sheperd.host.plist`, logs in `~/Library/Logs/sheperd-host.log`). On Linux it's a systemd user unit (`sheperd-host.service`); run `loginctl enable-linger $USER` to keep it running while you're logged out.
+On macOS this installs a launchd agent (`~/Library/LaunchAgents/dev.shepherd.host.plist`, logs in `~/Library/Logs/shepherd-host.log`). On Linux it's a systemd user unit (`shepherd-host.service`); run `loginctl enable-linger $USER` to keep it running while you're logged out.
 
-- **Environment:** the service remembers the `PATH` you install it from, so it can find `herdr` and your agent CLIs. It also remembers any `SHEPERD_*` or `HERDR_SESSION` settings. Re-run `service install` after changing them.
+- **Environment:** the service remembers the `PATH` you install it from, so it can find `herdr` and your agent CLIs. It also remembers any `SHEPHERD_*` or `HERDR_SESSION` settings. Re-run `service install` after changing them.
 - **Starting before herdr:** if the service starts before herdr (for example at login), it waits for herdr to come up.
 - **Pairing more phones:** run `npm run host -- pair` in any terminal. The running service picks up the new code immediately.
-- **Code changes:** after pulling new sheperd code, restart the service with `service install`.
+- **Code changes:** after pulling new Shepherd code, restart the service with `service install`.
 
 ## Using it away from home
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg" />
+  <img src="docs/architecture.svg" width="760" alt="The host on your computer talks to herdr and reaches the Shepherd app directly over Wi-Fi or Tailscale, or through an optional Cloudflare relay; end-to-end encrypted either way" />
+</picture>
 
 Your phone has to reach the host. There are two ways.
 
@@ -178,10 +162,10 @@ cd apps/relay
 npx wrangler login
 openssl rand -base64 32              # copy this: it's your relay host token
 npx wrangler secret put HOST_TOKEN   # paste it
-npm run deploy                       # prints https://sheperd-relay.<you>.workers.dev
+npm run deploy                       # prints https://shepherd-relay.<you>.workers.dev
 cd ../..
 
-npm run host -- relay https://sheperd-relay.<you>.workers.dev <relay host token>
+npm run host -- relay https://shepherd-relay.<you>.workers.dev <relay host token>
 npm run host
 ```
 
@@ -211,29 +195,17 @@ npm run host -- notify actions on|off  # answer buttons on notifications (defaul
 
 | Variable | Default | |
 |---|---|---|
-| `SHEPERD_PORT` | `7420` | Port for direct connections |
-| `SHEPERD_BIND` | `0.0.0.0` | Use `127.0.0.1` if you only want relay access |
-| `SHEPERD_CONFIG` | `~/.config/sheperd/host.json` | Config file |
+| `SHEPHERD_PORT` | `7420` | Port for direct connections |
+| `SHEPHERD_BIND` | `0.0.0.0` | Use `127.0.0.1` if you only want relay access |
+| `SHEPHERD_CONFIG` | `~/.config/shepherd/host.json` | Config file |
 | `HERDR_SESSION` / `HERDR_SOCKET_PATH` | default session | Target another herdr session |
 | `HERDR_BIN` | `herdr` | herdr binary |
 
 ## Security model
 
-- Each paired phone has its own random 256-bit token. The host stores only a hash of it. Pairing codes work once and expire after 10 minutes.
-- Phones authenticate in the first message on the connection, so the check is the same directly and through the relay. `devices revoke` takes effect immediately, including at the relay.
-- The host forwards only a fixed allowlist of herdr methods: listing, reading, prompting, sending keys, renaming and focusing agents, reading or typing into panes, and closing or renaming panes and workspaces. See `FORWARDED_METHODS` in `packages/protocol/src/wire.ts`.
-- Starting agents goes through a narrow host method rather than raw herdr calls. It only accepts an agent type herdr supports that is installed on the computer, and only in the directory of an existing herdr workspace.
-- A leaked device token can't run arbitrary shell commands through the API, but it *can* type into your agents and terminals. If a phone is lost, revoke it.
-- Upgrading from an earlier version: the old shared token becomes a device called `legacy`, so already-connected phones keep working until you revoke it.
-- **End-to-end encryption on every connection** (LAN, Tailscale and relay):
-  - **Identity:** the host has a long-term X25519 key. The pairing QR code carries its public half, and the phone pins it, so a relay or anyone on the network can't impersonate your computer.
-  - **Handshake:** each connection runs a Noise NK-style handshake. Throwaway keys on both sides give forward secrecy, and a second exchange with the host's long-term key proves it's really your computer.
-  - **Messages:** every message after that is ChaCha20-Poly1305 with a counter nonce, so tampering, replays and reordering are detected.
-  - **Implementation:** the crypto uses the audited [@noble](https://paulmillr.com/noble/) libraries. See `packages/protocol/src/secure.ts`.
-- **Login stays inside the tunnel:** the phone's token only travels inside the encrypted channel. The relay's admission check gets `sha256(token)` instead, which can't be used to log in.
-- **Notification buttons** carry single-use tokens signed with a key derived from the host's identity key. They expire after 30 minutes and are only applied if the agent is still asking the same question (see [Notifications](#notifications)).
-- **App lock** (optional) keeps someone holding your unlocked phone out of sheperd.
-- **Pinning older phones:** phones paired before encryption existed pin the host key the first time they connect (trust on first use). Re-pair them if you want the key to come from the QR code.
+- **Pairing:** each phone gets its own random token (the host stores only a hash). Pairing codes work once and expire after 10 minutes. `devices revoke` cuts a phone off immediately.
+- **End-to-end encryption** on every connection, including through the relay: a Noise NK-style handshake with the host's X25519 key pinned from the QR code, then ChaCha20-Poly1305. The relay only ever sees ciphertext. Built on the audited [@noble](https://paulmillr.com/noble/) libraries (`packages/protocol/src/secure.ts`).
+- **Limited API:** the host forwards only an allowlist of herdr methods (`FORWARDED_METHODS` in `packages/protocol/src/wire.ts`), and starts agents only as installed agent types in existing workspaces. A leaked token can't run shell commands through the API, but it can type into your terminals, so revoke lost phones.
 
 ## Development
 
@@ -241,10 +213,10 @@ npm run host -- notify actions on|off  # answer buttons on notifications (defaul
 npm run typecheck   # all workspaces
 npm test            # protocol, host, app client and relay end-to-end tests
 npm run lint        # app lint
-npm run dev -w @sheperd/host   # host with auto-reload
+npm run dev -w @shepherd/host   # host with auto-reload
 npm run relay                  # relay locally (copy apps/relay/.dev.vars.example to apps/relay/.dev.vars)
 npm run app:demo               # the app with a fake host (EXPO_PUBLIC_DEMO=1)
-npm run demo:web -w @sheperd/mobile   # the demo in a browser, handy for design work
+npm run demo:web -w @shepherd/mobile   # the demo in a browser, handy for design work
 ```
 
 ```
@@ -262,7 +234,7 @@ apps/
     connection/       host client (address racing, encryption), saved settings, pairing
     agents/           agent list helpers, answer cards, agent actions, activity feed
     security/         app lock
-    terminal/         xterm.js WebView (the page is generated on npm install)
+    terminal/         native terminal view, links and search, raw keyboard input
     ui/               design system: tokens, buttons, rows, status indicators, agent marks
   mobile/assets/icon-src/  icon source (SVG); scripts/render-icons.sh renders the PNGs
   relay/src/          Cloudflare Worker + one HostRoom Durable Object per host
@@ -273,21 +245,8 @@ packages/
 
 How the host talks to herdr:
 - **Agents and events:** herdr's socket API (`herdr api schema --json`). herdr answers one request per connection.
-- **Live terminals:** `herdr terminal session observe|control`, which streams screen frames as newline-delimited JSON.
-  - **Phone view:** the host runs a headless xterm (`apps/host/src/herdr/screen-renderer.ts`) over those frames and sends only the rows that changed, as styled lines, which the app draws natively.
-  - **Full width:** the app gets the raw frames and runs xterm.js in a WebView.
+- **Live terminals:** `herdr terminal session control`, which streams screen frames as newline-delimited JSON. The host runs a headless xterm (`apps/host/src/herdr/screen-renderer.ts`) over those frames and sends only the rows that changed, as styled lines, which the app draws natively.
 
-## Roadmap
+## License
 
-1. [x] Host bridge: agent list, live status, read output, prompts, keys
-2. [x] Relay: routing and splicing, host tunnel
-3. [x] Android app: agent list, quick keys, prompts
-4. [x] Live terminal view (full width or fit to phone)
-5. [x] Push notifications when an agent is `blocked` or `done` (ntfy)
-6. [x] QR-code pairing (host QR, in-app scanner, `sheperd://` deep link)
-7. [x] Answer blocked agents from the list
-8. [x] Start new agents (new tab or git worktree)
-9. [x] Per-device tokens, one-time pairing codes and revocation
-10. [x] End-to-end encryption between phone and host, so the relay sees only ciphertext
-11. [x] Run the host in the background (launchd / systemd units)
-12. [x] Answer buttons on notifications, activity feed, several computers, app lock
+[MIT](LICENSE)

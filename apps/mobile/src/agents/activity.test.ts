@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ActivityEntry } from "@sheperd/protocol";
+import type { ActivityEntry } from "@shepherd/protocol";
 import { awaySummary, dayLabel, durations, entryVerb, formatDuration, groupByDay } from "./activity";
 
 const MIN = 60_000;

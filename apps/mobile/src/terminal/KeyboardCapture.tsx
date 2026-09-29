@@ -1,5 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet, TextInput } from "react-native";
+import { themed } from "../ui/theme";
 
 export type KeyboardCaptureHandle = { focus: () => void; blur: () => void };
 
@@ -55,6 +56,6 @@ export const KeyboardCapture = forwardRef<KeyboardCaptureHandle, { onKeys: (data
   },
 );
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   hidden: { position: "absolute", width: 1, height: 1, opacity: 0, left: -10, bottom: 0 },
-});
+}));

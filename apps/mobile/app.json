@@ -1,18 +1,18 @@
 {
   "expo": {
-    "name": "sheperd",
-    "slug": "sheperd",
+    "name": "Shepherd",
+    "slug": "shepherd",
     "platforms": [
       "android",
       "ios"
     ],
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.sheperd.app"
+      "bundleIdentifier": "dev.shepherd.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,12 +22,12 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "dev.sheperd.app"
+      "package": "dev.shepherd.app"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      ["expo-local-authentication", { "faceIDPermission": "sheperd uses Face ID to lock the app." }],
+      ["expo-local-authentication", { "faceIDPermission": "Shepherd uses Face ID to lock the app." }],
       [
         "expo-build-properties",
         {
@@ -39,7 +39,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "sheperd uses the camera to scan the pairing QR code shown by sheperd-host.",
+          "cameraPermission": "shepherd uses the camera to scan the pairing QR code shown by shepherd-host.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
@@ -58,7 +58,7 @@
         }
       ]
     ],
-    "scheme": "sheperd",
+    "scheme": "shepherd",
     "experiments": {
       "typedRoutes": true
     },

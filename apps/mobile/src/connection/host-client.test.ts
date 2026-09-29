@@ -8,7 +8,7 @@ import { startLocalServer, type LocalServer } from "../../../host/src/connection
 import type { SessionDeps } from "../../../host/src/connection/session";
 import { testDevices } from "../../../host/src/testing/devices";
 import { FakeHerdr, fakeAgent, until } from "../../../host/src/testing/fake-herdr";
-import { generateKeyPair, toHex } from "@sheperd/protocol";
+import { generateKeyPair, toHex } from "@shepherd/protocol";
 import { HostClient, type ConnectionSettings } from "./host-client";
 
 (globalThis as { WebSocket: unknown }).WebSocket = WebSocket;

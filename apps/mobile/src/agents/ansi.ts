@@ -1,6 +1,6 @@
 // Minimal ANSI → styled spans for the history view: SGR colours and weights;
 // every other escape sequence is dropped.
-import { BASIC_COLORS as BASIC, BRIGHT_COLORS as BRIGHT, SPAN_BOLD, SPAN_DIM, SPAN_ITALIC, SPAN_UNDERLINE, color256, type StyledLine } from "@sheperd/protocol";
+import { BASIC_COLORS as BASIC, BRIGHT_COLORS as BRIGHT, SPAN_BOLD, SPAN_DIM, SPAN_ITALIC, SPAN_UNDERLINE, color256, type StyledLine } from "@shepherd/protocol";
 
 export type Span = {
   text: string;

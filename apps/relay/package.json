@@ -1,6 +1,7 @@
 {
-  "name": "@sheperd/relay",
+  "name": "@shepherd/relay",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,10 +12,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sheperd/protocol": "*"
+    "@shepherd/protocol": "*"
   },
   "devDependencies": {
-    "@sheperd/host": "*",
+    "@shepherd/host": "*",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2",
     "wrangler": "^4.143.0",

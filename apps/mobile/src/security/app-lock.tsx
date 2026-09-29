@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppState, Platform, StyleSheet, Text, View } from "react-native";
 import { loadPref, savePref } from "../connection/prefs";
 import { Button } from "../ui/Button";
-import { colors, space, type } from "../ui/theme";
+import { colors, space, type, themed } from "../ui/theme";
 
 /** Coming back within this long doesn't ask again (e.g. a quick look at another app). */
 export const RELOCK_AFTER_MS = 60_000;
@@ -35,8 +35,8 @@ function authenticate(promptMessage: string): Promise<boolean> {
 }
 
 /**
- * Asks for the phone's fingerprint, face or screen lock when sheperd opens,
- * and again after it's been in the background for a minute. sheperd can type
+ * Asks for the phone's fingerprint, face or screen lock when shepherd opens,
+ * and again after it's been in the background for a minute. shepherd can type
  * into your computer, so this keeps someone holding your unlocked phone out.
  */
 export function AppLockProvider({ children }: { children: ReactNode }) {
@@ -53,7 +53,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
     if (prompting.current) return;
     prompting.current = true;
     try {
-      if (await authenticate("Unlock sheperd")) setLocked(false);
+      if (await authenticate("Unlock Shepherd")) setLocked(false);
     } finally {
       prompting.current = false;
     }
@@ -106,7 +106,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
               <View style={styles.icon}>
                 <Lock size={26} color={colors.text} />
               </View>
-              <Text style={type.title}>sheperd is locked</Text>
+              <Text style={type.title}>Shepherd is locked</Text>
               <Button title="Unlock" onPress={() => void unlock()} style={{ alignSelf: "stretch", marginTop: space.lg }} />
             </>
           ) : null}
@@ -122,7 +122,7 @@ export function useAppLock(): AppLockValue {
   return value;
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   cover: {
     position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: colors.background,
@@ -132,4 +132,4 @@ const styles = StyleSheet.create({
     padding: space.xxl,
   },
   icon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-});
+}));

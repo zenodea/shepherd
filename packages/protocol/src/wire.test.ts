@@ -20,13 +20,13 @@ describe("parseClientMessage", () => {
   });
 
   it("accepts host methods", () => {
-    expect(parseClientMessage(JSON.stringify({ type: "call", id: "1", method: "sheperd.projects" }))).toMatchObject({
-      method: "sheperd.projects",
+    expect(parseClientMessage(JSON.stringify({ type: "call", id: "1", method: "shepherd.projects" }))).toMatchObject({
+      method: "shepherd.projects",
     });
   });
 
   it("rejects methods outside the allowlist", () => {
-    for (const method of ["pane.run", "server.stop", "plugin.action.invoke", "__proto__", "tab.create", "agent.start", "sheperd.nope"]) {
+    for (const method of ["pane.run", "server.stop", "plugin.action.invoke", "__proto__", "tab.create", "agent.start", "shepherd.nope"]) {
       expect(parseClientMessage(JSON.stringify({ type: "call", id: "1", method, params: {} }))).toBeNull();
     }
   });

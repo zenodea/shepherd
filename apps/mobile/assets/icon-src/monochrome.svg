@@ -1,7 +1,49 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <path d="M 616 748 L 616 400 A 112 112 0 0 0 392 400 L 392 432 C 392 512 490 516 494 452"
-        fill="none" stroke="#FFFFFF" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="346" cy="702" r="44" fill="#FFFFFF"/>
-  <circle cx="460" cy="702" r="44" fill="#FFFFFF"/>
-  <circle cx="403" cy="608" r="44" fill="#FFFFFF"/>
+  <!-- One-colour (themed icon) version of art.svg: the crook fills the frame and runs off the bottom,
+       and a sheep peeks in from the bottom-left corner, looking up at it.
+       render-icons.sh scales this into the adaptive-icon safe zone. -->
+  <defs>
+    <clipPath id="frame"><rect width="1024" height="1024"/></clipPath>
+    <!-- the face is a hole, with the eyes and nose left in -->
+    <mask id="face-hole" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#FFFFFF"/>
+      <g transform="translate(-30 1024) scale(0.86) translate(0 -1024)"><g transform="rotate(-18 330 730)">
+        <ellipse cx="330" cy="748" rx="78" ry="104" fill="#000000"/>
+        <circle cx="294" cy="712" r="16" fill="#FFFFFF"/>
+        <circle cx="368" cy="712" r="16" fill="#FFFFFF"/>
+        <ellipse cx="331" cy="806" rx="18" ry="10" fill="#FFFFFF"/>
+      </g></g>
+    </mask>
+  </defs>
+  <g clip-path="url(#frame)" mask="url(#face-hole)">
+    <!-- the crook -->
+    <path d="M 730 1120 L 730 380 A 205 205 0 0 0 320 380 L 320 430 C 320 560 470 570 482 462"
+          fill="none" stroke="#FFFFFF" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- the sheep, peeking in from the corner -->
+    <g transform="translate(-30 1024) scale(0.86) translate(0 -1024)">
+    <!-- a woolly body running off the corner -->
+    <g fill="#FFFFFF">
+      <circle cx="120" cy="930" r="190"/>
+      <circle cx="330" cy="1000" r="160"/>
+      <circle cx="10" cy="760" r="140"/>
+      <circle cx="210" cy="790" r="130"/>
+      <circle cx="420" cy="900" r="110"/>
+    </g>
+    <!-- head, tilted up towards the crook -->
+    <g transform="rotate(-18 330 730)">
+      <!-- ears -->
+      <ellipse cx="225" cy="690" rx="62" ry="26" transform="rotate(20 225 690)" fill="#FFFFFF"/>
+      <ellipse cx="438" cy="690" rx="62" ry="26" transform="rotate(-20 438 690)" fill="#FFFFFF"/>
+      <!-- face -->
+      <ellipse cx="330" cy="740" rx="96" ry="122" fill="#FFFFFF"/>
+      <!-- wool tuft on top -->
+      <g fill="#FFFFFF">
+        <circle cx="282" cy="628" r="46"/>
+        <circle cx="332" cy="610" r="50"/>
+        <circle cx="382" cy="628" r="44"/>
+      </g>
+    </g>
+    </g>
+  </g>
 </svg>

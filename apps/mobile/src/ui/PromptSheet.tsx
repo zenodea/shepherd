@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "./Button";
-import { colors, radii, space, type } from "./theme";
+import { Sheet } from "./Sheet";
+import { colors, radii, space, type, themed } from "./theme";
 
 /** Asks for one line of text, e.g. a new name. (Android has no Alert.prompt.) */
 export function PromptSheet({
@@ -24,15 +25,10 @@ export function PromptSheet({
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
-          {/* Keyed so each opening starts from the current value. */}
-          {visible ? <Body key={initial} title={title} initial={initial} placeholder={placeholder} action={action} onSubmit={onSubmit} onClose={onClose} /> : null}
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    <Sheet visible={visible} onClose={onClose} style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
+      {/* Keyed so each opening starts from the current value. */}
+      <Body key={initial} title={title} initial={initial} placeholder={placeholder} action={action} onSubmit={onSubmit} onClose={onClose} />
+    </Sheet>
   );
 }
 
@@ -79,17 +75,8 @@ function Body({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    padding: space.lg,
-    gap: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
+const styles = themed(() => StyleSheet.create({
+  sheet: { padding: space.lg, gap: space.md },
   input: {
     backgroundColor: colors.background,
     borderRadius: radii.md,
@@ -101,4 +88,4 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   buttons: { flexDirection: "row", gap: space.sm },
-});
+}));

@@ -2,7 +2,7 @@ import { Redirect, useRouter } from "expo-router";
 import { Activity, Check, ChevronDown, Info, Laptop, Plus, QrCode, Settings } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { AgentInfo, BlockedPrompt } from "@sheperd/protocol";
+import type { AgentInfo, BlockedPrompt } from "@shepherd/protocol";
 import { useAgentActions } from "../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../agents/agents";
 import { PromptCard } from "../agents/PromptCard";
@@ -17,7 +17,7 @@ import { IconButton } from "../ui/IconButton";
 import { PressableScale } from "../ui/Pressable";
 import { Banner, Screen, SectionHeader } from "../ui/Screen";
 import { StatusIndicator } from "../ui/StatusIndicator";
-import { colors, radii, space, statusColors, statusLabels, statusRank, type } from "../ui/theme";
+import { colors, radii, space, statusColors, statusLabels, statusRank, type, themed } from "../ui/theme";
 
 export default function AgentsScreen() {
   const router = useRouter();
@@ -64,7 +64,12 @@ export default function AgentsScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <PressableScale onPress={() => setHostSheet(true)} style={styles.hostChip}>
+        <PressableScale
+          onPress={() => setHostSheet(true)}
+          style={styles.hostChip}
+          accessibilityRole="button"
+          accessibilityLabel={`${hostName}, ${statusText(state.status)}. Switch computer`}
+        >
           <View style={[styles.hostDot, { backgroundColor: online ? statusColors.done : state.status === "connecting" ? colors.subtle : colors.danger }]} />
           <Text style={styles.hostName} numberOfLines={1}>
             {hostName}
@@ -198,7 +203,14 @@ function summary(total: number, working: number, blocked: number): string {
 function AgentRow({ agent, onPress, onLongPress }: { agent: AgentInfo; onPress: () => void; onLongPress: () => void }) {
   const title = agentTitle(agent) ?? agentName(agent);
   return (
-    <PressableScale onPress={onPress} onLongPress={onLongPress} style={styles.row}>
+    <PressableScale
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={styles.row}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}, ${agentName(agent)}, ${statusLabels[agent.agent_status]}`}
+      accessibilityHint="Opens the terminal. Long-press for more."
+    >
       <AgentMark agent={agent.agent} size={32} />
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={type.row} numberOfLines={1}>
@@ -233,7 +245,15 @@ function BlockedCard({
 }) {
   return (
     <View style={styles.card}>
-      <PressableScale onPress={onOpen} onLongPress={onMore} highlight={false} style={styles.cardHeader}>
+      <PressableScale
+        onPress={onOpen}
+        onLongPress={onMore}
+        highlight={false}
+        style={styles.cardHeader}
+        accessibilityRole="button"
+        accessibilityLabel={`${agentTitle(agent) ?? agentName(agent)}, ${agentName(agent)}, needs input`}
+        accessibilityHint="Opens the terminal. Long-press for more."
+      >
         <AgentMark agent={agent.agent} size={28} />
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={type.row} numberOfLines={1}>
@@ -262,7 +282,7 @@ function ConnectionBanner() {
   return <Banner>Can&apos;t reach your computer. Retrying…</Banner>;
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.xs, paddingHorizontal: space.lg, paddingTop: space.sm, height: 52 },
   hostChip: {
     flexDirection: "row",
@@ -294,4 +314,4 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: 16, padding: 14, gap: space.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.hairline },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: space.md },
   empty: { alignItems: "center", gap: 6, paddingHorizontal: space.xl, paddingTop: 80 },
-});
+}));

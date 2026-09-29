@@ -1,6 +1,6 @@
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
-import { encodePairingLink, toHex, type PairingInfo } from "@sheperd/protocol";
+import { encodePairingLink, toHex, type PairingInfo } from "@shepherd/protocol";
 import { hostKeyPair, type HostConfig } from "../system/config.ts";
 import type { DeviceRegistry } from "./devices.ts";
 import { appRelayUrl } from "../connection/relay-tunnel.ts";
@@ -56,11 +56,11 @@ function printAddresses(config: HostConfig, port: number): void {
 /** Create a one-time pairing code and print it as a QR code. */
 export async function printPairing(config: HostConfig, devices: DeviceRegistry, port = config.port): Promise<void> {
   if (hostAddresses(config, port).length === 0) {
-    console.log("\n  No reachable address: set SHEPERD_BIND to a LAN/Tailscale IP or configure a relay.\n");
+    console.log("\n  No reachable address: set SHEPHERD_BIND to a LAN/Tailscale IP or configure a relay.\n");
     return;
   }
   const { code, expiresAt } = devices.createPairing();
-  console.log("\n  Scan with the sheperd app (Host → Scan QR code) to pair a phone:\n");
+  console.log("\n  Scan with the Shepherd app (Host → Scan QR code) to pair a phone:\n");
   const qr = await renderQr(encodePairingLink(pairingInfo(config, port, code)));
   console.log(qr.trimEnd().replace(/^/gm, "  ") + "\n");
   console.log(`  One-time code, valid until ${expiresAt.toLocaleTimeString()}. For another: npm run host -- pair\n`);

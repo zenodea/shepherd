@@ -4,11 +4,11 @@ import { X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRef, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
-import { parsePairingLink } from "@sheperd/protocol";
+import { parsePairingLink } from "@shepherd/protocol";
 import { usePairing } from "../connection/use-pairing";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
-import { colors, type } from "../ui/theme";
+import { colors, type, themed } from "../ui/theme";
 
 export default function ScanScreen() {
   const router = useRouter();
@@ -31,7 +31,7 @@ export default function ScanScreen() {
       <View style={[styles.fill, styles.center]}>
         <Text style={[type.title, { textAlign: "center" }]}>Camera access</Text>
         <Text style={[type.body, { color: colors.muted, textAlign: "center" }]}>
-          sheperd uses the camera to scan the QR code printed by <Text style={styles.mono}>npm run host</Text>.
+          shepherd uses the camera to scan the QR code printed by <Text style={styles.mono}>npm run host</Text>.
         </Text>
         <Button
           title={permission.canAskAgain ? "Allow camera" : "Open settings"}
@@ -53,7 +53,7 @@ export default function ScanScreen() {
           if (handled.current) return;
           const info = parsePairingLink(data);
           if (!info) {
-            setMessage("That isn't a sheperd pairing code.");
+            setMessage("That isn't a Shepherd pairing code.");
             return;
           }
           handled.current = true;
@@ -62,14 +62,14 @@ export default function ScanScreen() {
       />
       <View style={styles.overlay} pointerEvents="none">
         <View style={styles.frame} />
-        <Text style={styles.overlayText}>{message ?? "Point at the QR code from sheperd-host"}</Text>
+        <Text style={styles.overlayText}>{message ?? "Point at the QR code from shepherd-host"}</Text>
       </View>
       {closeButton}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   close: { position: "absolute", left: 16, backgroundColor: "rgba(28,28,28,0.85)" },
   fill: { flex: 1, backgroundColor: "#000" },
   center: { alignItems: "center", justifyContent: "center", padding: 32, gap: 12, backgroundColor: colors.background },
@@ -84,4 +84,4 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
   },
-});
+}));

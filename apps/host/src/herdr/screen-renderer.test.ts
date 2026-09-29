@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SPAN_BOLD } from "@sheperd/protocol";
+import { SPAN_BOLD } from "@shepherd/protocol";
 import { ScreenRenderer, type ScreenUpdate } from "./screen-renderer.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);

@@ -6,7 +6,7 @@ import { DeviceRegistry } from "../pairing/devices.ts";
 
 /** A registry on a throwaway config file, with one device already paired. */
 export function testDevices(opts: { now?: () => number } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "sheperd-devices-"));
+  const dir = mkdtempSync(join(tmpdir(), "shepherd-devices-"));
   const configPath = join(dir, "host.json");
   loadOrCreateStoredConfig(configPath);
   const registry = new DeviceRegistry(configPath, opts);

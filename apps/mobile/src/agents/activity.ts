@@ -1,4 +1,4 @@
-import type { ActivityEntry } from "@sheperd/protocol";
+import type { ActivityEntry } from "@shepherd/protocol";
 
 /** Only these are worth a badge: things you'd want to know about. */
 export const NOTEWORTHY: ActivityEntry["event"][] = ["blocked", "done"];

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { StatusChange } from "@sheperd/protocol";
+import type { StatusChange } from "@shepherd/protocol";
 import { AgentTracker } from "./agent-tracker.ts";
 import { HerdrClient } from "./herdr-client.ts";
 import { FakeHerdr, fakeAgent, until } from "../testing/fake-herdr.ts";

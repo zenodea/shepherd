@@ -1,16 +1,17 @@
 import type { ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { PressableScale } from "./Pressable";
-import { colors, radii } from "./theme";
+import { colors, radii, themed } from "./theme";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
-const variantStyles: Record<Variant, { bg: string; fg: string; border?: string }> = {
+// A function, so the colours follow the current theme.
+const variantStyles = (): Record<Variant, { bg: string; fg: string; border?: string }> => ({
   primary: { bg: colors.primary, fg: colors.onPrimary },
   secondary: { bg: colors.raised, fg: colors.text, border: colors.border },
   ghost: { bg: "transparent", fg: colors.text },
   danger: { bg: "transparent", fg: colors.danger },
-};
+});
 
 export function Button({
   title,
@@ -31,7 +32,7 @@ export function Button({
   size?: "md" | "lg";
   style?: StyleProp<ViewStyle>;
 }) {
-  const v = variantStyles[variant];
+  const v = variantStyles()[variant];
   return (
     <PressableScale
       onPress={onPress}
@@ -51,10 +52,10 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   base: { borderRadius: radii.md, alignItems: "center", justifyContent: "center" },
   lg: { height: 50, paddingHorizontal: 20 },
   md: { height: 40, paddingHorizontal: 14 },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
   label: { fontSize: 16, fontWeight: "600" },
-});
+}));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { networkInterfaces } from "node:os";
-import { parsePairingLink, encodePairingLink } from "@sheperd/protocol";
+import { parsePairingLink, encodePairingLink } from "@shepherd/protocol";
 import type { HostConfig } from "../system/config.ts";
 import { hostAddresses, pairingInfo, renderQr } from "./pairing.ts";
 

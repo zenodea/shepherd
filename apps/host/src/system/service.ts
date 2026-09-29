@@ -6,11 +6,11 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const LAUNCHD_LABEL = "dev.sheperd.host";
-export const SYSTEMD_UNIT = "sheperd-host.service";
+export const LAUNCHD_LABEL = "dev.shepherd.host";
+export const SYSTEMD_UNIT = "shepherd-host.service";
 
 /** Variables worth carrying into the service; herdr's per-pane ones are left out. */
-const PASSED_ENV = ["PATH", "SHEPERD_PORT", "SHEPERD_BIND", "SHEPERD_CONFIG", "HERDR_BIN", "HERDR_SESSION", "XDG_CONFIG_HOME", "LANG"];
+const PASSED_ENV = ["PATH", "SHEPHERD_PORT", "SHEPHERD_BIND", "SHEPHERD_CONFIG", "HERDR_BIN", "HERDR_SESSION", "XDG_CONFIG_HOME", "LANG"];
 
 export type ServiceSpec = {
   node: string;
@@ -30,7 +30,7 @@ export function serviceSpec(env: NodeJS.ProcessEnv = process.env, home = homedir
     // Repo root: apps/host/src/cli.ts → ../../..
     workingDirectory: resolve(dirname(script), "..", "..", ".."),
     env: picked,
-    logFile: process.platform === "darwin" ? join(home, "Library", "Logs", "sheperd-host.log") : join(home, ".local", "state", "sheperd", "host.log"),
+    logFile: process.platform === "darwin" ? join(home, "Library", "Logs", "shepherd-host.log") : join(home, ".local", "state", "shepherd", "host.log"),
   };
 }
 
@@ -84,7 +84,7 @@ export function systemdUnit(spec: ServiceSpec): string {
     .map(([k, v]) => `Environment=${systemdQuote(`${k}=${v}`)}`)
     .join("\n");
   return `[Unit]
-Description=sheperd host: bridge herdr agents to your phone
+Description=shepherd host: bridge herdr agents to your phone
 After=network-online.target
 
 [Service]

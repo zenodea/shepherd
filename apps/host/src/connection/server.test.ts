@@ -3,7 +3,7 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { CLOSE_CODES, generateKeyPair, type ServerMessage } from "@sheperd/protocol";
+import { CLOSE_CODES, generateKeyPair, type ServerMessage } from "@shepherd/protocol";
 import { AgentTracker } from "../herdr/agent-tracker.ts";
 import { HerdrClient, lineReader } from "../herdr/herdr-client.ts";
 import { startLocalServer, type LocalServer } from "./server.ts";

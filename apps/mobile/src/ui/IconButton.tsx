@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 import { PressableScale } from "./Pressable";
-import { colors } from "./theme";
+import { colors, themed } from "./theme";
 
 /** Round icon button, like header actions. */
 export function IconButton({
@@ -32,7 +32,7 @@ export function IconButton({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   base: { alignItems: "center", justifyContent: "center" },
   filled: { backgroundColor: colors.raised },
-});
+}));

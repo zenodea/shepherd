@@ -1,15 +1,17 @@
 {
-  "name": "@sheperd/mobile",
+  "name": "@shepherd/mobile",
   "version": "1.0.0",
+  "license": "MIT",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
-    "@sheperd/protocol": "*",
+    "@shepherd/protocol": "*",
     "@shopify/flash-list": "2.0.2",
     "eslint-config-expo": "~57.0.2",
     "expo": "~57.0.26",
     "expo-build-properties": "~57.0.22",
     "expo-camera": "~57.0.6",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.20",
     "expo-crypto": "~57.0.3",
     "expo-font": "~57.0.4",
@@ -28,13 +30,10 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
-    "react-native-web": "^0.21.2",
-    "react-native-webview": "13.16.1"
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/xterm": "^6.0.0",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3",
@@ -49,8 +48,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "test": "vitest run",
-    "postinstall": "node scripts/generate-terminal-html.mjs",
-    "generate:terminal": "node scripts/generate-terminal-html.mjs",
     "demo": "EXPO_PUBLIC_DEMO=1 expo start",
     "demo:web": "EXPO_PUBLIC_DEMO=1 EXPO_NO_WEB_SETUP=1 expo start --web"
   },

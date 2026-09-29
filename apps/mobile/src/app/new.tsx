@@ -1,9 +1,9 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Check, ChevronLeft, Folder, GitBranch, SquareTerminal } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { TERMINAL_KIND, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@sheperd/protocol";
+import { TERMINAL_KIND, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@shepherd/protocol";
 import { shortPath } from "../agents/agents";
 import { useConnection, useHostState } from "../connection/connection";
 import { HostCallError } from "../connection/host-client";
@@ -12,7 +12,8 @@ import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { ListGroup, ListRow } from "../ui/ListRow";
 import { Divider, Screen } from "../ui/Screen";
-import { colors, fonts, space, type } from "../ui/theme";
+import { colors, fonts, space, type, themed } from "../ui/theme";
+import { Toggle } from "../ui/Toggle";
 
 /** agent.start waits up to a minute for the agent to be ready. */
 const START_TIMEOUT_MS = 90_000;
@@ -35,7 +36,7 @@ export default function NewAgentScreen() {
     if (!client || status !== "online") return;
     let cancelled = false;
     client
-      .call<ProjectsResult>("sheperd.projects")
+      .call<ProjectsResult>("shepherd.projects")
       .then((result) => {
         if (cancelled) return;
         setData(result);
@@ -48,7 +49,7 @@ export default function NewAgentScreen() {
         if (cancelled) return;
         setError(
           err.code === "invalid_message" || err.code === "unsupported"
-            ? "Your host is out of date. Pull the latest sheperd and restart the host."
+            ? "Your host is out of date. Pull the latest Shepherd and restart the host."
             : err.message,
         );
       });
@@ -62,7 +63,7 @@ export default function NewAgentScreen() {
     setStarting(true);
     try {
       const params: StartAgentParams = { kind, workspaceId, newWorktree, prompt: prompt.trim() || undefined };
-      const result = await client.call<StartAgentResult>("sheperd.start_agent", params, { timeoutMs: START_TIMEOUT_MS });
+      const result = await client.call<StartAgentResult>("shepherd.start_agent", params, { timeoutMs: START_TIMEOUT_MS });
       router.replace({ pathname: "/agent/[paneId]", params: { paneId: result.paneId } });
       if (!result.ready && kind !== TERMINAL_KIND) {
         Alert.alert(`${kind} is waiting for you`, "It started but needs an answer first (for example, to trust the folder).");
@@ -142,12 +143,7 @@ export default function NewAgentScreen() {
                   detail={`A separate checkout${selectedProject?.repoName ? ` of ${selectedProject.repoName}` : ""}, so agents don't collide`}
                   chevron={false}
                   trailing={
-                    <Switch
-                      value={newWorktree}
-                      onValueChange={setNewWorktree}
-                      trackColor={{ false: colors.border, true: colors.text }}
-                      thumbColor={newWorktree ? colors.onPrimary : colors.muted}
-                    />
+                    <Toggle value={newWorktree} onValueChange={setNewWorktree} />
                   }
                 />
               </ListGroup>
@@ -182,7 +178,7 @@ export default function NewAgentScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
   headerTitle: { fontSize: 17, fontWeight: "600", color: colors.text },
   message: { padding: space.xl, textAlign: "center" },
@@ -201,4 +197,4 @@ const styles = StyleSheet.create({
   },
   terminalIcon: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center" },
   footer: { paddingHorizontal: space.lg, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.hairline },
-});
+}));

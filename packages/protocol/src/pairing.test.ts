@@ -7,7 +7,7 @@ const info = {
   urls: [
     "ws://192.168.1.20:7420/connect",
     "ws://100.101.102.103:7420/connect",
-    "wss://sheperd-relay.example.workers.dev/hosts/6l7uJofGV0Nw/connect",
+    "wss://shepherd-relay.example.workers.dev/hosts/6l7uJofGV0Nw/connect",
   ],
 };
 
@@ -25,25 +25,25 @@ describe("pairing links", () => {
   it("keeps URLs compact", () => {
     const link = encodePairingLink(info);
     expect(link).toContain("u=ws://192.168.1.20:7420/connect");
-    expect(link.startsWith("sheperd://pair?v=1&")).toBe(true);
+    expect(link.startsWith("shepherd://pair?v=1&")).toBe(true);
   });
 
   it("accepts Expo Go deep links", () => {
-    const link = encodePairingLink(info, "sheperd").replace("sheperd://", "exp://100.101.102.103:8081/--/");
+    const link = encodePairingLink(info, "shepherd").replace("shepherd://", "exp://100.101.102.103:8081/--/");
     expect(parsePairingLink(link)).toEqual(info);
   });
 
   it("rejects other QR codes and incomplete links", () => {
     expect(parsePairingLink("https://example.com")).toBeNull();
     expect(parsePairingLink("hello")).toBeNull();
-    expect(parsePairingLink("sheperd://pair?v=1&t=abc")).toBeNull();
-    expect(parsePairingLink("sheperd://pair?v=2&t=abc&u=ws://h:1/connect")).toBeNull();
-    expect(parsePairingLink("sheperd://pair?v=1&u=ws://h:1/connect")).toBeNull();
-    expect(parsePairingLink("sheperd://pair?v=1&t=a&u=%E0%A4%A")).toBeNull();
+    expect(parsePairingLink("shepherd://pair?v=1&t=abc")).toBeNull();
+    expect(parsePairingLink("shepherd://pair?v=2&t=abc&u=ws://h:1/connect")).toBeNull();
+    expect(parsePairingLink("shepherd://pair?v=1&u=ws://h:1/connect")).toBeNull();
+    expect(parsePairingLink("shepherd://pair?v=1&t=a&u=%E0%A4%A")).toBeNull();
   });
 
   it("drops unusable and duplicate URLs", () => {
-    expect(parsePairingLink("sheperd://pair?v=1&t=a&u=ftp://x&u=ws://h:1/c&u=ws://h:1/c")).toEqual({
+    expect(parsePairingLink("shepherd://pair?v=1&t=a&u=ftp://x&u=ws://h:1/c&u=ws://h:1/c")).toEqual({
       name: "host",
       token: "a",
       urls: ["ws://h:1/c"],

@@ -10,7 +10,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 const tempHome = () => {
-  const d = mkdtempSync(join(tmpdir(), "sheperd-service-"));
+  const d = mkdtempSync(join(tmpdir(), "shepherd-service-"));
   dirs.push(d);
   return d;
 };
@@ -18,27 +18,27 @@ const tempHome = () => {
 describe("serviceSpec", () => {
   it("runs this checkout's cli with this node, keeping PATH but not herdr's per-pane variables", () => {
     const spec = serviceSpec(
-      { PATH: "/opt/homebrew/bin:/usr/bin", SHEPERD_PORT: "7421", HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/x.sock", SECRET: "no" },
+      { PATH: "/opt/homebrew/bin:/usr/bin", SHEPHERD_PORT: "7421", HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/x.sock", SECRET: "no" },
       "/Users/me",
     );
     expect(spec.node).toBe(process.execPath);
     expect(spec.script).toMatch(/host[/\\]src[/\\]cli\.ts$/);
-    expect(spec.env).toEqual({ PATH: "/opt/homebrew/bin:/usr/bin", SHEPERD_PORT: "7421" });
+    expect(spec.env).toEqual({ PATH: "/opt/homebrew/bin:/usr/bin", SHEPHERD_PORT: "7421" });
   });
 });
 
 const spec = {
   node: "/usr/local/bin/node",
-  script: "/code/sheperd & co/host/src/cli.ts",
-  workingDirectory: "/code/sheperd & co",
+  script: "/code/shepherd & co/host/src/cli.ts",
+  workingDirectory: "/code/shepherd & co",
   env: { PATH: "/usr/bin:/bin" },
-  logFile: "/Users/me/Library/Logs/sheperd-host.log",
+  logFile: "/Users/me/Library/Logs/shepherd-host.log",
 };
 
 describe("launchdPlist", () => {
   it("escapes XML and keeps the service alive", () => {
     const plist = launchdPlist(spec);
-    expect(plist).toContain("<string>/code/sheperd &amp; co/host/src/cli.ts</string>");
+    expect(plist).toContain("<string>/code/shepherd &amp; co/host/src/cli.ts</string>");
     expect(plist).toContain("<key>KeepAlive</key>\n    <true/>");
     expect(plist).toContain(`<string>${LAUNCHD_LABEL}</string>`);
   });
@@ -53,7 +53,7 @@ describe("launchdPlist", () => {
 describe("systemdUnit", () => {
   it("quotes paths and restarts on exit", () => {
     const unit = systemdUnit(spec);
-    expect(unit).toContain('ExecStart="/usr/local/bin/node" "/code/sheperd & co/host/src/cli.ts" serve');
+    expect(unit).toContain('ExecStart="/usr/local/bin/node" "/code/shepherd & co/host/src/cli.ts" serve');
     expect(unit).toContain('Environment="PATH=/usr/bin:/bin"');
     expect(unit).toContain("Restart=always");
   });

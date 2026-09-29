@@ -1,9 +1,9 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowDown, ArrowUp, ChevronLeft, Ellipsis, Keyboard as KeyboardIcon, Maximize2, Minimize2, Sparkles, SquareTerminal } from "lucide-react-native";
+import { ALargeSmall, ArrowDown, ArrowUp, ChevronLeft, Ellipsis, Keyboard as KeyboardIcon, Search, Sparkles, SquareTerminal } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Keyboard, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Platform, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@sheperd/protocol";
+import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
 import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
 import { parseAnsi, toStyledLines } from "../../agents/ansi";
@@ -16,16 +16,18 @@ import type { TerminalHandle, TerminalLines } from "../../connection/host-client
 import { loadPref, savePref } from "../../connection/prefs";
 import { useKeyboardInset } from "../../connection/use-keyboard-inset";
 import { KeyboardCapture, type KeyboardCaptureHandle } from "../../terminal/KeyboardCapture";
-import { LiveTerminal, type LiveTerminalHandle } from "../../terminal/LiveTerminal";
-import { TerminalView, type TerminalViewHandle, type TerminalViewMode } from "../../terminal/TerminalView";
+import { DEFAULT_FONT_SIZE, LiveTerminal, MAX_FONT_SIZE, MIN_FONT_SIZE, clampFontSize, type LiveTerminalHandle } from "../../terminal/LiveTerminal";
 import { ActionSheet } from "../../ui/ActionSheet";
 import { IconButton } from "../../ui/IconButton";
 import { PressableScale } from "../../ui/Pressable";
 import { Banner, Screen } from "../../ui/Screen";
 import { StatusIndicator } from "../../ui/StatusIndicator";
-import { colors, fonts, space, statusColors, statusLabels } from "../../ui/theme";
+import { TextSizeSheet } from "../../ui/TextSizeSheet";
+import { colors, fonts, space, statusColors, statusLabels, themed } from "../../ui/theme";
 
 const REOPEN_MS = 1500;
+/** react-native-web renders a multiline input as a two-row textarea unless told otherwise. */
+const WEB_ONE_ROW = Platform.OS === "web" ? ({ rows: 1 } as object) : {};
 const SCROLLBACK_LINES = 3000;
 /** herdr keeps at most this many lines of an agent's transcript. */
 const TRANSCRIPT_LINES = 1000;
@@ -37,20 +39,20 @@ const HANDOFF_MS = 400;
 const SCROLLBACK_STALE_MS = 4000;
 
 /** Quick keys (herdr key names), grouped like Superset's bar. */
-const QUICK_KEYS: { label: string; keys: string[]; confirm?: string }[][] = [
+const QUICK_KEYS: { label: string; name: string; keys: string[]; confirm?: string }[][] = [
   [
-    { label: "esc", keys: ["esc"] },
-    { label: "↵", keys: ["enter"] },
-    { label: "tab", keys: ["tab"] },
-    { label: "⇧tab", keys: ["shift+tab"] },
+    { label: "esc", name: "Escape", keys: ["esc"] },
+    { label: "↵", name: "Enter", keys: ["enter"] },
+    { label: "tab", name: "Tab", keys: ["tab"] },
+    { label: "⇧tab", name: "Shift Tab", keys: ["shift+tab"] },
   ],
   [
-    { label: "↑", keys: ["up"] },
-    { label: "↓", keys: ["down"] },
-    { label: "←", keys: ["left"] },
-    { label: "→", keys: ["right"] },
+    { label: "↑", name: "Up arrow", keys: ["up"] },
+    { label: "↓", name: "Down arrow", keys: ["down"] },
+    { label: "←", name: "Left arrow", keys: ["left"] },
+    { label: "→", name: "Right arrow", keys: ["right"] },
   ],
-  [{ label: "^C", keys: ["ctrl+c"], confirm: "Send Ctrl-C?" }],
+  [{ label: "^C", name: "Control C", keys: ["ctrl+c"], confirm: "Send Ctrl-C?" }],
 ];
 
 /** Plain text of a styled line, for matching history against the live screen. */
@@ -95,6 +97,14 @@ export default function TerminalScreen() {
   const prompt = useBlockedPrompts(client, agentsForPrompt)[paneId ?? ""];
   const online = state.status === "online";
   const actions = useAgentActions(client, {
+    extra: [
+      {
+        icon: <ALargeSmall size={19} color={colors.text} />,
+        title: "Text size",
+        detail: "Or pinch the terminal",
+        onPress: () => setTextSizeSheet(true),
+      },
+    ],
     // Go to another tab in the workspace if there is one, else back to the list.
     onClosed: (closed) => {
       const next = tabs.find((t) => t.paneId !== closed);
@@ -104,8 +114,6 @@ export default function TerminalScreen() {
     },
   });
 
-  // "fit" = the phone view (native lines); "native" = full width (xterm).
-  const [viewMode, setViewMode] = useState<TerminalViewMode>("fit");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [closedReason, setClosedReason] = useState<string | null>(null);
@@ -113,6 +121,21 @@ export default function TerminalScreen() {
   const [newSheet, setNewSheet] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [typing, setTyping] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [textSizeSheet, setTextSizeSheet] = useState(false);
+  // Landscape leaves little height, so the tab strip steps aside.
+  const window = useWindowDimensions();
+  const landscape = window.width > window.height;
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  useEffect(() => {
+    void loadPref("terminalFontSize").then((v) => {
+      if (v && Number(v)) setFontSize(clampFontSize(Number(v)));
+    });
+  }, []);
+  const changeFontSize = (size: number) => {
+    setFontSize(size);
+    void savePref("terminalFontSize", String(size));
+  };
 
   // Phone view state.
   const [liveSize, setLiveSize] = useState<{ cols: number; rows: number } | null>(null);
@@ -144,32 +167,13 @@ export default function TerminalScreen() {
     [transcriptOk, scrollback, scrollbackText, screen.rows],
   );
 
-  // Full-width view state.
-  const [webReady, setWebReady] = useState(false);
-
   const live = useRef<LiveTerminalHandle>(null);
-  const web = useRef<TerminalViewHandle>(null);
   const capture = useRef<KeyboardCaptureHandle>(null);
   const stream = useRef<TerminalHandle | null>(null);
   const paneIdRef = useRef(paneId);
   useEffect(() => {
     paneIdRef.current = paneId;
   }, [paneId]);
-
-  // Remember the chosen view.
-  useEffect(() => {
-    void loadPref("viewMode").then((v) => {
-      if (v === "native" || v === "fit") setViewMode(v);
-    });
-  }, []);
-  const toggleMode = () => {
-    const next = viewMode === "native" ? "fit" : "native";
-    setViewMode(next);
-    void savePref("viewMode", next);
-  };
-  useEffect(() => {
-    if (webReady && viewMode === "native") web.current?.setMode("native");
-  }, [webReady, viewMode]);
 
   /**
    * Agents' real transcripts: herdr collects them from full-screen agents like
@@ -178,8 +182,7 @@ export default function TerminalScreen() {
    * when you open an idle agent, and when you scroll up after it has worked
    * since. Busy agents fall back to herdr's scrollback below.
    */
-  const needsTranscript =
-    viewMode === "fit" && online && isAgent && readable && (!hasTranscript || (transcriptState.turn !== turn.n && !atBottom));
+  const needsTranscript = online && isAgent && readable && (!hasTranscript || (transcriptState.turn !== turn.n && !atBottom));
   const collectingFor = needsTranscript ? `${paneId}:${turn.n}` : null;
   useEffect(() => {
     if (!collectingFor || !client || !paneId) return;
@@ -246,14 +249,12 @@ export default function TerminalScreen() {
     hasTranscriptRef.current = transcriptOk;
   }, [loadScrollback, transcriptOk]);
 
-  // Open the stream. Phone view: the host renders styled lines at the phone's
-  // size. Full width: raw frames for xterm at the pane's own size.
+  // Open the stream: the host renders styled lines at the phone's size.
   const cols = liveSize?.cols;
   const rows = liveSize?.rows;
   useEffect(() => {
     if (!client || !paneId || !online) return;
-    if (viewMode === "fit" && (!cols || !rows || needsTranscript)) return;
-    if (viewMode === "native" && !webReady) return;
+    if (!cols || !rows || needsTranscript) return;
 
     let reopen: ReturnType<typeof setTimeout> | null = null;
     let first = true;
@@ -263,50 +264,34 @@ export default function TerminalScreen() {
       if (reason !== "disconnected") reopen = setTimeout(() => setEpoch((e) => e + 1), REOPEN_MS);
     };
 
-    let handle: TerminalHandle | null;
-    if (viewMode === "fit") {
-      handle = client.openTerminal(
-        paneId,
-        { mode: "control", cols, rows, render: "lines" },
-        {
-          onLines: (update) => {
-            setClosedReason(null);
-            setScreen((prev) => {
-              const next = update.full || prev.paneId !== paneId ? [] : prev.rows.slice(0, update.height);
-              for (let y = 0; y < update.height; y++) {
-                const changed = update.lines[y];
-                if (changed) next[y] = changed;
-                else if (next[y] === undefined) next[y] = [];
-              }
-              return { paneId, rows: next, cursor: update.cursor };
-            });
-            if (first && !hasTranscriptRef.current) void loadScrollbackRef.current(update.height);
-            first = false;
-          },
-          onClosed,
+    const handle = client.openTerminal(
+      paneId,
+      { mode: "control", cols, rows, render: "lines" },
+      {
+        onLines: (update) => {
+          setClosedReason(null);
+          setScreen((prev) => {
+            const next = update.full || prev.paneId !== paneId ? [] : prev.rows.slice(0, update.height);
+            for (let y = 0; y < update.height; y++) {
+              const changed = update.lines[y];
+              if (changed) next[y] = changed;
+              else if (next[y] === undefined) next[y] = [];
+            }
+            return { paneId, rows: next, cursor: update.cursor };
+          });
+          if (first && !hasTranscriptRef.current) void loadScrollbackRef.current(update.height);
+          first = false;
         },
-      );
-    } else {
-      web.current?.reset();
-      handle = client.openTerminal(
-        paneId,
-        { mode: "observe" },
-        {
-          onFrame: (frame) => {
-            setClosedReason(null);
-            web.current?.write(frame);
-          },
-          onClosed,
-        },
-      );
-    }
+        onClosed,
+      },
+    );
     stream.current = handle;
     return () => {
       if (reopen) clearTimeout(reopen);
       handle?.close();
       stream.current = null;
     };
-  }, [client, paneId, online, viewMode, cols, rows, webReady, epoch, needsTranscript]);
+  }, [client, paneId, online, cols, rows, epoch, needsTranscript]);
 
   const onAtBottomChange = (bottom: boolean) => {
     setAtBottom(bottom);
@@ -321,7 +306,7 @@ export default function TerminalScreen() {
   const openTerminalTab = async () => {
     if (!client || !workspaceId) return;
     try {
-      const result = await client.call<StartAgentResult>("sheperd.start_agent", { kind: TERMINAL_KIND, workspaceId });
+      const result = await client.call<StartAgentResult>("shepherd.start_agent", { kind: TERMINAL_KIND, workspaceId });
       router.setParams({ paneId: result.paneId });
     } catch (err) {
       Alert.alert("Couldn't open a terminal", (err as Error).message);
@@ -363,10 +348,6 @@ export default function TerminalScreen() {
       capture.current?.blur();
       return;
     }
-    if (viewMode !== "fit") {
-      Alert.alert("Switch to the phone view", "Typing straight into the terminal works in the phone view. Use the message box in full width.");
-      return;
-    }
     toLive();
     capture.current?.focus();
   };
@@ -400,11 +381,11 @@ export default function TerminalScreen() {
             </Text>
           </View>
         </View>
+        <IconButton label="Find in terminal" onPress={() => setSearching((s) => !s)} filled={false}>
+          <Search size={18} color={searching ? colors.text : colors.muted} />
+        </IconButton>
         <IconButton label="More" onPress={() => workspaceId && actions.show(paneId!, workspaceId, agent)} filled={false}>
           <Ellipsis size={19} color={colors.muted} />
-        </IconButton>
-        <IconButton label={viewMode === "native" ? "Phone view" : "Full width"} onPress={toggleMode}>
-          {viewMode === "native" ? <Minimize2 size={17} color={colors.text} /> : <Maximize2 size={17} color={colors.text} />}
         </IconButton>
       </View>
 
@@ -412,29 +393,25 @@ export default function TerminalScreen() {
 
       <View style={{ flex: 1, paddingBottom: keyboard.inset }}>
         <View style={styles.terminal}>
-          {viewMode === "fit" ? (
-            <LiveTerminal
-              ref={live}
-              history={history}
-              screen={screen.rows}
-              cursor={screen.cursor}
-              onSize={(c, r) => setLiveSize((prev) => (prev?.cols === c && prev.rows === r ? prev : { cols: c, rows: r }))}
-              onAtBottomChange={onAtBottomChange}
-            />
-          ) : (
-            <TerminalView
-              ref={web}
-              onReady={() => setWebReady(true)}
-              onFitSize={() => {}}
-              onTap={() => Keyboard.dismiss()}
-            />
-          )}
+          <LiveTerminal
+            ref={live}
+            history={history}
+            fontSize={fontSize}
+            onFontSizeChange={changeFontSize}
+            searching={searching}
+            onCloseSearch={() => setSearching(false)}
+            screen={screen.rows}
+            cursor={screen.cursor}
+            onSize={(c, r) => setLiveSize((prev) => (prev?.cols === c && prev.rows === r ? prev : { cols: c, rows: r }))}
+            onAtBottomChange={onAtBottomChange}
+          />
+
           {needsTranscript ? (
             <View style={styles.loading} pointerEvents="none">
               <Text style={styles.loadingText}>Loading history…</Text>
             </View>
           ) : null}
-          {!atBottom && viewMode === "fit" ? (
+          {!atBottom ? (
             <PressableScale onPress={toLive} style={styles.toBottom} accessibilityLabel="Back to live">
               <ArrowDown size={18} color={colors.text} />
             </PressableScale>
@@ -449,28 +426,44 @@ export default function TerminalScreen() {
         <View style={[styles.bottom, { paddingBottom: keyboard.visible ? space.sm : Math.max(insets.bottom, space.sm) }]}>
           {agent?.agent_status === "blocked" && prompt ? <PromptChips key={JSON.stringify(prompt)} client={client} paneId={paneId!} prompt={prompt} /> : null}
 
-          <WorkspaceTabs
-            tabs={tabs}
-            activePaneId={paneId!}
-            onSelect={(tab) => {
-              if (tab.paneId === paneId) return;
-              setClosedReason(null);
-              setAtBottom(true);
-              scrollbackMeta.current = null;
-              router.setParams({ paneId: tab.paneId });
-            }}
-            onNew={() => setNewSheet(true)}
-          />
+          {landscape ? null : (
+            <WorkspaceTabs
+              tabs={tabs}
+              activePaneId={paneId!}
+              onSelect={(tab) => {
+                if (tab.paneId === paneId) return;
+                setClosedReason(null);
+                setAtBottom(true);
+                scrollbackMeta.current = null;
+                router.setParams({ paneId: tab.paneId });
+              }}
+              onNew={() => setNewSheet(true)}
+            />
+          )}
 
           <View style={styles.keys}>
-            <PressableScale onPress={toggleTyping} style={[styles.key, styles.typeKey, typing && styles.typeKeyActive]} accessibilityLabel="Type into the terminal">
+            <PressableScale
+              onPress={toggleTyping}
+              style={[styles.key, styles.typeKey, typing && styles.typeKeyActive]}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: typing }}
+              accessibilityLabel="Type straight into the terminal"
+            >
               <KeyboardIcon size={16} color={typing ? colors.onPrimary : colors.text} />
             </PressableScale>
             {QUICK_KEYS.map((group, gi) => (
               <View key={gi} style={[styles.keyGroup, styles.keyGroupDivider]}>
                 {group.map((k) => (
-                  <PressableScale key={k.label} onPress={() => sendKeys(k.keys, k.confirm)} style={styles.key}>
-                    <Text style={styles.keyLabel}>{k.label}</Text>
+                  <PressableScale
+                    key={k.label}
+                    onPress={() => sendKeys(k.keys, k.confirm)}
+                    style={styles.key}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Send ${k.name}`}
+                  >
+                    <Text style={styles.keyLabel} maxFontSizeMultiplier={1.3}>
+                      {k.label}
+                    </Text>
                   </PressableScale>
                 ))}
               </View>
@@ -480,15 +473,17 @@ export default function TerminalScreen() {
           {!typing ? (
             <View style={styles.composer}>
               <TextInput
+                {...WEB_ONE_ROW}
                 style={styles.input}
                 value={draft}
                 onChangeText={setDraft}
                 placeholder={agent ? `Message ${agentName(agent)}…` : "Run a command…"}
                 placeholderTextColor={colors.subtle}
+                accessibilityLabel={agent ? `Message ${agentName(agent)}` : "Command to run"}
                 multiline
               />
               {canSend || sending ? (
-                <PressableScale onPress={submit} disabled={!canSend} style={styles.send} accessibilityLabel="Send">
+                <PressableScale onPress={submit} disabled={!canSend} style={styles.send} accessibilityRole="button" accessibilityLabel="Send">
                   <ArrowUp size={18} color={colors.onPrimary} strokeWidth={2.5} />
                 </PressableScale>
               ) : null}
@@ -500,6 +495,15 @@ export default function TerminalScreen() {
       </View>
 
       {actions.element}
+      <TextSizeSheet
+        visible={textSizeSheet}
+        size={fontSize}
+        min={MIN_FONT_SIZE}
+        max={MAX_FONT_SIZE}
+        defaultSize={DEFAULT_FONT_SIZE}
+        onChange={changeFontSize}
+        onClose={() => setTextSizeSheet(false)}
+      />
       <ActionSheet
         visible={newSheet}
         title={`New in ${agent ? projectOf(agent) : "this workspace"}`}
@@ -523,7 +527,7 @@ export default function TerminalScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
   headerText: { flex: 1, gap: 3, marginLeft: 4 },
   title: { fontSize: 16, fontWeight: "600", color: colors.text },
@@ -537,9 +541,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(38,38,38,0.95)",
+    backgroundColor: colors.floating,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: colors.edge,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -550,7 +554,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(38,38,38,0.95)",
+    backgroundColor: colors.floating,
   },
   loadingText: { fontSize: 12, color: colors.muted },
   notice: { position: "absolute", bottom: 10, left: 12, right: 12, textAlign: "center", fontSize: 12, color: colors.muted },
@@ -566,7 +570,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
   },
   keyGroup: { flexDirection: "row", alignItems: "center", flexGrow: 1, justifyContent: "space-around" },
-  keyGroupDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.14)" },
+  keyGroupDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderColor: colors.edge },
   key: { minWidth: 30, height: 30, paddingHorizontal: 5, alignItems: "center", justifyContent: "center", borderRadius: 7 },
   typeKey: { marginRight: 3, width: 34 },
   typeKeyActive: { backgroundColor: colors.primary },
@@ -587,4 +591,4 @@ const styles = StyleSheet.create({
   input: { flex: 1, color: colors.text, fontSize: 15, maxHeight: 120, paddingTop: 8, paddingBottom: 8, textAlignVertical: "top" },
   send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   typingHint: { fontSize: 12.5, color: colors.muted, textAlign: "center", paddingVertical: 12 },
-});
+}));

@@ -40,5 +40,3 @@ yarn-error.*
 /ios
 /android
 
-# Generated on npm install (scripts/generate-terminal-html.mjs)
-src/terminal/terminal-html.generated.ts

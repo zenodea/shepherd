@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 250" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">
+  <style>
+    .fg { fill: #e6edf3; }
+    .muted { fill: #8d96a0; }
+    .box { fill: none; stroke: #e6edf3; stroke-width: 1.5; }
+    .group { fill: none; stroke: #6e7681; stroke-width: 1; stroke-dasharray: 4 4; }
+    .line { fill: none; stroke: #e6edf3; stroke-width: 1.5; }
+    .optional { stroke-dasharray: 6 5; }
+    .head { fill: #e6edf3; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="head" d="M0 1 L10 5 L0 9 z"/>
+    </marker>
+  </defs>
+
+  <!-- your computer -->
+  <rect class="group" x="10" y="20" width="300" height="120" rx="8"/>
+  <text class="muted" x="24" y="42" font-size="12">your computer</text>
+  <rect class="box" x="30" y="60" width="100" height="56" rx="6"/>
+  <text class="fg" x="80" y="93" text-anchor="middle">herdr</text>
+  <rect class="box" x="190" y="60" width="100" height="56" rx="6"/>
+  <text class="fg" x="240" y="93" text-anchor="middle">host</text>
+  <line class="line" x1="132" y1="88" x2="188" y2="88" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="muted" x="160" y="80" font-size="11" text-anchor="middle">socket</text>
+
+  <!-- your phone -->
+  <rect class="group" x="590" y="20" width="160" height="120" rx="8"/>
+  <text class="muted" x="604" y="42" font-size="12">your phone</text>
+  <rect class="box" x="610" y="60" width="120" height="56" rx="6"/>
+  <text class="fg" x="670" y="93" text-anchor="middle">Shepherd</text>
+
+  <!-- direct -->
+  <line class="line" x1="292" y1="88" x2="608" y2="88" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="fg" x="450" y="78" text-anchor="middle">Wi-Fi or Tailscale</text>
+
+  <!-- through the relay -->
+  <rect class="box optional" x="390" y="178" width="120" height="52" rx="6"/>
+  <text class="fg" x="450" y="202" text-anchor="middle">relay</text>
+  <text class="muted" x="450" y="220" font-size="11" text-anchor="middle">optional, Cloudflare</text>
+  <path class="line optional" d="M 240 118 V 204 H 388" marker-end="url(#a)"/>
+  <path class="line optional" d="M 512 204 H 670 V 118" marker-end="url(#a)"/>
+  <text class="muted" x="600" y="196" font-size="11" text-anchor="middle">from anywhere</text>
+
+  <text class="muted" x="450" y="112" font-size="11" text-anchor="middle">end-to-end encrypted either way</text>
+</svg>

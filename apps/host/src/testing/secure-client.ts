@@ -7,7 +7,7 @@ import {
   sealJson,
   type ServerMessage,
   type SessionCiphers,
-} from "@sheperd/protocol";
+} from "@shepherd/protocol";
 
 export type SecureTestClient = {
   messages: ServerMessage[];

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentInfo, AgentStatus } from "@sheperd/protocol";
+import type { AgentInfo, AgentStatus } from "@shepherd/protocol";
 import { lineReader } from "../herdr/herdr-client.ts";
 
 type Sub = { socket: Socket; subscriptions: Record<string, unknown>[] };

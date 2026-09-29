@@ -1,4 +1,4 @@
-import { HOST_ID_PATTERN } from "@sheperd/protocol";
+import { HOST_ID_PATTERN } from "@shepherd/protocol";
 import { bearerToken, secretsEqual } from "./auth.ts";
 
 export { HostRoom } from "./host-room.ts";
@@ -33,7 +33,7 @@ export default {
 
     const room = env.HOST_ROOM.get(env.HOST_ROOM.idFromName(hostId));
     const forwarded = new Request(request);
-    forwarded.headers.set("x-sheperd-kind", kind!);
+    forwarded.headers.set("x-shepherd-kind", kind!);
     return room.fetch(forwarded);
   },
 } satisfies ExportedHandler<Env>;

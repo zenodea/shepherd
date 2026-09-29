@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { BlockedPrompt } from "@sheperd/protocol";
+import type { BlockedPrompt } from "@shepherd/protocol";
 import { ACTION_TTL_MS, NotificationActions, promptFingerprint } from "./actions.ts";
 
 const PROMPT: BlockedPrompt = {
@@ -18,7 +18,7 @@ function setup(overrides: { prompt?: BlockedPrompt | null; blocked?: boolean } =
   const state = { prompt: overrides.prompt === undefined ? PROMPT : overrides.prompt, blocked: overrides.blocked ?? true };
   const actions = new NotificationActions({
     server: "https://ntfy.example/",
-    topic: "sheperd-topic",
+    topic: "shepherd-topic",
     secret: new Uint8Array(32).fill(7),
     readPrompt: async () => state.prompt,
     isBlocked: () => state.blocked,
@@ -35,8 +35,8 @@ describe("NotificationActions", () => {
     expect(buttons).toHaveLength(3);
     expect(buttons.map((b) => b.label)).toEqual(["Yes", "Yes, allow all edits du…", "No, and tell Claude wha…"]);
     expect(buttons[0]).toMatchObject({ action: "http", method: "POST", clear: true, url: `https://ntfy.example/${actions.replyTopic}` });
-    expect(actions.replyTopic).toMatch(/^sheperd-r-[A-Za-z0-9_-]{22}$/);
-    expect(actions.replyTopic).not.toContain("sheperd-topic");
+    expect(actions.replyTopic).toMatch(/^shepherd-r-[A-Za-z0-9_-]{22}$/);
+    expect(actions.replyTopic).not.toContain("shepherd-topic");
   });
 
   it("presses the option's key when the same question is still showing", async () => {

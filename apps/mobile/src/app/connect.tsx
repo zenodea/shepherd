@@ -1,15 +1,15 @@
 import { useRouter } from "expo-router";
 import { Bell, BellOff, ChevronLeft, Globe, Laptop, Network, QrCode, Smartphone, Trash2, Wifi } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
-import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { normaliseHostUrl } from "@sheperd/protocol";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { normaliseHostUrl } from "@shepherd/protocol";
 import { addressHost, addressKind } from "../connection/addresses";
 import { useConnection, useHostState } from "../connection/connection";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { ListGroup, ListRow } from "../ui/ListRow";
 import { Divider, Screen } from "../ui/Screen";
-import { colors, fonts, radii, space, statusColors, type } from "../ui/theme";
+import { colors, fonts, radii, space, statusColors, type, themed } from "../ui/theme";
 
 const NTFY_PLAY_STORE = "https://play.google.com/store/apps/details?id=io.heckel.ntfy";
 
@@ -17,7 +17,7 @@ async function subscribeToNotifications(url: string) {
   try {
     await Linking.openURL(url);
   } catch {
-    Alert.alert("Install ntfy", "sheperd sends notifications through the free ntfy app. Install it, then tap this again.", [
+    Alert.alert("Install ntfy", "Shepherd sends notifications through the free ntfy app. Install it, then tap this again.", [
       { text: "Cancel", style: "cancel" },
       { text: "Open Play Store", onPress: () => void Linking.openURL(NTFY_PLAY_STORE) },
     ]);
@@ -37,7 +37,14 @@ export default function HostScreen() {
           <Text style={styles.headerTitle}>Host</Text>
         </View>
       ) : null}
-      {settings ? <PairedHost /> : <PairOnboarding />}
+      {/* undefined = still loading saved computers: don't flash the pairing page. */}
+      {settings === undefined ? (
+        <ActivityIndicator style={{ flex: 1 }} color={colors.muted} />
+      ) : settings ? (
+        <PairedHost />
+      ) : (
+        <PairOnboarding />
+      )}
     </Screen>
   );
 }
@@ -76,7 +83,9 @@ function PairedHost() {
             {online && state.host ? `  ·  herdr ${state.host.herdrVersion}` : ""}
           </Text>
         </View>
-        {state.status === "unauthorized" && state.error ? <Text style={[type.sub, styles.error]}>{state.error}</Text> : null}
+        {(state.status === "unauthorized" || state.status === "offline") && state.error ? (
+          <Text style={[type.sub, styles.error]}>{state.error}</Text>
+        ) : null}
       </View>
 
       <View>
@@ -247,7 +256,7 @@ function PairOnboarding() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
   headerTitle: { fontSize: 17, fontWeight: "600", color: colors.text },
   hero: { alignItems: "center", gap: 8, paddingHorizontal: space.xl, paddingTop: space.lg },
@@ -283,4 +292,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-});
+}));

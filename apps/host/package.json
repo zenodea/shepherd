@@ -1,6 +1,7 @@
 {
-  "name": "@sheperd/host",
+  "name": "@shepherd/host",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sheperd/protocol": "*",
+    "@shepherd/protocol": "*",
     "@xterm/headless": "^6.0.0",
     "qrcode": "^1.5.4",
     "ws": "^8.22.0"

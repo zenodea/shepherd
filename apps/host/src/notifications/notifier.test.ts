@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { StatusChange } from "@sheperd/protocol";
+import type { StatusChange } from "@shepherd/protocol";
 import { NotificationActions } from "./actions.ts";
 import { Notifier, notificationFor, ntfySubscribeUrl, type NtfyMessage } from "./notifier.ts";
 import { fakeAgent } from "../testing/fake-herdr.ts";
@@ -20,7 +20,7 @@ describe("notificationFor", () => {
       message: "Fix login bug · laptop",
       priority: 4,
       tags: ["raising_hand"],
-      click: "sheperd://agent/w1%3Ap1",
+      click: "shepherd://agent/w1%3Ap1",
     });
   });
 
@@ -29,7 +29,7 @@ describe("notificationFor", () => {
   });
 
   it("links to this computer when given a host id", () => {
-    expect(notificationFor(change("blocked", "working"), "laptop", "t", "0123456789abcdef")?.click).toBe("sheperd://agent/w1%3Ap1?host=0123456789abcdef");
+    expect(notificationFor(change("blocked", "working"), "laptop", "t", "0123456789abcdef")?.click).toBe("shepherd://agent/w1%3Ap1?host=0123456789abcdef");
   });
 
   it("stays quiet for other transitions", () => {
@@ -43,7 +43,7 @@ describe("Notifier", () => {
   it("publishes JSON to the server and rate-limits repeats per pane", async () => {
     const sent: { url: string; body: NtfyMessage }[] = [];
     const notifier = new Notifier({
-      config: { server: "https://ntfy.example/", topic: "sheperd-abc" },
+      config: { server: "https://ntfy.example/", topic: "shepherd-abc" },
       hostName: "laptop",
       fetch: async (url, init) => {
         sent.push({ url, body: JSON.parse(init.body) });
@@ -55,7 +55,7 @@ describe("Notifier", () => {
     await notifier.handle(change("done", "working"));
     expect(sent.map((s) => s.url)).toEqual(["https://ntfy.example", "https://ntfy.example"]);
     expect(sent.map((s) => s.body.title)).toEqual(["claude needs input", "claude finished"]);
-    expect(sent[0]!.body.topic).toBe("sheperd-abc");
+    expect(sent[0]!.body.topic).toBe("shepherd-abc");
   });
 
   it("puts a blocked agent's question in the body and its options on buttons", async () => {
@@ -69,14 +69,14 @@ describe("Notifier", () => {
     };
     const actions = new NotificationActions({
       server: "https://ntfy.example",
-      topic: "sheperd-abc",
+      topic: "shepherd-abc",
       secret: new Uint8Array(32),
       readPrompt: async () => prompt,
       isBlocked: () => true,
       sendKey: async () => {},
     });
     const notifier = new Notifier({
-      config: { server: "https://ntfy.example", topic: "sheperd-abc" },
+      config: { server: "https://ntfy.example", topic: "shepherd-abc" },
       hostName: "laptop",
       prompts: { read: async () => prompt, actions },
       fetch: async (_url, init) => {
@@ -105,7 +105,7 @@ describe("Notifier", () => {
 
 describe("ntfySubscribeUrl", () => {
   it("builds the ntfy app deep link", () => {
-    expect(ntfySubscribeUrl({ server: "https://ntfy.sh", topic: "sheperd-abc" })).toBe("ntfy://ntfy.sh/sheperd-abc?display=sheperd");
-    expect(ntfySubscribeUrl({ server: "http://10.0.0.2:8080/", topic: "t" })).toBe("ntfy://10.0.0.2:8080/t?display=sheperd&secure=false");
+    expect(ntfySubscribeUrl({ server: "https://ntfy.sh", topic: "shepherd-abc" })).toBe("ntfy://ntfy.sh/shepherd-abc?display=Shepherd");
+    expect(ntfySubscribeUrl({ server: "http://10.0.0.2:8080/", topic: "t" })).toBe("ntfy://10.0.0.2:8080/t?display=Shepherd&secure=false");
   });
 });

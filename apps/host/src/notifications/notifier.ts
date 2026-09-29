@@ -1,4 +1,4 @@
-import type { AgentInfo, AgentStatus, BlockedPrompt, StatusChange } from "@sheperd/protocol";
+import type { AgentInfo, AgentStatus, BlockedPrompt, StatusChange } from "@shepherd/protocol";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { ActionOutcome, NotificationActions, NtfyAction } from "./actions.ts";
 
@@ -29,10 +29,10 @@ const PROMPT_SETTLE_MS = 700;
 const QUESTION_LINES = 2;
 
 const FAILURE_TEXT: Partial<Record<Extract<ActionOutcome, { ok: false }>["reason"], string>> = {
-  changed: "It's asking something else now. Open sheperd to answer.",
+  changed: "It's asking something else now. Open Shepherd to answer.",
   not_blocked: "It isn't waiting for an answer any more.",
-  expired: "That button expired. Open sheperd to answer.",
-  failed: "Sending the answer failed. Open sheperd to answer.",
+  expired: "That button expired. Open Shepherd to answer.",
+  failed: "Sending the answer failed. Open Shepherd to answer.",
 };
 
 export function ntfyBase(server: string): string {
@@ -43,7 +43,7 @@ export function ntfyBase(server: string): string {
 export function ntfySubscribeUrl({ server, topic }: NotifyConfig): string {
   const url = new URL(ntfyBase(server));
   const secure = url.protocol === "https:" ? "" : "&secure=false";
-  return `ntfy://${url.host}${url.pathname.replace(/\/$/, "")}/${topic}?display=sheperd${secure}`;
+  return `ntfy://${url.host}${url.pathname.replace(/\/$/, "")}/${topic}?display=Shepherd${secure}`;
 }
 
 export function agentLabel(agent: AgentInfo | null, paneId: string): string {
@@ -72,7 +72,7 @@ export function notificationFor(change: StatusChange, hostName: string, topic: s
     message: `${detail} · ${hostName}`,
     priority: kind.priority,
     tags: [kind.tag],
-    click: `sheperd://agent/${encodeURIComponent(change.paneId)}${hostId ? `?host=${hostId}` : ""}`,
+    click: `shepherd://agent/${encodeURIComponent(change.paneId)}${hostId ? `?host=${hostId}` : ""}`,
   };
 }
 
@@ -141,7 +141,7 @@ export class Notifier {
       message: text,
       priority: 3,
       tags: ["warning"],
-      click: `sheperd://agent/${encodeURIComponent(outcome.paneId)}${this.hostId ? `?host=${this.hostId}` : ""}`,
+      click: `shepherd://agent/${encodeURIComponent(outcome.paneId)}${this.hostId ? `?host=${this.hostId}` : ""}`,
     });
   }
 
