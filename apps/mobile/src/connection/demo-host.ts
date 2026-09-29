@@ -1,6 +1,6 @@
 // A fake host with realistic agents, for trying the app without a computer
 // running sheperd (EXPO_PUBLIC_DEMO=1) and for design previews.
-import type { AgentInfo, AgentStatus, CallMethod, ProjectsResult, StatusChange } from "@sheperd/protocol";
+import type { ActivityEntry, AgentInfo, AgentStatus, CallMethod, ProjectsResult, StatusChange } from "@sheperd/protocol";
 import type { ConnectionSettings, HostConnection, HostState, TerminalHandle, TerminalHandlers } from "./host-client";
 import { parseAnsi, toStyledLines } from "../agents/ansi";
 import { HostCallError } from "./host-client";
@@ -121,6 +121,37 @@ const TERMINAL_SCREEN = [
   `${ESC}38;5;244m╰────────────────────────────────────────────╯${ESC}0m\r\n`,
 ].join("");
 
+/** A plausible afternoon, newest first. */
+function demoActivity(): ActivityEntry[] {
+  const MIN = 60_000;
+  const now = Date.now();
+  const rows: [number, ActivityEntry["event"], ActivityEntry["previous"], AgentInfo][] = [
+    [2, "blocked", "working", AGENTS[0]!],
+    [9, "working", "idle", AGENTS[1]!],
+    [14, "done", "working", AGENTS[2]!],
+    [31, "working", "blocked", AGENTS[2]!],
+    [52, "blocked", "working", AGENTS[2]!],
+    [58, "working", "idle", AGENTS[0]!],
+    [66, "working", "idle", AGENTS[2]!],
+    [70, "started", null, AGENTS[3]!],
+    [26 * 60, "done", "working", AGENTS[1]!],
+    [26 * 60 + 40, "working", "idle", AGENTS[1]!],
+    [27 * 60, "closed", "done", { ...AGENTS[1]!, pane_id: "w2:p9", terminal_title_stripped: "Bump dependencies" }],
+  ];
+  return rows.map(([ago, event, previous, a], i) => ({
+    id: rows.length - i,
+    at: now - ago * MIN,
+    event,
+    previous,
+    paneId: a.pane_id,
+    workspaceId: a.workspace_id,
+    agent: a.agent ?? null,
+    name: null,
+    title: a.terminal_title_stripped ?? null,
+    cwd: a.cwd ?? null,
+  }));
+}
+
 function base64(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let binary = "";
@@ -171,6 +202,8 @@ export class DemoHost implements HostConnection {
       case "pane.send_keys":
       case "pane.send_input":
         return { type: "ok" } as T;
+      case "sheperd.activity":
+        return { entries: (params as { before?: number }).before ? [] : demoActivity() } as T;
       case "sheperd.start_agent":
         return { paneId: "w1:p2", workspaceId: "w1", ready: true } as T;
       case "sheperd.projects":

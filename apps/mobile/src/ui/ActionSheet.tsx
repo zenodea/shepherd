@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PressableScale } from "./Pressable";
 import { colors, space, type } from "./theme";
 
-export type SheetAction = { icon: ReactNode; title: string; detail?: string; onPress: () => void };
+export type SheetAction = { key?: string; icon: ReactNode; title: string; detail?: string; trailing?: ReactNode; onPress: () => void };
 
 /** A bottom sheet of large actions. Tapping outside closes it. */
 export function ActionSheet({ visible, title, actions, onClose }: { visible: boolean; title?: string; actions: SheetAction[]; onClose: () => void }) {
@@ -17,7 +17,7 @@ export function ActionSheet({ visible, title, actions, onClose }: { visible: boo
         {title ? <Text style={[type.sub, styles.title]}>{title}</Text> : null}
         {actions.map((action) => (
           <PressableScale
-            key={action.title}
+            key={action.key ?? action.title}
             onPress={() => {
               onClose();
               action.onPress();
@@ -29,6 +29,7 @@ export function ActionSheet({ visible, title, actions, onClose }: { visible: boo
               <Text style={type.row}>{action.title}</Text>
               {action.detail ? <Text style={type.sub}>{action.detail}</Text> : null}
             </View>
+            {action.trailing}
           </PressableScale>
         ))}
       </View>

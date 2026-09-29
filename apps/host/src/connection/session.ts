@@ -1,4 +1,5 @@
 import type {
+  ActivityParams,
   AgentInfo,
   CallMethod,
   ClientMessage,
@@ -14,6 +15,7 @@ import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, parseClientMessage } from "@sheperd
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
+import type { ActivityLog } from "../herdr/activity-log.ts";
 import { LaunchError, type Launcher } from "../herdr/launcher.ts";
 import { ScreenRenderer } from "../herdr/screen-renderer.ts";
 import type { TerminalStream } from "../herdr/terminal-stream.ts";
@@ -41,6 +43,8 @@ export type SessionDeps = {
   openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) => TerminalStream;
   /** Implements `sheperd.*` methods; without it they report unsupported. */
   launcher?: Launcher;
+  /** Backs `sheperd.activity`; without it the feed is empty. */
+  activity?: ActivityLog;
 };
 
 export type SessionTransport = {
@@ -202,6 +206,7 @@ export class AppSession {
   private call(method: CallMethod, params: Record<string, unknown>): Promise<unknown> {
     if (method === "agent.read" || method === "pane.read") return this.deps.herdr.request(method, params, { timeoutMs: READ_TIMEOUT_MS });
     if (!method.startsWith("sheperd.")) return this.deps.herdr.request(method, params);
+    if (method === "sheperd.activity") return Promise.resolve(this.deps.activity?.page(params as ActivityParams) ?? { entries: [] });
     const launcher = this.deps.launcher;
     if (!launcher) return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
     if (method === "sheperd.projects") return launcher.projects();

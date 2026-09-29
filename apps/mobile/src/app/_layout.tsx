@@ -3,6 +3,7 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { ConnectionProvider } from "../connection/connection";
+import { AppLockProvider } from "../security/app-lock";
 import { colors } from "../ui/theme";
 
 export default function RootLayout() {
@@ -12,17 +13,19 @@ export default function RootLayout() {
     "JetBrainsMono-Bold": require("../../assets/fonts/JetBrainsMono-Bold.ttf"),
   });
   return (
-    <ConnectionProvider>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
-          animation: "slide_from_right",
-        }}
-      >
-        <Stack.Screen name="scan" options={{ presentation: "modal", animation: "slide_from_bottom" }} />
-      </Stack>
-    </ConnectionProvider>
+    <AppLockProvider>
+      <ConnectionProvider>
+        <StatusBar style="light" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: "slide_from_right",
+          }}
+        >
+          <Stack.Screen name="scan" options={{ presentation: "modal", animation: "slide_from_bottom" }} />
+        </Stack>
+      </ConnectionProvider>
+    </AppLockProvider>
   );
 }

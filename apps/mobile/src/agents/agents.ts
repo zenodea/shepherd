@@ -16,9 +16,11 @@ export function shortPath(path: string | null | undefined): string | null {
 
 /** Project an agent belongs to: the repo for herdr worktrees, else the folder name. */
 export function projectOf(agent: AgentInfo): string {
-  const path = agent.foreground_cwd ?? agent.cwd ?? "";
-  const worktree = /\/\.herdr\/worktrees\/([^/]+)\//.exec(path);
+  return projectOfPath(agent.foreground_cwd ?? agent.cwd, agent.workspace_id);
+}
+
+export function projectOfPath(path: string | null | undefined, fallback: string): string {
+  const worktree = /\/\.herdr\/worktrees\/([^/]+)\//.exec(path ?? "");
   if (worktree) return worktree[1]!;
-  const parts = path.split("/").filter(Boolean);
-  return parts.at(-1) ?? agent.workspace_id;
+  return (path ?? "").split("/").filter(Boolean).at(-1) ?? fallback;
 }

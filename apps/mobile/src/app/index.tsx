@@ -1,14 +1,16 @@
 import { Redirect, useRouter } from "expo-router";
-import { ChevronDown, Plus } from "lucide-react-native";
+import { Activity, Check, ChevronDown, Info, Laptop, Plus, QrCode, Settings } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { AgentInfo } from "@sheperd/protocol";
+import type { AgentInfo, BlockedPrompt } from "@sheperd/protocol";
+import { useAgentActions } from "../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../agents/agents";
 import { PromptCard } from "../agents/PromptCard";
-import type { BlockedPrompt } from "../agents/prompt-options";
+import { useActivity } from "../agents/use-activity";
 import { useBlockedPrompts } from "../agents/use-blocked-prompts";
 import { useConnection, useHostState } from "../connection/connection";
 import type { HostConnection } from "../connection/host-client";
+import { ActionSheet } from "../ui/ActionSheet";
 import { AgentMark } from "../ui/AgentMark";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
@@ -19,10 +21,13 @@ import { colors, radii, space, statusColors, statusLabels, statusRank, type } fr
 
 export default function AgentsScreen() {
   const router = useRouter();
-  const { settings, client } = useConnection();
+  const { settings, hosts, client, switchTo } = useConnection();
   const state = useHostState();
   const [refreshing, setRefreshing] = useState(false);
+  const [hostSheet, setHostSheet] = useState(false);
   const prompts = useBlockedPrompts(client, state.agents);
+  const activity = useActivity(client, settings?.id ?? null, state.status === "online");
+  const actions = useAgentActions(client);
 
   const { blocked, groups } = useMemo(() => {
     const sorted = [...state.agents].sort(
@@ -59,7 +64,7 @@ export default function AgentsScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <PressableScale onPress={() => router.push("/connect")} style={styles.hostChip}>
+        <PressableScale onPress={() => setHostSheet(true)} style={styles.hostChip}>
           <View style={[styles.hostDot, { backgroundColor: online ? statusColors.done : state.status === "connecting" ? colors.subtle : colors.danger }]} />
           <Text style={styles.hostName} numberOfLines={1}>
             {hostName}
@@ -67,6 +72,15 @@ export default function AgentsScreen() {
           <ChevronDown size={14} color={colors.muted} />
         </PressableScale>
         <View style={{ flex: 1 }} />
+        <View>
+          <IconButton label="Activity" onPress={() => router.push("/activity")} filled={false}>
+            <Activity size={19} color={colors.muted} />
+          </IconButton>
+          {activity.unseen > 0 ? <View style={styles.badge} pointerEvents="none" /> : null}
+        </View>
+        <IconButton label="Settings" onPress={() => router.push("/settings")} filled={false}>
+          <Settings size={19} color={colors.muted} />
+        </IconButton>
         {online ? (
           <IconButton label="New agent" onPress={() => router.push("/new")}>
             <Plus size={20} color={colors.text} />
@@ -94,7 +108,14 @@ export default function AgentsScreen() {
             <SectionHeader title="Needs you" count={blocked.length} />
             <View style={{ gap: space.md, paddingHorizontal: space.lg }}>
               {blocked.map((agent) => (
-                <BlockedCard key={agent.pane_id} agent={agent} client={client} prompt={prompts[agent.pane_id]} onOpen={() => open(agent)} />
+                <BlockedCard
+                  key={agent.pane_id}
+                  agent={agent}
+                  client={client}
+                  prompt={prompts[agent.pane_id]}
+                  onOpen={() => open(agent)}
+                  onMore={() => actions.show(agent.pane_id, agent.workspace_id, agent)}
+                />
               ))}
             </View>
           </>
@@ -104,7 +125,12 @@ export default function AgentsScreen() {
           <View key={project}>
             <SectionHeader title={project} count={agents.length} />
             {agents.map((agent) => (
-              <AgentRow key={agent.pane_id} agent={agent} onPress={() => open(agent)} />
+              <AgentRow
+                key={agent.pane_id}
+                agent={agent}
+                onPress={() => open(agent)}
+                onLongPress={() => actions.show(agent.pane_id, agent.workspace_id, agent)}
+              />
             ))}
           </View>
         ))}
@@ -117,8 +143,49 @@ export default function AgentsScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+      {actions.element}
+      <ActionSheet
+        visible={hostSheet}
+        title="Computers"
+        onClose={() => setHostSheet(false)}
+        actions={[
+          ...hosts.map((host) => {
+            const active = host.id === settings.id;
+            return {
+              key: host.id,
+              icon: <Laptop size={19} color={colors.text} />,
+              title: active ? hostName : (host.name ?? "Computer"),
+              detail: active ? statusText(state.status) : "Switch to this computer",
+              trailing: active ? <Check size={18} color={colors.text} /> : null,
+              onPress: () => void switchTo(host.id),
+            };
+          }),
+          {
+            key: "details",
+            icon: <Info size={19} color={colors.text} />,
+            title: `About ${hostName}`,
+            detail: "Addresses, notifications, forget",
+            onPress: () => router.push("/connect"),
+          },
+          {
+            key: "add",
+            icon: <QrCode size={19} color={colors.text} />,
+            title: "Add a computer",
+            detail: "Scan the QR code from npm run host on another computer",
+            onPress: () => router.push("/scan"),
+          },
+        ]}
+      />
     </Screen>
   );
+}
+
+function statusText(status: string): string {
+  if (status === "online") return "Connected";
+  if (status === "connecting") return "Connecting…";
+  if (status === "unauthorized") return "Not paired";
+  return "Can't reach it";
 }
 
 function summary(total: number, working: number, blocked: number): string {
@@ -128,10 +195,10 @@ function summary(total: number, working: number, blocked: number): string {
   return parts.join(" · ");
 }
 
-function AgentRow({ agent, onPress }: { agent: AgentInfo; onPress: () => void }) {
+function AgentRow({ agent, onPress, onLongPress }: { agent: AgentInfo; onPress: () => void; onLongPress: () => void }) {
   const title = agentTitle(agent) ?? agentName(agent);
   return (
-    <PressableScale onPress={onPress} style={styles.row}>
+    <PressableScale onPress={onPress} onLongPress={onLongPress} style={styles.row}>
       <AgentMark agent={agent.agent} size={32} />
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={type.row} numberOfLines={1}>
@@ -156,15 +223,17 @@ function BlockedCard({
   client,
   prompt,
   onOpen,
+  onMore,
 }: {
   agent: AgentInfo;
   client: HostConnection | null;
   prompt: BlockedPrompt | undefined;
   onOpen: () => void;
+  onMore: () => void;
 }) {
   return (
     <View style={styles.card}>
-      <PressableScale onPress={onOpen} highlight={false} style={styles.cardHeader}>
+      <PressableScale onPress={onOpen} onLongPress={onMore} highlight={false} style={styles.cardHeader}>
         <AgentMark agent={agent.agent} size={28} />
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={type.row} numberOfLines={1}>
@@ -194,7 +263,7 @@ function ConnectionBanner() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: space.lg, paddingTop: space.sm, height: 52 },
+  header: { flexDirection: "row", alignItems: "center", gap: space.xs, paddingHorizontal: space.lg, paddingTop: space.sm, height: 52 },
   hostChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -207,6 +276,17 @@ const styles = StyleSheet.create({
     maxWidth: 240,
   },
   hostDot: { width: 7, height: 7, borderRadius: 4 },
+  badge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.brand,
+    borderWidth: 1.5,
+    borderColor: colors.background,
+  },
   hostName: { fontSize: 14, fontWeight: "600", color: colors.text, flexShrink: 1 },
   titleBlock: { paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.sm, gap: 4 },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: 11 },

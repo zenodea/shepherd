@@ -137,16 +137,16 @@ function PairedHost() {
         <Divider inset={56} />
         <ListRow
           icon={<Trash2 size={19} color={colors.danger} />}
-          title="Forget this host"
+          title="Forget this computer"
           destructive
           chevron={false}
           onPress={() =>
             Alert.alert(
-              "Forget this host?",
+              "Forget this computer?",
               "You'll need to scan a new pairing QR code. To also remove this phone on the host, run `npm run host -- devices revoke <id>`.",
               [
                 { text: "Cancel", style: "cancel" },
-                { text: "Forget", style: "destructive", onPress: () => void forget() },
+                { text: "Forget", style: "destructive", onPress: () => void forget().then(() => router.dismissTo("/")) },
               ],
             )
           }

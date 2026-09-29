@@ -114,7 +114,11 @@ The app tries every address in the QR code at once and uses whichever answers fi
 - **Switch tabs.** The strip above the quick keys lists every herdr tab in the agent's workspace, like tmux windows, including shells. Tap one to switch, or + to start a new agent there.
 - **Steer it.** Type into the message box, answer prompts with the chips that appear when an agent is waiting, or use the quick keys: esc, ↵, tab, ⇧tab, arrows and ^C. Tap ⌨ to type straight into the terminal, like on a laptop.
 - **Open terminals and start agents.** In a workspace, tap **+** on the tab strip to open a new terminal tab straight away, or to start an agent. From the agent list, **+** lets you pick a terminal or an agent (whichever of claude, codex, gemini, … are installed), a project, and optionally a new git worktree so parallel agents don't collide. You can also give it a first message, or for a terminal, a command to run.
-- **Get notified** when an agent needs input or finishes, even when the app is closed. See below.
+- **Manage agents.** Long-press an agent in the list, or tap ⋯ in its header, to rename it, rename its herdr workspace, or close it.
+- **See what happened.** The activity feed (the pulse icon on the agent list) lists what your agents did: when each one started, finished, needed input or closed. It shows how long they waited for you and how long they worked. A dot on the icon means something new happened since you last looked. The host keeps the last 1000 events in `~/.config/sheperd/activity.json`.
+- **Several computers.** Pair with as many as you like: tap the computer's name at the top of the agent list to switch, or **Add a computer** to scan another host's QR code. Notifications open on the right computer.
+- **App lock.** In **Settings**, turn on App lock to require your fingerprint (or screen lock) when opening sheperd, and again after it's been in the background for a minute.
+- **Get notified** when an agent needs input or finishes, even when the app is closed, and answer straight from the notification. See below.
 
 ## Notifications
 
@@ -130,6 +134,12 @@ npm run host                    # restart to apply
 3. Run `npm run host -- notify test` to check it works.
 
 You'll get a high-priority notification when an agent needs input, and a normal one when a working agent finishes. Tapping a notification opens that agent in sheperd (APK builds; Expo Go can't receive `sheperd://` links).
+
+**Answer from the notification.** When an agent asks a question with options, such as "Do you want to make this edit?", the notification shows the question and up to three of its answers as buttons (for example **Yes**, **Yes, allow all**, **No**). Tapping one answers the agent without opening sheperd. Here's how it works and what keeps it safe:
+- **How it reaches your computer:** the ntfy app posts a signed token to a second, private reply topic on the same ntfy server, which the host listens to. Nothing needs to reach your computer directly.
+- **What a button can do:** only pick one of the options the agent offered. It can't type anything else.
+- **Checks before answering:** each button works once and for 30 minutes. It's only applied if the agent is still waiting on that exact question; otherwise you get a "Couldn't answer" notification instead.
+- **Who can press them:** anyone who can read your notification topic could press the buttons, just as they can read the notifications. To keep plain notifications without buttons, run `npm run host -- notify actions off`.
 
 The topic name is random and acts as the password. Notifications contain the agent's name and terminal title. Use a self-hosted ntfy server if you'd rather they didn't pass through ntfy.sh. In the ntfy app, turn on *instant delivery* for real-time notifications.
 
@@ -196,6 +206,7 @@ npm run host -- relay off         # stop using the relay
 npm run host -- notify on [url]   # push notifications via ntfy
 npm run host -- notify test       # send a test notification
 npm run host -- notify off        # stop notifications
+npm run host -- notify actions on|off  # answer buttons on notifications (default on)
 ```
 
 | Variable | Default | |
@@ -210,7 +221,7 @@ npm run host -- notify off        # stop notifications
 
 - Each paired phone has its own random 256-bit token. The host stores only a hash of it. Pairing codes work once and expire after 10 minutes.
 - Phones authenticate in the first message on the connection, so the check is the same directly and through the relay. `devices revoke` takes effect immediately, including at the relay.
-- The host forwards only a fixed allowlist of herdr methods: listing, reading, prompting, sending keys, renaming and focusing agents, and reading or typing into panes. See `FORWARDED_METHODS` in `packages/protocol/src/wire.ts`.
+- The host forwards only a fixed allowlist of herdr methods: listing, reading, prompting, sending keys, renaming and focusing agents, reading or typing into panes, and closing or renaming panes and workspaces. See `FORWARDED_METHODS` in `packages/protocol/src/wire.ts`.
 - Starting agents goes through a narrow host method rather than raw herdr calls. It only accepts an agent type herdr supports that is installed on the computer, and only in the directory of an existing herdr workspace.
 - A leaked device token can't run arbitrary shell commands through the API, but it *can* type into your agents and terminals. If a phone is lost, revoke it.
 - Upgrading from an earlier version: the old shared token becomes a device called `legacy`, so already-connected phones keep working until you revoke it.
@@ -220,6 +231,8 @@ npm run host -- notify off        # stop notifications
   - **Messages:** every message after that is ChaCha20-Poly1305 with a counter nonce, so tampering, replays and reordering are detected.
   - **Implementation:** the crypto uses the audited [@noble](https://paulmillr.com/noble/) libraries. See `packages/protocol/src/secure.ts`.
 - **Login stays inside the tunnel:** the phone's token only travels inside the encrypted channel. The relay's admission check gets `sha256(token)` instead, which can't be used to log in.
+- **Notification buttons** carry single-use tokens signed with a key derived from the host's identity key. They expire after 30 minutes and are only applied if the agent is still asking the same question (see [Notifications](#notifications)).
+- **App lock** (optional) keeps someone holding your unlocked phone out of sheperd.
 - **Pinning older phones:** phones paired before encryption existed pin the host key the first time they connect (trust on first use). Re-pair them if you want the key to come from the QR code.
 
 ## Development
@@ -238,23 +251,24 @@ npm run demo:web -w @sheperd/mobile   # the demo in a browser, handy for design 
 apps/
   host/src/
     cli.ts            entry point and commands
-    herdr/            herdr socket client, agent tracker, terminal streams, agent launcher
+    herdr/            herdr socket client, agent tracker, activity log, terminal streams, agent launcher
     connection/       WebSocket server, encrypted session, relay tunnel
     pairing/          paired devices, pairing codes, QR output
-    notifications/    ntfy notifier
+    notifications/    ntfy notifier and answer buttons
     system/           config file, launchd/systemd service
     testing/          fake herdr and test clients
   mobile/src/
     app/              screens (Expo Router)
     connection/       host client (address racing, encryption), saved settings, pairing
-    agents/           agent list helpers, blocked-prompt parsing and answer cards
+    agents/           agent list helpers, answer cards, agent actions, activity feed
+    security/         app lock
     terminal/         xterm.js WebView (the page is generated on npm install)
     ui/               design system: tokens, buttons, rows, status indicators, agent marks
   mobile/assets/icon-src/  icon source (SVG); scripts/render-icons.sh renders the PNGs
   relay/src/          Cloudflare Worker + one HostRoom Durable Object per host
 packages/
   protocol/src/       shared types: herdr API subset, app↔host messages, relay tunnel,
-                      pairing links, end-to-end encryption
+                      pairing links, end-to-end encryption, blocked-prompt parsing
 ```
 
 How the host talks to herdr:
@@ -276,3 +290,4 @@ How the host talks to herdr:
 9. [x] Per-device tokens, one-time pairing codes and revocation
 10. [x] End-to-end encryption between phone and host, so the relay sees only ciphertext
 11. [x] Run the host in the background (launchd / systemd units)
+12. [x] Answer buttons on notifications, activity feed, several computers, app lock

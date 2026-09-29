@@ -1,10 +1,13 @@
 import { spawn } from "node:child_process";
-import type { TerminalMode } from "@sheperd/protocol";
+import { dirname, join } from "node:path";
+import { extractPrompt, toHex, type PaneReadResult, type TerminalMode } from "@sheperd/protocol";
 import { AgentTracker } from "./herdr/agent-tracker.ts";
 import { generateSecret, hostKeyPair, loadConfig, loadOrCreateStoredConfig, saveStoredConfig, type HostConfig } from "./system/config.ts";
 import { DeviceRegistry } from "./pairing/devices.ts";
 import { HerdrClient } from "./herdr/herdr-client.ts";
+import { ActivityLog } from "./herdr/activity-log.ts";
 import { Launcher } from "./herdr/launcher.ts";
+import { NotificationActions } from "./notifications/actions.ts";
 import { Notifier, ntfyBase, ntfySubscribeUrl } from "./notifications/notifier.ts";
 import { hostAddresses, printDevices, printHostInfo, printPairing, renderQr } from "./pairing/pairing.ts";
 import { RelayTunnel, appRelayUrl } from "./connection/relay-tunnel.ts";
@@ -68,6 +71,9 @@ async function serve(config: HostConfig): Promise<void> {
   const devices = new DeviceRegistry(config.configPath);
   devices.watch();
 
+  const activity = new ActivityLog({ path: join(dirname(config.configPath), "activity.json") });
+  activity.attach(tracker);
+
   const deps: SessionDeps = {
     herdr,
     tracker,
@@ -77,6 +83,7 @@ async function serve(config: HostConfig): Promise<void> {
     openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) =>
       new TerminalStream({ herdrBin: config.herdrBin, socketPath: config.socketPath, paneId, mode, cols, rows }),
     launcher: new Launcher({ herdr, onError: (err) => console.error(`[launch] ${err.message}`) }),
+    activity,
   };
 
   const server = await startLocalServer({ port: config.port, bind: config.bind, deps }).catch((err: NodeJS.ErrnoException) => {
@@ -94,14 +101,38 @@ async function serve(config: HostConfig): Promise<void> {
   printDevices(devices);
   console.log("");
 
+  let actions: NotificationActions | null = null;
   if (config.notify) {
+    const onError = (err: Error) => console.error(`[notify] ${err.message}`);
+    const readPrompt = async (paneId: string) => {
+      const { read } = await herdr.request<{ read: PaneReadResult }>("agent.read", { target: paneId, source: "visible", format: "text" });
+      return extractPrompt(read.text);
+    };
+    if (config.notify.actions !== false) {
+      actions = new NotificationActions({
+        server: config.notify.server,
+        topic: config.notify.topic,
+        secret: deps.hostKey.secretKey,
+        readPrompt,
+        isBlocked: (paneId) => tracker.get(paneId)?.agent_status === "blocked",
+        sendKey: async (paneId, key) => void (await herdr.request("agent.send_keys", { target: paneId, keys: [key] })),
+        onOutcome: (outcome) => {
+          if (outcome.ok) console.log(`[notify] answered ${outcome.paneId}: ${outcome.label}`);
+          else if (outcome.reason !== "invalid") void notifier.actionFailed(outcome, outcome.paneId ? tracker.get(outcome.paneId) : null);
+        },
+        onError,
+      });
+      actions.start();
+    }
     const notifier = new Notifier({
       config: config.notify,
       hostName: config.name,
-      onError: (err) => console.error(`[notify] ${err.message}`),
+      hostId: toHex(deps.hostKey.publicKey).slice(0, 16),
+      prompts: actions ? { read: readPrompt, actions } : undefined,
+      onError,
     });
     notifier.attach(tracker);
-    console.log(`Notifications on: ${ntfyBase(config.notify.server)}/${config.notify.topic}`);
+    console.log(`Notifications on: ${ntfyBase(config.notify.server)}/${config.notify.topic}${actions ? " (with answer buttons)" : ""}`);
   }
 
   let tunnel: RelayTunnel | null = null;
@@ -118,8 +149,10 @@ async function serve(config: HostConfig): Promise<void> {
 
   const shutdown = async () => {
     tunnel?.stop();
+    actions?.stop();
     devices.unwatch();
     tracker.stop();
+    activity.flush();
     await server.close();
     herdr.close();
     process.exit(0);
@@ -152,6 +185,16 @@ async function notifyCommand(args: string[]): Promise<void> {
     console.log("  Restart the host to apply.\n");
     return;
   }
+  if (action === "actions") {
+    const mode = args[1];
+    if (!stored.notify || (mode !== "on" && mode !== "off")) {
+      console.error(stored.notify ? "Usage: notify actions on|off" : "Notifications are off. Run: npm run host -- notify on");
+      process.exit(2);
+    }
+    saveStoredConfig(config.configPath, { ...stored, notify: { ...stored.notify, actions: mode === "on" } });
+    console.log(`Answer buttons ${mode === "on" ? "on" : "off"}. Restart the host to apply.`);
+    return;
+  }
   if (action === "off") {
     const { notify: _notify, ...rest } = stored;
     saveStoredConfig(config.configPath, rest);
@@ -179,7 +222,7 @@ async function notifyCommand(args: string[]): Promise<void> {
     console.log("Sent. Check your phone.");
     return;
   }
-  console.error("Usage: notify on [ntfy-server] | notify off | notify test");
+  console.error("Usage: notify on [ntfy-server] | notify off | notify test | notify actions on|off");
   process.exit(2);
 }
 

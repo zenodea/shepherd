@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractPrompt } from "./prompt-options";
+import { extractPrompt } from "./prompt-options.ts";
 
 describe("extractPrompt", () => {
   it("reads a Claude Code style permission prompt", () => {

@@ -1,11 +1,14 @@
-import type { AgentInfo, AgentStatus, StatusChange } from "@sheperd/protocol";
+import type { AgentInfo, AgentStatus, BlockedPrompt, StatusChange } from "@sheperd/protocol";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
+import type { ActionOutcome, NotificationActions, NtfyAction } from "./actions.ts";
 
 export type NotifyConfig = {
   /** ntfy server, e.g. https://ntfy.sh */
   server: string;
   /** Random topic name; anyone who knows it can read the notifications. */
   topic: string;
+  /** Answer buttons on "needs input" notifications (default on). */
+  actions?: boolean;
 };
 
 export type NtfyMessage = {
@@ -15,11 +18,22 @@ export type NtfyMessage = {
   priority: number;
   tags: string[];
   click: string;
+  actions?: NtfyAction[];
 };
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number }>;
 
 const COOLDOWN_MS = 20_000;
+/** Let the agent finish drawing its prompt before reading it. */
+const PROMPT_SETTLE_MS = 700;
+const QUESTION_LINES = 2;
+
+const FAILURE_TEXT: Partial<Record<Extract<ActionOutcome, { ok: false }>["reason"], string>> = {
+  changed: "It's asking something else now. Open sheperd to answer.",
+  not_blocked: "It isn't waiting for an answer any more.",
+  expired: "That button expired. Open sheperd to answer.",
+  failed: "Sending the answer failed. Open sheperd to answer.",
+};
 
 export function ntfyBase(server: string): string {
   return server.replace(/\/+$/, "");
@@ -36,8 +50,12 @@ export function agentLabel(agent: AgentInfo | null, paneId: string): string {
   return agent?.name || agent?.display_agent || agent?.agent || paneId;
 }
 
-/** Which transitions are worth a notification, and how loudly. */
-export function notificationFor(change: StatusChange, hostName: string, topic: string): NtfyMessage | null {
+/**
+ * Which transitions are worth a notification, and how loudly. `hostId` (the
+ * start of the host's public key, as the app stores it) makes the link open on
+ * this computer when the phone is paired with several.
+ */
+export function notificationFor(change: StatusChange, hostName: string, topic: string, hostId?: string): NtfyMessage | null {
   const important: Partial<Record<AgentStatus, { verb: string; priority: number; tag: string }>> = {
     blocked: { verb: "needs input", priority: 4, tag: "raising_hand" },
     done: { verb: "finished", priority: 3, tag: "white_check_mark" },
@@ -54,7 +72,7 @@ export function notificationFor(change: StatusChange, hostName: string, topic: s
     message: `${detail} · ${hostName}`,
     priority: kind.priority,
     tags: [kind.tag],
-    click: `sheperd://agent/${encodeURIComponent(change.paneId)}`,
+    click: `sheperd://agent/${encodeURIComponent(change.paneId)}${hostId ? `?host=${hostId}` : ""}`,
   };
 }
 
@@ -63,13 +81,25 @@ export class Notifier {
   private lastSent = new Map<string, number>();
   private readonly config: NotifyConfig;
   private readonly hostName: string;
+  private readonly hostId: string | undefined;
   private readonly fetchImpl: Fetch;
   private readonly onError: (err: Error) => void;
+  private readonly prompts: { read: (paneId: string) => Promise<BlockedPrompt | null>; actions: NotificationActions } | null;
   private readonly onStatus = (change: StatusChange) => void this.handle(change);
 
-  constructor(opts: { config: NotifyConfig; hostName: string; fetch?: Fetch; onError?: (err: Error) => void }) {
+  constructor(opts: {
+    config: NotifyConfig;
+    hostName: string;
+    hostId?: string;
+    /** With these, "needs input" notifications show the question and answer buttons. */
+    prompts?: { read: (paneId: string) => Promise<BlockedPrompt | null>; actions: NotificationActions };
+    fetch?: Fetch;
+    onError?: (err: Error) => void;
+  }) {
     this.config = opts.config;
     this.hostName = opts.hostName;
+    this.hostId = opts.hostId;
+    this.prompts = opts.prompts ?? null;
     this.fetchImpl = opts.fetch ?? (globalThis.fetch as unknown as Fetch);
     this.onError = opts.onError ?? (() => {});
   }
@@ -80,13 +110,39 @@ export class Notifier {
   }
 
   async handle(change: StatusChange): Promise<void> {
-    const message = notificationFor(change, this.hostName, this.config.topic);
+    const message = notificationFor(change, this.hostName, this.config.topic, this.hostId);
     if (!message) return;
     const key = `${change.paneId}:${change.status}`;
     const now = Date.now();
     if (now - (this.lastSent.get(key) ?? 0) < COOLDOWN_MS) return;
     this.lastSent.set(key, now);
+    if (change.status === "blocked" && this.prompts) await this.addPrompt(message, change.paneId);
     await this.publish(message);
+  }
+
+  /** Put the question in the body and its options on buttons. */
+  private async addPrompt(message: NtfyMessage, paneId: string): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, PROMPT_SETTLE_MS));
+    const prompt = await this.prompts!.read(paneId).catch(() => null);
+    if (!prompt || prompt.options.length === 0) return;
+    const question = prompt.lines.slice(-QUESTION_LINES).join("\n").trim();
+    if (question) message.message = `${question}\n${message.message}`;
+    message.actions = this.prompts!.actions.buttons(paneId, prompt);
+  }
+
+  /** Tell the phone when a button press couldn't be applied. */
+  async actionFailed(outcome: ActionOutcome, agent: AgentInfo | null): Promise<void> {
+    if (outcome.ok || !outcome.paneId) return;
+    const text = FAILURE_TEXT[outcome.reason];
+    if (!text) return;
+    await this.publish({
+      topic: this.config.topic,
+      title: `Couldn't answer ${agentLabel(agent, outcome.paneId)}`,
+      message: text,
+      priority: 3,
+      tags: ["warning"],
+      click: `sheperd://agent/${encodeURIComponent(outcome.paneId)}${this.hostId ? `?host=${this.hostId}` : ""}`,
+    });
   }
 
   async publish(message: NtfyMessage): Promise<void> {

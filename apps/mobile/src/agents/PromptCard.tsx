@@ -3,7 +3,7 @@ import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { HostConnection } from "../connection/host-client";
 import { PressableScale } from "../ui/Pressable";
 import { colors, fonts, radii, space, type } from "../ui/theme";
-import type { BlockedPrompt, PromptOption } from "./prompt-options";
+import type { BlockedPrompt, PromptOption } from "@sheperd/protocol";
 
 function keyLabel(key: string): string {
   if (key === "esc") return "esc";

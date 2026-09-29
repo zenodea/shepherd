@@ -76,11 +76,16 @@ export const FORWARDED_METHODS = [
   "pane.read",
   "pane.send_keys",
   "pane.send_input",
+  // Managing what's open. Destructive, but no more than a control stream,
+  // which can already type `exit` into any pane.
+  "pane.close",
+  "pane.rename",
+  "workspace.rename",
 ] as const;
 export type ForwardedMethod = (typeof FORWARDED_METHODS)[number];
 
 /** Methods the host implements itself, with validated, narrow parameters. */
-export const HOST_METHODS = ["sheperd.projects", "sheperd.start_agent"] as const;
+export const HOST_METHODS = ["sheperd.projects", "sheperd.start_agent", "sheperd.activity"] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
 
@@ -110,6 +115,30 @@ export type StartAgentParams = {
   /** Sent once the agent is ready for input; for a terminal, a command to run. */
   prompt?: string;
 };
+
+/** What happened to an agent: a status it moved to, or it appearing or closing. */
+export type ActivityEvent = AgentStatus | "started" | "closed";
+
+/** One line of the host's activity log. */
+export type ActivityEntry = {
+  /** Increasing; page backwards with `before`. */
+  id: number;
+  /** Unix ms. */
+  at: number;
+  event: ActivityEvent;
+  previous: AgentStatus | null;
+  paneId: string;
+  workspaceId: string;
+  /** Agent kind, e.g. "claude". */
+  agent: string | null;
+  name: string | null;
+  /** What it's working on (its terminal title), if known. */
+  title: string | null;
+  cwd: string | null;
+};
+
+export type ActivityParams = { before?: number; limit?: number };
+export type ActivityResult = { entries: ActivityEntry[] };
 
 export type StartAgentResult = {
   paneId: string;

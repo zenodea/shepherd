@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowDown, ArrowUp, ChevronLeft, Keyboard as KeyboardIcon, Maximize2, Minimize2, Sparkles, SquareTerminal } from "lucide-react-native";
+import { ArrowDown, ArrowUp, ChevronLeft, Ellipsis, Keyboard as KeyboardIcon, Maximize2, Minimize2, Sparkles, SquareTerminal } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Keyboard, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@sheperd/protocol";
+import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
 import { parseAnsi, toStyledLines } from "../../agents/ansi";
 import { PromptChips } from "../../agents/PromptCard";
@@ -76,11 +77,15 @@ type LiveScreen = { paneId: string | null; rows: StyledLine[]; cursor: TerminalL
 const NO_LINES: StyledLine[] = [];
 
 export default function TerminalScreen() {
-  const { paneId } = useLocalSearchParams<{ paneId: string }>();
+  const { paneId, host: linkedHost } = useLocalSearchParams<{ paneId: string; host?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboardInset();
-  const { client } = useConnection();
+  const { client, settings, hosts, switchTo } = useConnection();
+  // Notification links name their computer; switch to it if it isn't the one in use.
+  useEffect(() => {
+    if (linkedHost && settings && linkedHost !== settings.id && hosts.some((h) => h.id === linkedHost)) void switchTo(linkedHost);
+  }, [linkedHost, settings, hosts, switchTo]);
   const state = useHostState();
   const agent = state.agents.find((a) => a.pane_id === paneId) ?? null;
   const workspaceId = agent?.workspace_id ?? paneId?.split(":")[0] ?? null;
@@ -89,6 +94,15 @@ export default function TerminalScreen() {
   const agentsForPrompt = useMemo(() => (agent ? [agent] : []), [agent]);
   const prompt = useBlockedPrompts(client, agentsForPrompt)[paneId ?? ""];
   const online = state.status === "online";
+  const actions = useAgentActions(client, {
+    // Go to another tab in the workspace if there is one, else back to the list.
+    onClosed: (closed) => {
+      const next = tabs.find((t) => t.paneId !== closed);
+      if (next) router.setParams({ paneId: next.paneId });
+      else if (router.canGoBack()) router.back();
+      else router.replace("/");
+    },
+  });
 
   // "fit" = the phone view (native lines); "native" = full width (xterm).
   const [viewMode, setViewMode] = useState<TerminalViewMode>("fit");
@@ -386,6 +400,9 @@ export default function TerminalScreen() {
             </Text>
           </View>
         </View>
+        <IconButton label="More" onPress={() => workspaceId && actions.show(paneId!, workspaceId, agent)} filled={false}>
+          <Ellipsis size={19} color={colors.muted} />
+        </IconButton>
         <IconButton label={viewMode === "native" ? "Phone view" : "Full width"} onPress={toggleMode}>
           {viewMode === "native" ? <Minimize2 size={17} color={colors.text} /> : <Maximize2 size={17} color={colors.text} />}
         </IconButton>
@@ -482,6 +499,7 @@ export default function TerminalScreen() {
         </View>
       </View>
 
+      {actions.element}
       <ActionSheet
         visible={newSheet}
         title={`New in ${agent ? projectOf(agent) : "this workspace"}`}

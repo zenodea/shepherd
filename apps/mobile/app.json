@@ -27,6 +27,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      ["expo-local-authentication", { "faceIDPermission": "sheperd uses Face ID to lock the app." }],
       [
         "expo-build-properties",
         {
