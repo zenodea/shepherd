@@ -9,6 +9,7 @@
   "scripts": {
     "host": "npm start --silent -w @sheperd/host --",
     "app": "npm start -w @sheperd/mobile",
+    "app:demo": "npm run demo -w @sheperd/mobile",
     "relay": "npm run dev -w @sheperd/relay",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
@@ -24,6 +25,7 @@
     "unrs-resolver@1.12.2": true
   },
   "overrides": {
-    "react": "19.2.3"
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   }
 }

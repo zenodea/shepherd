@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentInfo, PaneReadResult } from "@sheperd/protocol";
-import type { HostClient } from "../connection/host-client";
+import type { HostConnection } from "../connection/host-client";
 import { extractPrompt, type BlockedPrompt } from "./prompt-options";
 
 const REFRESH_MS = 4000;
@@ -8,7 +8,7 @@ const REFRESH_MS = 4000;
 type Entry = { revision: number; prompt: BlockedPrompt };
 
 /** For each blocked agent, what it is asking (re-read when its state changes). */
-export function useBlockedPrompts(client: HostClient | null, agents: AgentInfo[]): Record<string, BlockedPrompt> {
+export function useBlockedPrompts(client: HostConnection | null, agents: AgentInfo[]): Record<string, BlockedPrompt> {
   const [entries, setEntries] = useState<Record<string, Entry>>({});
   const inFlight = useRef(new Set<string>());
   const blocked = agents.filter((a) => a.agent_status === "blocked");

@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AppState, Platform } from "react-native";
-import { HostClient, type ConnectionSettings, type HostState } from "./host-client";
+import { DEMO_ENABLED, DEMO_MODE, DEMO_SETTINGS, DemoHost } from "./demo-host";
+import { HostClient, type ConnectionSettings, type HostConnection, type HostState } from "./host-client";
 import { clearSettings, loadSettings, saveSettings } from "./settings-store";
 
 type ConnectionContextValue = {
   /** undefined while loading saved settings */
   settings: ConnectionSettings | null | undefined;
-  client: HostClient | null;
+  client: HostConnection | null;
   connect: (settings: ConnectionSettings) => Promise<void>;
   forget: () => Promise<void>;
 };
@@ -26,17 +27,21 @@ function deviceName(): string {
 const noopSubscribe = () => () => {};
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<ConnectionSettings | null | undefined>(undefined);
+  const [settings, setSettings] = useState<ConnectionSettings | null | undefined>(
+    DEMO_MODE === "unpaired" ? null : DEMO_ENABLED ? DEMO_SETTINGS : undefined,
+  );
 
   useEffect(() => {
-    loadSettings().then(setSettings, () => setSettings(null));
+    if (!DEMO_ENABLED) loadSettings().then(setSettings, () => setSettings(null));
   }, []);
 
   // Re-created only when the user pairs or forgets a host; token and address
   // updates from the host are saved without reconnecting.
-  const client = useMemo(
+  const client = useMemo<HostConnection | null>(
     () =>
-      settings
+      DEMO_ENABLED && settings
+        ? new DemoHost()
+        : settings
         ? new HostClient(settings, {
             deviceName: deviceName(),
             onSettingsChange: (next) => void saveSettings(next),

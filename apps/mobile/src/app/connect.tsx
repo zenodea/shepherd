@@ -1,11 +1,16 @@
-import { Link, useRouter } from "expo-router";
-import { useState } from "react";
-import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Bell, BellOff, ChevronLeft, Globe, Laptop, Network, QrCode, Smartphone, Trash2, Wifi } from "lucide-react-native";
+import { useState, type ReactNode } from "react";
+import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { normaliseHostUrl } from "@sheperd/protocol";
+import { addressHost, addressKind } from "../connection/addresses";
 import { useConnection, useHostState } from "../connection/connection";
-import { usePalette } from "../ui/theme";
+import { Button } from "../ui/Button";
+import { IconButton } from "../ui/IconButton";
+import { ListGroup, ListRow } from "../ui/ListRow";
+import { Divider, Screen } from "../ui/Screen";
+import { colors, fonts, radii, space, statusColors, type } from "../ui/theme";
 
-const MONO = Platform.select({ android: "monospace", default: "Menlo" });
 const NTFY_PLAY_STORE = "https://play.google.com/store/apps/details?id=io.heckel.ntfy";
 
 async function subscribeToNotifications(url: string) {
@@ -19,14 +24,158 @@ async function subscribeToNotifications(url: string) {
   }
 }
 
-export default function ConnectScreen() {
-  const palette = usePalette();
+export default function HostScreen() {
   const router = useRouter();
-  const { settings, connect, forget } = useConnection();
+  const { settings } = useConnection();
+  return (
+    <Screen>
+      {settings ? (
+        <View style={styles.header}>
+          <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+            <ChevronLeft size={22} color={colors.text} />
+          </IconButton>
+          <Text style={styles.headerTitle}>Host</Text>
+        </View>
+      ) : null}
+      {settings ? <PairedHost /> : <PairOnboarding />}
+    </Screen>
+  );
+}
+
+function IconCircle({ children }: { children: ReactNode }) {
+  return <View style={styles.iconCircle}>{children}</View>;
+}
+
+function PairedHost() {
+  const router = useRouter();
+  const { settings, forget } = useConnection();
   const state = useHostState();
+  const urls = state.urls.length > 0 ? state.urls : (settings?.urls ?? []);
+  const online = state.status === "online";
+
+  const status =
+    state.status === "online" && state.activeUrl
+      ? `Connected via ${addressKind(state.activeUrl)}`
+      : state.status === "connecting"
+        ? "Connecting…"
+        : state.status === "unauthorized"
+          ? "Not paired"
+          : "Can't reach your computer";
+
+  return (
+    <ScrollView contentContainerStyle={{ paddingBottom: space.xxl * 2, gap: space.lg }}>
+      <View style={styles.hero}>
+        <IconCircle>
+          <Laptop size={26} color={colors.text} />
+        </IconCircle>
+        <Text style={type.title}>{state.host?.name ?? settings?.name ?? "Host"}</Text>
+        <View style={styles.statusLine}>
+          <View style={[styles.dot, { backgroundColor: online ? statusColors.done : state.status === "connecting" ? colors.subtle : colors.danger }]} />
+          <Text style={type.sub}>
+            {status}
+            {online && state.host ? `  ·  herdr ${state.host.herdrVersion}` : ""}
+          </Text>
+        </View>
+        {state.status === "unauthorized" && state.error ? <Text style={[type.sub, styles.error]}>{state.error}</Text> : null}
+      </View>
+
+      <View>
+        <Text style={styles.groupLabel}>Connection</Text>
+        <ListGroup>
+          {urls.map((url, i) => {
+            const kind = addressKind(url);
+            const active = url === state.activeUrl;
+            return (
+              <View key={url}>
+                {i > 0 ? <Divider inset={56} /> : null}
+                <ListRow
+                  icon={
+                    kind === "Relay" ? (
+                      <Globe size={19} color={colors.muted} />
+                    ) : kind === "Tailscale" ? (
+                      <Network size={19} color={colors.muted} />
+                    ) : (
+                      <Wifi size={19} color={colors.muted} />
+                    )
+                  }
+                  title={kind}
+                  detail={addressHost(url)}
+                  trailing={active ? <Text style={[type.caption, { color: statusColors.done }]}>In use</Text> : null}
+                />
+              </View>
+            );
+          })}
+          {state.device ? (
+            <>
+              <Divider inset={56} />
+              <ListRow icon={<Smartphone size={19} color={colors.muted} />} title="This phone" detail={`${state.device.name} · ${state.device.id}`} />
+            </>
+          ) : null}
+        </ListGroup>
+      </View>
+
+      {online ? (
+        <View>
+          <Text style={styles.groupLabel}>Notifications</Text>
+          <ListGroup>
+            {state.host?.notifyUrl ? (
+              <ListRow
+                icon={<Bell size={19} color={colors.muted} />}
+                title="Get notifications"
+                detail="When an agent needs input or finishes, through the ntfy app"
+                onPress={() => void subscribeToNotifications(state.host!.notifyUrl!)}
+              />
+            ) : (
+              <ListRow icon={<BellOff size={19} color={colors.muted} />} title="Notifications are off" detail="Turn them on with: npm run host -- notify on" />
+            )}
+          </ListGroup>
+        </View>
+      ) : null}
+
+      <ListGroup>
+        <ListRow icon={<QrCode size={19} color={colors.muted} />} title="Pair again" detail="Scan a new QR code from your computer" onPress={() => router.push("/scan")} />
+        <Divider inset={56} />
+        <ListRow
+          icon={<Trash2 size={19} color={colors.danger} />}
+          title="Forget this host"
+          destructive
+          chevron={false}
+          onPress={() =>
+            Alert.alert(
+              "Forget this host?",
+              "You'll need to scan a new pairing QR code. To also remove this phone on the host, run `npm run host -- devices revoke <id>`.",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Forget", style: "destructive", onPress: () => void forget() },
+              ],
+            )
+          }
+        />
+      </ListGroup>
+    </ScrollView>
+  );
+}
+
+function Step({ n, title, children }: { n: number; title: string; children?: ReactNode }) {
+  return (
+    <View style={styles.step}>
+      <View style={styles.stepNumber}>
+        <Text style={styles.stepNumberText}>{n}</Text>
+      </View>
+      <View style={{ flex: 1, gap: 6 }}>
+        <Text style={type.row}>{title}</Text>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function PairOnboarding() {
+  const router = useRouter();
+  const { connect } = useConnection();
   const [manual, setManual] = useState(false);
   const [url, setUrl] = useState("");
-  const [token, setToken] = useState("");
+  const [code, setCode] = useState("");
 
   const saveManual = async () => {
     let normalised: string;
@@ -36,155 +185,102 @@ export default function ConnectScreen() {
       Alert.alert("Invalid address", (err as Error).message);
       return;
     }
-    if (!token.trim()) {
+    if (!code.trim()) {
       Alert.alert("Missing pairing code", "Run `npm run host -- pair` and paste the code it prints.");
       return;
     }
-    await connect({ urls: [normalised], token: token.trim() });
+    await connect({ urls: [normalised], token: code.trim() });
     router.dismissTo("/");
   };
 
-  const input = [styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }];
-  const card = [styles.card, { backgroundColor: palette.surface, borderColor: palette.border }];
-
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {settings ? (
-          <View style={card}>
-            <Text style={[styles.title, { color: palette.text }]}>{state.host?.name ?? settings.name ?? "Host"}</Text>
-            <Text style={{ color: palette.muted }}>
-              {state.status === "online" ? `Connected · herdr ${state.host?.herdrVersion ?? ""}` : statusText(state.status)}
-            </Text>
-            {state.status === "unauthorized" && state.error ? <Text style={{ color: palette.danger }}>{state.error}</Text> : null}
-            {state.device ? (
-              <Text style={{ color: palette.muted, fontSize: 12 }}>
-                This phone: {state.device.name} ({state.device.id})
-              </Text>
-            ) : null}
-            {(state.urls.length > 0 ? state.urls : settings.urls).map((u) => (
-              <Text key={u} style={[styles.url, { color: u === state.activeUrl ? palette.accent : palette.muted }]} numberOfLines={1}>
-                {u === state.activeUrl ? "● " : "○ "}
-                {u}
-              </Text>
-            ))}
-          </View>
-        ) : (
-          <Text style={[styles.help, { color: palette.muted }]}>
-            On your computer, run <Text style={{ fontFamily: MONO, color: palette.text }}>npm run host</Text> and scan the QR code
-            it prints.
-          </Text>
-        )}
+      <ScrollView contentContainerStyle={styles.onboarding} keyboardShouldPersistTaps="handled">
+        <View style={styles.hero}>
+          <IconCircle>
+            <Laptop size={26} color={colors.text} />
+          </IconCircle>
+          <Text style={styles.onboardingTitle}>Pair with your computer</Text>
+          <Text style={[type.body, { color: colors.muted, textAlign: "center" }]}>Watch and steer your herdr agents from here.</Text>
+        </View>
 
-        {settings && state.status === "online" ? (
-          <View style={card}>
-            <Text style={[styles.label, { color: palette.text, marginTop: 0 }]}>Notifications</Text>
-            {state.host?.notifyUrl ? (
-              <>
-                <Text style={{ color: palette.muted }}>
-                  Get a notification when an agent needs input or finishes, even when this app is closed.
-                </Text>
-                <Pressable
-                  style={[styles.button, styles.outline, { borderColor: palette.accent, marginTop: 8 }]}
-                  onPress={() => void subscribeToNotifications(state.host!.notifyUrl!)}
-                >
-                  <Text style={[styles.buttonText, { color: palette.accent }]}>Get notifications (ntfy)</Text>
-                </Pressable>
-              </>
-            ) : (
-              <Text style={{ color: palette.muted }}>
-                Off. To turn them on, run <Text style={{ fontFamily: MONO, color: palette.text }}>npm run host -- notify on</Text> on
-                your computer and restart the host.
-              </Text>
-            )}
-          </View>
-        ) : null}
+        <View style={styles.steps}>
+          <Step n={1} title="On your computer, start the host">
+            <Text style={styles.command}>npm run host</Text>
+          </Step>
+          <Step n={2} title="Scan the QR code it prints" />
+          <Step n={3} title="Your agents show up here" />
+        </View>
 
-        <Link href="/scan" asChild>
-          <Pressable style={[styles.button, { backgroundColor: palette.accent }]}>
-            <Text style={styles.buttonText}>{settings ? "Scan a new QR code" : "Scan QR code"}</Text>
-          </Pressable>
-        </Link>
+        <View style={{ gap: space.sm }}>
+          <Button title="Scan QR code" icon={<QrCode size={18} color={colors.onPrimary} />} onPress={() => router.push("/scan")} />
+          {!manual ? <Button title="Enter a code instead" variant="ghost" onPress={() => setManual(true)} /> : null}
+        </View>
 
         {manual ? (
-          <View style={{ gap: 8 }}>
-            <Text style={[styles.label, { color: palette.text }]}>Host address</Text>
+          <View style={{ gap: space.sm }}>
             <TextInput
-              style={input}
+              style={styles.input}
               value={url}
               onChangeText={setUrl}
-              placeholder="192.168.1.20 or wss://relay…/connect"
-              placeholderTextColor={palette.muted}
+              placeholder="Address, e.g. 192.168.1.20"
+              placeholderTextColor={colors.subtle}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
             />
-            <Text style={[styles.label, { color: palette.text }]}>Pairing code</Text>
             <TextInput
-              style={input}
-              value={token}
-              onChangeText={setToken}
-              placeholder="p_… from npm run host -- pair"
-              placeholderTextColor={palette.muted}
+              style={styles.input}
+              value={code}
+              onChangeText={setCode}
+              placeholder="Pairing code (p_…)"
+              placeholderTextColor={colors.subtle}
               autoCapitalize="none"
               autoCorrect={false}
-              secureTextEntry
             />
-            <Pressable style={[styles.button, styles.outline, { borderColor: palette.accent }]} onPress={saveManual}>
-              <Text style={[styles.buttonText, { color: palette.accent }]}>Connect</Text>
-            </Pressable>
+            <Text style={type.caption}>The code is on the `Code:` line printed by `npm run host -- pair`.</Text>
+            <Button title="Pair" variant="secondary" onPress={saveManual} />
           </View>
-        ) : (
-          <Pressable style={styles.link} onPress={() => setManual(true)}>
-            <Text style={{ color: palette.accent }}>Enter address and pairing code manually</Text>
-          </Pressable>
-        )}
-
-        {settings ? (
-          <Pressable
-            style={styles.link}
-            onPress={() =>
-              Alert.alert(
-                "Forget this host?",
-                "You'll need to scan a new pairing QR code. To also remove this phone on the host, run `npm run host -- devices revoke <id>`.",
-                [
-                { text: "Cancel", style: "cancel" },
-                  { text: "Forget", style: "destructive", onPress: () => void forget() },
-                ],
-              )
-            }
-          >
-            <Text style={{ color: palette.danger }}>Forget this host</Text>
-          </Pressable>
         ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function statusText(status: string): string {
-  switch (status) {
-    case "connecting":
-      return "Connecting…";
-    case "unauthorized":
-      return "Not paired";
-    case "offline":
-      return "Can't reach the host. Retrying…";
-    default:
-      return "Not connected";
-  }
-}
-
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12 },
-  help: { fontSize: 15, lineHeight: 22 },
-  card: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 4 },
-  title: { fontSize: 18, fontWeight: "600" },
-  url: { fontFamily: MONO, fontSize: 12 },
-  label: { fontSize: 14, fontWeight: "600", marginTop: 4 },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
-  button: { borderRadius: 8, paddingVertical: 14, alignItems: "center" },
-  outline: { borderWidth: 1.5, backgroundColor: "transparent" },
-  buttonText: { color: "#FFFFFF", fontWeight: "600", fontSize: 16 },
-  link: { alignItems: "center", paddingVertical: 10 },
+  header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
+  headerTitle: { fontSize: 17, fontWeight: "600", color: colors.text },
+  hero: { alignItems: "center", gap: 8, paddingHorizontal: space.xl, paddingTop: space.lg },
+  iconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  statusLine: { flexDirection: "row", alignItems: "center", gap: 7 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  error: { color: colors.danger, textAlign: "center" },
+  groupLabel: { ...type.sub, paddingHorizontal: space.lg + 4, paddingBottom: 8 },
+  onboarding: { padding: space.xl, paddingTop: space.xxl * 2, gap: space.xxl },
+  onboardingTitle: { fontSize: 24, fontWeight: "600", color: colors.text, textAlign: "center" },
+  steps: { gap: space.lg },
+  step: { flexDirection: "row", gap: space.md },
+  stepNumber: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center" },
+  stepNumberText: { fontSize: 13, fontWeight: "600", color: colors.text },
+  command: {
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    color: colors.text,
+    backgroundColor: colors.surface,
+    borderRadius: radii.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignSelf: "flex-start",
+    overflow: "hidden",
+  },
+  input: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    color: colors.text,
+    fontSize: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
 });

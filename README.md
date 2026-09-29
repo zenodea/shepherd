@@ -2,6 +2,14 @@
 
 Check on and steer your [herdr](https://herdr.dev) agents from your Android phone: see which agents need input, read their output, answer prompts, and send new instructions.
 
+<p>
+  <img src="docs/screenshots/agents.png" width="19%" alt="Agent list with an agent waiting for input" />
+  <img src="docs/screenshots/terminal.png" width="19%" alt="Live terminal with quick keys and composer" />
+  <img src="docs/screenshots/new-agent.png" width="19%" alt="Starting a new agent" />
+  <img src="docs/screenshots/host.png" width="19%" alt="Host connection and notifications" />
+  <img src="docs/screenshots/pairing.png" width="19%" alt="Pairing with your computer" />
+</p>
+
 ```
  ┌──────── Your computer ─────────┐                                   ┌──── Phone ─────┐
  │ herdr ◄── herdr.sock ── host ══╪═══ same Wi-Fi / Tailscale ═══════►│ sheperd app    │
@@ -75,6 +83,8 @@ adb install apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 
 This APK is signed with the debug key, which is fine for personal use but not for the Play Store.
 
+**Just want to look around first?** Run `npm run app:demo` and open it in Expo Go. It's a demo mode with a pretend computer and pretend agents, so you don't need a host.
+
 **Option C: Try it without building (development)**
 
 Install **Expo Go** from the Play Store, run `npm run app`, and scan the QR code **from inside the Expo Go app**. The app is Android-first and doesn't run in a web browser.
@@ -95,10 +105,11 @@ The app tries every address in the QR code at once and uses whichever answers fi
 
 - **See every agent at a glance.** Agents that need input are listed first. For each one, the list shows what it's asking, such as "Do you want to make this edit?", with one button per answer. Tap an answer to reply without opening the agent.
 - **Watch the live terminal.** Tap an agent to see its screen as it updates.
+  - **Fit to phone** (the default) resizes the agent to your screen so it's readable. Drag to scroll back through its history, including full-screen agents like Claude Code, then tap ↓ to return to live. Your computer's pane goes back to its normal size when you leave.
   - **Full width** shows the pane exactly as it looks on your computer, scaled to fit. Pinch to zoom.
-  - **Fit to phone** reflows the agent to your screen size so it's readable, and lets you type into it directly. Your computer's pane goes back to its normal size when you leave.
-- **Steer it.** Send a message, or use the quick keys: Enter, Esc, arrows, `1`/`2`/`3`, `y`/`n`, Ctrl-C.
-- **Start new agents.** Tap **+ New** and pick an agent (whichever of claude, codex, gemini, … are installed) and a project. It can start in a new git worktree so parallel agents don't collide, and you can give it a first message.
+- **Switch tabs.** The strip above the quick keys lists every herdr tab in the agent's workspace, like tmux windows, including shells. Tap one to switch, or + to start a new agent there.
+- **Steer it.** Type into the message box, answer prompts with the chips that appear when an agent is waiting, or use the quick keys: esc, ↵, tab, ⇧tab, arrows and ^C.
+- **Open terminals and start agents.** In a workspace, tap **+** on the tab strip to open a new terminal tab straight away, or to start an agent. From the agent list, **+** lets you pick a terminal or an agent (whichever of claude, codex, gemini, … are installed), a project, and optionally a new git worktree so parallel agents don't collide. You can also give it a first message, or for a terminal, a command to run.
 - **Get notified** when an agent needs input or finishes, even when the app is closed. See below.
 
 ## Notifications
@@ -195,7 +206,7 @@ npm run host -- notify off        # stop notifications
 
 - Each paired phone has its own random 256-bit token. The host stores only a hash of it. Pairing codes work once and expire after 10 minutes.
 - Phones authenticate in the first message on the connection, so the check is the same directly and through the relay. `devices revoke` takes effect immediately, including at the relay.
-- The host forwards only a fixed allowlist of herdr methods: listing, reading, prompting, sending keys, renaming and focusing agents. See `FORWARDED_METHODS` in `packages/protocol/src/wire.ts`.
+- The host forwards only a fixed allowlist of herdr methods: listing, reading, prompting, sending keys, renaming and focusing agents, and reading or typing into panes. See `FORWARDED_METHODS` in `packages/protocol/src/wire.ts`.
 - Starting agents goes through a narrow host method rather than raw herdr calls. It only accepts an agent type herdr supports that is installed on the computer, and only in the directory of an existing herdr workspace.
 - A leaked device token can't run arbitrary shell commands through the API, but it *can* type into your agents and terminals. If a phone is lost, revoke it.
 - Upgrading from an earlier version: the old shared token becomes a device called `legacy`, so already-connected phones keep working until you revoke it.
@@ -215,6 +226,8 @@ npm test            # protocol, host, app client and relay end-to-end tests
 npm run lint        # app lint
 npm run dev -w @sheperd/host   # host with auto-reload
 npm run relay                  # relay locally (copy apps/relay/.dev.vars.example to apps/relay/.dev.vars)
+npm run app:demo               # the app with a fake host (EXPO_PUBLIC_DEMO=1)
+npm run demo:web -w @sheperd/mobile   # the demo in a browser, handy for design work
 ```
 
 ```
@@ -232,7 +245,8 @@ apps/
     connection/       host client (address racing, encryption), saved settings, pairing
     agents/           agent list helpers, blocked-prompt parsing and answer cards
     terminal/         xterm.js WebView (the page is generated on npm install)
-    ui/               theme
+    ui/               design system: tokens, buttons, rows, status indicators, agent marks
+  mobile/assets/icon-src/  icon source (SVG); scripts/render-icons.sh renders the PNGs
   relay/src/          Cloudflare Worker + one HostRoom Durable Object per host
 packages/
   protocol/src/       shared types: herdr API subset, app↔host messages, relay tunnel,

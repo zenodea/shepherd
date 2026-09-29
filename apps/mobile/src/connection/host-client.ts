@@ -64,6 +64,8 @@ export type TerminalHandlers = {
 
 export type TerminalHandle = {
   input: (text: string) => void;
+  /** Scroll the pane's view (control streams only). */
+  scroll: (direction: "up" | "down", lines: number) => void;
   close: () => void;
 };
 
@@ -110,6 +112,12 @@ function toBytes(data: unknown): Uint8Array | null {
   if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   return null;
 }
+
+/** What screens use; implemented by HostClient and by the demo host. */
+export type HostConnection = Pick<
+  HostClient,
+  "getState" | "subscribe" | "onStatusChange" | "start" | "stop" | "reconnectNow" | "call" | "openTerminal"
+>;
 
 /**
  * Connection to a sheperd host (directly or through the relay). Reconnects
@@ -216,6 +224,9 @@ export class HostClient {
     return {
       input: (text) => {
         if (this.terminals.has(streamId)) this.send({ type: "terminal.input", streamId, text });
+      },
+      scroll: (direction, lines) => {
+        if (this.terminals.has(streamId) && lines > 0) this.send({ type: "terminal.scroll", streamId, direction, lines: Math.min(lines, 1000) });
       },
       close: () => {
         if (!this.terminals.delete(streamId)) return;

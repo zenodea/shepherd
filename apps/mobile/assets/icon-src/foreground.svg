@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="crook" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD27A"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <!-- the crook: staff with a hook, drawn inside the adaptive-icon safe zone -->
+  <path d="M 616 748 L 616 400 A 112 112 0 0 0 392 400 L 392 432 C 392 512 490 516 494 452"
+        fill="none" stroke="url(#crook)" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- the flock: agents in the app's status colours (working, needs input, done) -->
+  <circle cx="346" cy="702" r="44" fill="#3B82F6"/>
+  <circle cx="460" cy="702" r="44" fill="#F97316"/>
+  <circle cx="403" cy="608" r="44" fill="#22C55E"/>
+</svg>

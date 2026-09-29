@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@expo/metro-runtime": "~57.0.16",
     "@sheperd/protocol": "*",
     "eslint-config-expo": "~57.0.2",
     "expo": "~57.0.26",
@@ -10,15 +11,21 @@
     "expo-camera": "~57.0.6",
     "expo-constants": "~57.0.20",
     "expo-crypto": "~57.0.3",
+    "expo-haptics": "~57.0.3",
     "expo-linking": "~57.0.11",
     "expo-router": "~57.0.24",
     "expo-secure-store": "~57.0.4",
+    "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
+    "lucide-react-native": "^1.48.0",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2",
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
@@ -40,7 +47,9 @@
     "lint": "expo lint",
     "test": "vitest run",
     "postinstall": "node scripts/generate-terminal-html.mjs",
-    "generate:terminal": "node scripts/generate-terminal-html.mjs"
+    "generate:terminal": "node scripts/generate-terminal-html.mjs",
+    "demo": "EXPO_PUBLIC_DEMO=1 expo start",
+    "demo:web": "EXPO_PUBLIC_DEMO=1 EXPO_NO_WEB_SETUP=1 expo start --web"
   },
   "private": true
 }

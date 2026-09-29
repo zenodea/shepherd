@@ -23,14 +23,20 @@ const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=6, user-scalable=yes">
 <style>${xtermCss}
-html, body { margin: 0; padding: 0; height: 100%; background: #0A0C0F; overflow: auto; }
-#terminal { padding: 4px; box-sizing: border-box; }
-body.fit #terminal { height: 100%; }
-.xterm .xterm-viewport { background-color: #0A0C0F !important; }
+html, body { margin: 0; padding: 0; height: 100%; background: #0A0A0A; overflow: hidden; }
+body.native { overflow: auto; }
+#terminal { padding: 6px 6px 0 8px; box-sizing: border-box; height: 100%; }
+.xterm .xterm-viewport { background-color: #0A0A0A !important; overflow-y: hidden !important; }
+/* xterm 6 draws its own scrollbar; ours is slimmer and only shows while scrolling back. */
+.xterm .xterm-scrollable-element > .scrollbar, .xterm .xterm-scrollable-element > .shadow { display: none !important; }
+#scrollbar { position: fixed; top: 6px; bottom: 6px; right: 2px; width: 3px; opacity: 0; transition: opacity 180ms; pointer-events: none; }
+#scrollbar.visible { opacity: 1; }
+#thumb { width: 3px; border-radius: 2px; background: rgba(250,250,250,0.35); }
 </style>
 </head>
 <body>
 <div id="terminal"></div>
+<div id="scrollbar"><div id="thumb"></div></div>
 <script>${inline(xtermJs)}</script>
 <script>${inline(fitJs)}</script>
 <script>${inline(pageJs)}</script>

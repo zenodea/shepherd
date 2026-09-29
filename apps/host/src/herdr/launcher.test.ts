@@ -105,6 +105,15 @@ describe("Launcher", () => {
     expect(calls("tab.close")).toEqual([{ tab_id: "w1:t9" }]);
   });
 
+  it("opens a plain terminal tab, optionally running a command", async () => {
+    herdr.handlers["pane.send_input"] = () => ({ type: "ok" });
+    const result = await launcher.start({ kind: "terminal", workspaceId: "w1", prompt: "npm run dev" });
+    expect(result).toEqual({ paneId: "w1:p9", workspaceId: "w1", ready: true });
+    expect(calls("tab.create")).toEqual([{ workspace_id: "w1", cwd: "/code/api/src", label: null, focus: false }]);
+    expect(calls("agent.start")).toEqual([]);
+    expect(calls("pane.send_input")).toEqual([{ pane_id: "w1:p9", text: "npm run dev", keys: ["enter"] }]);
+  });
+
   it("refuses kinds that aren't installed and unknown workspaces", async () => {
     await expect(launcher.start({ kind: "gemini", workspaceId: "w1" })).rejects.toMatchObject({ code: "unknown_kind" });
     await expect(launcher.start({ kind: "bash", workspaceId: "w1" })).rejects.toMatchObject({ code: "unknown_kind" });

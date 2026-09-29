@@ -70,6 +70,11 @@ export const FORWARDED_METHODS = [
   "workspace.list",
   "tab.list",
   "session.snapshot",
+  // Any tab, not just agents: scrollback history, keys, and a line of input.
+  // Terminal control streams can already type into any pane, so these add no power.
+  "pane.read",
+  "pane.send_keys",
+  "pane.send_input",
 ] as const;
 export type ForwardedMethod = (typeof FORWARDED_METHODS)[number];
 
@@ -92,12 +97,16 @@ export type ProjectsResult = {
   projects: Project[];
 };
 
+/** `kind` for a plain shell tab instead of an agent. */
+export const TERMINAL_KIND = "terminal";
+
 export type StartAgentParams = {
+  /** An agent kind from `sheperd.projects`, or "terminal" for a plain shell. */
   kind: string;
   workspaceId: string;
   /** Start in a new git worktree of the project instead of a new tab. */
   newWorktree?: boolean;
-  /** Sent once the agent is ready for input. */
+  /** Sent once the agent is ready for input; for a terminal, a command to run. */
   prompt?: string;
 };
 

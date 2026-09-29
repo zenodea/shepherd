@@ -8,25 +8,37 @@ export type TerminalViewMode = "native" | "fit";
 
 export type TerminalViewHandle = {
   write: (frame: TerminalFrame) => void;
+  /** Earlier output (base64 ANSI), written before the live screen so it can be scrolled back to. */
+  writeHistory: (bytes: string) => void;
   reset: () => void;
   setMode: (mode: TerminalViewMode) => void;
+  scrollToBottom: () => void;
 };
 
 type Props = {
   onReady: () => void;
   /** In fit mode, the size that fills the view at a readable font. */
   onFitSize: (cols: number, rows: number) => void;
-  /** Keystrokes typed into the terminal (fit mode only). */
-  onInput: (data: string) => void;
+  /** A tap on the terminal (used to dismiss the keyboard). */
+  onTap?: () => void;
+  /** The view reached or left the bottom of the scrollback (full-width mode). */
+  onScrollChange?: (atBottom: boolean) => void;
+  /** Fit mode: the user dragged to scroll; positive lines = back in time. */
+  onWheel?: (lines: number) => void;
 };
 
 type FrameMessage = Pick<TerminalFrame, "width" | "height" | "bytes">;
-type PageMessage = { type: "ready" } | { type: "fitSize"; cols: number; rows: number } | { type: "input"; data: string };
+type PageMessage =
+  | { type: "ready" }
+  | { type: "fitSize"; cols: number; rows: number }
+  | { type: "tap" }
+  | { type: "scroll"; atBottom: boolean }
+  | { type: "wheel"; lines: number };
 
 const FLUSH_MS = 16;
 
 /** xterm.js in a WebView. Frames are batched into one injection per tick. */
-export const TerminalView = forwardRef<TerminalViewHandle, Props>(function TerminalView({ onReady, onFitSize, onInput }, ref) {
+export const TerminalView = forwardRef<TerminalViewHandle, Props>(function TerminalView({ onReady, onFitSize, onTap, onScrollChange, onWheel }, ref) {
   const webView = useRef<WebView>(null);
   const queue = useRef<FrameMessage[]>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,11 +61,16 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         queue.current.push({ width: frame.width, height: frame.height, bytes: frame.bytes });
         if (!flushTimer.current) flushTimer.current = setTimeout(flush, FLUSH_MS);
       },
+      writeHistory: (bytes) => {
+        flush();
+        inject({ type: "history", bytes });
+      },
       reset: () => {
         queue.current = [];
         inject({ type: "reset" });
       },
       setMode: (mode) => inject({ type: "mode", mode }),
+      scrollToBottom: () => inject({ type: "scrollToBottom" }),
     }),
     [flush, inject],
   );
@@ -67,7 +84,9 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     }
     if (msg.type === "ready") onReady();
     else if (msg.type === "fitSize") onFitSize(msg.cols, msg.rows);
-    else if (msg.type === "input") onInput(msg.data);
+    else if (msg.type === "tap") onTap?.();
+    else if (msg.type === "scroll") onScrollChange?.(msg.atBottom);
+    else if (msg.type === "wheel") onWheel?.(msg.lines);
   };
 
   return (
@@ -78,7 +97,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
       onMessage={onMessage}
       style={styles.webview}
       javaScriptEnabled
-      scalesPageToFit
+      scrollEnabled={false}
       setBuiltInZoomControls
       setDisplayZoomControls={false}
       overScrollMode="never"

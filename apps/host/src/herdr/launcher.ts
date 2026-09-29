@@ -1,7 +1,7 @@
 import { accessSync, constants } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { delimiter, join } from "node:path";
-import type { Project, ProjectsResult, StartAgentParams, StartAgentResult } from "@sheperd/protocol";
+import { TERMINAL_KIND, type Project, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@sheperd/protocol";
 import { HerdrRequestError, type HerdrClient } from "./herdr-client.ts";
 
 /** Shown first in the app; everything else herdr supports follows alphabetically. */
@@ -80,7 +80,8 @@ export class Launcher {
     if (prompt !== undefined && (typeof prompt !== "string" || prompt.length > MAX_PROMPT_LENGTH)) {
       throw new LaunchError("invalid_params", "prompt must be a string");
     }
-    if (!(await this.kinds()).includes(kind)) throw new LaunchError("unknown_kind", `${kind} is not installed on this computer`);
+    const terminal = kind === TERMINAL_KIND;
+    if (!terminal && !(await this.kinds()).includes(kind)) throw new LaunchError("unknown_kind", `${kind} is not installed on this computer`);
 
     const snapshot = await this.snapshot();
     if (!snapshot.workspaces.some((ws) => ws.workspace_id === workspaceId)) {
@@ -92,10 +93,17 @@ export class Launcher {
       : await this.herdr.request<CreatedPane & { tab: { tab_id: string } }>("tab.create", {
           workspace_id: workspaceId,
           cwd: workspaceCwd(snapshot, workspaceId),
-          label: kind,
+          label: terminal ? null : kind,
           focus: false,
         });
     const pane = created.root_pane;
+
+    if (terminal) {
+      if (prompt?.trim()) {
+        await this.herdr.request("pane.send_input", { pane_id: pane.pane_id, text: prompt, keys: ["enter"] }).catch((err: Error) => this.onError(err));
+      }
+      return { paneId: pane.pane_id, workspaceId: pane.workspace_id, ready: true };
+    }
 
     let ready = true;
     try {

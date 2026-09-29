@@ -9,14 +9,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.sheperd.app"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#1B1F24",
+        "backgroundColor": "#0E1A2B",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -42,11 +42,25 @@
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#0E1A2B",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0A1220"
+          }
+        }
       ]
     ],
     "scheme": "sheperd",
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "backgroundColor": "#0A0A0A"
   }
 }
