@@ -46,8 +46,10 @@ export const radii = { sm: 8, md: 10, lg: 14, xl: 20, pill: 999 } as const;
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
+/** JetBrains Mono is bundled (assets/fonts) and loaded in the root layout. */
 export const fonts = {
-  mono: Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" }),
+  mono: Platform.select({ web: "JetBrainsMono, ui-monospace, Menlo, monospace", default: "JetBrainsMono" }),
+  monoBold: Platform.select({ web: "JetBrainsMono-Bold, ui-monospace, Menlo, monospace", default: "JetBrainsMono-Bold" }),
 } as const;
 
 export const type = {

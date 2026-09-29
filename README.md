@@ -3,11 +3,14 @@
 Check on and steer your [herdr](https://herdr.dev) agents from your Android phone: see which agents need input, read their output, answer prompts, and send new instructions.
 
 <p>
-  <img src="docs/screenshots/agents.png" width="19%" alt="Agent list with an agent waiting for input" />
-  <img src="docs/screenshots/terminal.png" width="19%" alt="Live terminal with quick keys and composer" />
-  <img src="docs/screenshots/new-agent.png" width="19%" alt="Starting a new agent" />
-  <img src="docs/screenshots/host.png" width="19%" alt="Host connection and notifications" />
-  <img src="docs/screenshots/pairing.png" width="19%" alt="Pairing with your computer" />
+  <img src="docs/screenshots/agents.png" width="16%" alt="Agent list with an agent waiting for input" />
+  <img src="docs/screenshots/terminal.png" width="16%" alt="An agent's live terminal with answer chips, tabs, quick keys and composer" />
+  <img src="docs/screenshots/scrollback.png" width="16%" alt="Scrolling back through a shell's output" />
+  <img src="docs/screenshots/new-agent.png" width="16%" alt="Opening a terminal or starting an agent" />
+  <img src="docs/screenshots/host.png" width="16%" alt="Host connection and notifications" />
+  <img src="docs/screenshots/pairing.png" width="16%" alt="Pairing with your computer" />
+</p>
+<p><sub>Screenshots from demo mode (<code>npm run app:demo</code>): the computer, projects and conversations are made up.</sub>
 </p>
 
 ```
@@ -87,7 +90,7 @@ This APK is signed with the debug key, which is fine for personal use but not fo
 
 **Option C: Try it without building (development)**
 
-Install **Expo Go** from the Play Store, run `npm run app`, and scan the QR code **from inside the Expo Go app**. The app is Android-first and doesn't run in a web browser.
+Install **Expo Go** from the Play Store, run `npm run app:prod` (or `npm run app` while developing), and scan the QR code **from inside the Expo Go app**. The app is Android-first and doesn't run in a web browser.
 
 If Expo Go can't load the project, your phone probably can't reach your computer at the `exp://…:8081` address Metro prints. This happens on guest, office and university Wi-Fi. If both devices are on Tailscale, use your computer's Tailscale IP instead:
 
@@ -105,10 +108,11 @@ The app tries every address in the QR code at once and uses whichever answers fi
 
 - **See every agent at a glance.** Agents that need input are listed first. For each one, the list shows what it's asking, such as "Do you want to make this edit?", with one button per answer. Tap an answer to reply without opening the agent.
 - **Watch the live terminal.** Tap an agent to see its screen as it updates.
-  - **Fit to phone** (the default) resizes the agent to your screen so it's readable. Drag to scroll back through its history, including full-screen agents like Claude Code, then tap ↓ to return to live. Your computer's pane goes back to its normal size when you leave.
+  - **Phone view** (the default) resizes the agent to your screen and draws it as native text. You scroll up out of the live screen into older output like any Android list, with momentum and text selection. Tap ↓ to jump back to live. Your computer's pane goes back to its normal size when you leave.
   - **Full width** shows the pane exactly as it looks on your computer, scaled to fit. Pinch to zoom.
+  - For Claude Code and similar full-screen agents, the history above the live screen is the agent's full transcript, loaded when you open it while the agent is idle.
 - **Switch tabs.** The strip above the quick keys lists every herdr tab in the agent's workspace, like tmux windows, including shells. Tap one to switch, or + to start a new agent there.
-- **Steer it.** Type into the message box, answer prompts with the chips that appear when an agent is waiting, or use the quick keys: esc, ↵, tab, ⇧tab, arrows and ^C.
+- **Steer it.** Type into the message box, answer prompts with the chips that appear when an agent is waiting, or use the quick keys: esc, ↵, tab, ⇧tab, arrows and ^C. Tap ⌨ to type straight into the terminal, like on a laptop.
 - **Open terminals and start agents.** In a workspace, tap **+** on the tab strip to open a new terminal tab straight away, or to start an agent. From the agent list, **+** lets you pick a terminal or an agent (whichever of claude, codex, gemini, … are installed), a project, and optionally a new git worktree so parallel agents don't collide. You can also give it a first message, or for a terminal, a command to run.
 - **Get notified** when an agent needs input or finishes, even when the app is closed. See below.
 
@@ -256,6 +260,8 @@ packages/
 How the host talks to herdr:
 - **Agents and events:** herdr's socket API (`herdr api schema --json`). herdr answers one request per connection.
 - **Live terminals:** `herdr terminal session observe|control`, which streams screen frames as newline-delimited JSON.
+  - **Phone view:** the host runs a headless xterm (`apps/host/src/herdr/screen-renderer.ts`) over those frames and sends only the rows that changed, as styled lines, which the app draws natively.
+  - **Full width:** the app gets the raw frames and runs xterm.js in a WebView.
 
 ## Roadmap
 

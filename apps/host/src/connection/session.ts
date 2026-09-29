@@ -8,18 +8,25 @@ import type {
   StartAgentParams,
   StatusChange,
   TerminalMode,
+  TerminalRender,
 } from "@sheperd/protocol";
 import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, parseClientMessage } from "@sheperd/protocol";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
 import { LaunchError, type Launcher } from "../herdr/launcher.ts";
+import { ScreenRenderer } from "../herdr/screen-renderer.ts";
 import type { TerminalStream } from "../herdr/terminal-stream.ts";
 
 export const MAX_STREAMS_PER_SESSION = 8;
 /** Used when herdr can't report a pane's size. */
 const FALLBACK_SIZE = { cols: 120, rows: 40 };
 const RESTORE_TIMEOUT_MS = 2000;
+/**
+ * History reads can take a while: for full-screen agents herdr scrolls the
+ * agent to collect its transcript (up to 15s, plus up to 5s to scroll back).
+ */
+const READ_TIMEOUT_MS = 45_000;
 export const AUTH_TIMEOUT_MS = 10_000;
 
 type Size = { cols: number; rows: number };
@@ -157,6 +164,7 @@ export class AppSession {
           msg.paneId,
           msg.mode,
           msg.cols !== undefined && msg.rows !== undefined ? { cols: msg.cols, rows: msg.rows } : null,
+          msg.render ?? "ansi",
         );
         return;
 
@@ -192,6 +200,7 @@ export class AppSession {
   }
 
   private call(method: CallMethod, params: Record<string, unknown>): Promise<unknown> {
+    if (method === "agent.read" || method === "pane.read") return this.deps.herdr.request(method, params, { timeoutMs: READ_TIMEOUT_MS });
     if (!method.startsWith("sheperd.")) return this.deps.herdr.request(method, params);
     const launcher = this.deps.launcher;
     if (!launcher) return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
@@ -199,7 +208,7 @@ export class AppSession {
     return launcher.start(params as StartAgentParams);
   }
 
-  private async openStream(streamId: string, paneId: string, mode: TerminalMode, requested: Size | null): Promise<void> {
+  private async openStream(streamId: string, paneId: string, mode: TerminalMode, requested: Size | null, render: TerminalRender = "ansi"): Promise<void> {
     if (this.streams.has(streamId) || this.opening.has(streamId)) {
       this.streamError(streamId, "stream id already in use");
       return;
@@ -223,8 +232,19 @@ export class AppSession {
 
     const stream = this.deps.openTerminal(paneId, mode, size.cols, size.rows);
     this.streams.set(streamId, stream);
+    // "lines": emulate the terminal here and send the screen as styled rows.
+    const renderer =
+      render === "lines"
+        ? new ScreenRenderer(size.cols, size.rows, (update) => {
+            if (!this.closed) this.send({ type: "terminal.lines", streamId, ...update });
+          })
+        : null;
     stream.on("frame", (frame) => {
       if (this.closed) return;
+      if (renderer) {
+        renderer.write(Buffer.from(frame.bytes, "base64"), { width: frame.width, height: frame.height });
+        return;
+      }
       this.send({
         type: "terminal.frame",
         streamId,
@@ -236,6 +256,7 @@ export class AppSession {
       });
     });
     stream.on("closed", (reason) => {
+      renderer?.dispose();
       this.streams.delete(streamId);
       if (restoreTo) this.restorePaneSize(paneId, restoreTo);
       if (!this.closed) this.send({ type: "terminal.closed", streamId, reason });

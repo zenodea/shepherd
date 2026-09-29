@@ -1,18 +1,21 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowDown, ArrowUp, ChevronLeft, Maximize2, Minimize2, Sparkles, SquareTerminal } from "lucide-react-native";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from "react-native";
+import { ArrowDown, ArrowUp, ChevronLeft, Keyboard as KeyboardIcon, Maximize2, Minimize2, Sparkles, SquareTerminal } from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Keyboard, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult } from "@sheperd/protocol";
+import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@sheperd/protocol";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
+import { parseAnsi, toStyledLines } from "../../agents/ansi";
 import { PromptChips } from "../../agents/PromptCard";
 import { useBlockedPrompts } from "../../agents/use-blocked-prompts";
 import { useWorkspaceTabs } from "../../agents/use-workspace-tabs";
 import { WorkspaceTabs } from "../../agents/WorkspaceTabs";
 import { useConnection, useHostState } from "../../connection/connection";
-import type { TerminalHandle } from "../../connection/host-client";
+import type { TerminalHandle, TerminalLines } from "../../connection/host-client";
 import { loadPref, savePref } from "../../connection/prefs";
-import { textToBase64 } from "../../terminal/encoding";
+import { useKeyboardInset } from "../../connection/use-keyboard-inset";
+import { KeyboardCapture, type KeyboardCaptureHandle } from "../../terminal/KeyboardCapture";
+import { LiveTerminal, type LiveTerminalHandle } from "../../terminal/LiveTerminal";
 import { TerminalView, type TerminalViewHandle, type TerminalViewMode } from "../../terminal/TerminalView";
 import { ActionSheet } from "../../ui/ActionSheet";
 import { IconButton } from "../../ui/IconButton";
@@ -22,7 +25,15 @@ import { StatusIndicator } from "../../ui/StatusIndicator";
 import { colors, fonts, space, statusColors, statusLabels } from "../../ui/theme";
 
 const REOPEN_MS = 1500;
-const HISTORY_LINES = 2000;
+const SCROLLBACK_LINES = 3000;
+/** herdr keeps at most this many lines of an agent's transcript. */
+const TRANSCRIPT_LINES = 1000;
+/** herdr may scroll an agent for up to 15s (plus 5s back) to collect its transcript. */
+const TRANSCRIPT_TIMEOUT_MS = 40_000;
+/** Time for herdr to let go of the phone view's controller before collecting. */
+const HANDOFF_MS = 400;
+/** Refresh the scrollback above the live screen when it's older than this and you scroll up. */
+const SCROLLBACK_STALE_MS = 4000;
 
 /** Quick keys (herdr key names), grouped like Superset's bar. */
 const QUICK_KEYS: { label: string; keys: string[]; confirm?: string }[][] = [
@@ -41,24 +52,34 @@ const QUICK_KEYS: { label: string; keys: string[]; confirm?: string }[][] = [
   [{ label: "^C", keys: ["ctrl+c"], confirm: "Send Ctrl-C?" }],
 ];
 
-function useKeyboardVisible(): boolean {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", () => setVisible(true));
-    const hide = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", () => setVisible(false));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-  return visible;
+/** Plain text of a styled line, for matching history against the live screen. */
+function lineText(line: StyledLine): string {
+  return line.map((span) => span[0]).join("").trim();
 }
+
+/**
+ * Cut the part of a transcript that's already on the live screen: find where
+ * the screen's first lines appear (last occurrence) and keep what's above.
+ */
+function withoutLiveOverlap(history: StyledLine[], historyText: string[], screen: StyledLine[]): StyledLine[] {
+  const probes = screen.map(lineText).filter((t) => t.length >= 6).slice(0, 8);
+  for (const probe of probes) {
+    const key = probe.slice(0, 40);
+    for (let i = historyText.length - 1; i >= 0; i--) {
+      if (historyText[i]!.startsWith(key)) return history.slice(0, i);
+    }
+  }
+  return history;
+}
+
+type LiveScreen = { paneId: string | null; rows: StyledLine[]; cursor: TerminalLines["cursor"] | null };
+const NO_LINES: StyledLine[] = [];
 
 export default function TerminalScreen() {
   const { paneId } = useLocalSearchParams<{ paneId: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const keyboardVisible = useKeyboardVisible();
+  const keyboard = useKeyboardInset();
   const { client } = useConnection();
   const state = useHostState();
   const agent = state.agents.find((a) => a.pane_id === paneId) ?? null;
@@ -67,23 +88,61 @@ export default function TerminalScreen() {
   const pane = panes.find((p) => p.pane_id === paneId) ?? null;
   const agentsForPrompt = useMemo(() => (agent ? [agent] : []), [agent]);
   const prompt = useBlockedPrompts(client, agentsForPrompt)[paneId ?? ""];
-
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [viewMode, setViewMode] = useState<TerminalViewMode>("fit");
-  const [ready, setReady] = useState(false);
-  const [fitSize, setFitSize] = useState<{ cols: number; rows: number } | null>(null);
-  const [closedReason, setClosedReason] = useState<string | null>(null);
-  const [atBottom, setAtBottom] = useState(true);
-  const [epoch, setEpoch] = useState(0);
-  const [newSheet, setNewSheet] = useState(false);
-  const terminal = useRef<TerminalViewHandle>(null);
-  // Fit mode: how far back herdr's view is scrolled, in lines (0 = live).
-  const scrollOffset = useRef(0);
-  const stream = useRef<TerminalHandle | null>(null);
   const online = state.status === "online";
 
-  // Remember full width vs fit to phone.
+  // "fit" = the phone view (native lines); "native" = full width (xterm).
+  const [viewMode, setViewMode] = useState<TerminalViewMode>("fit");
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [closedReason, setClosedReason] = useState<string | null>(null);
+  const [epoch, setEpoch] = useState(0);
+  const [newSheet, setNewSheet] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const [typing, setTyping] = useState(false);
+
+  // Phone view state.
+  const [liveSize, setLiveSize] = useState<{ cols: number; rows: number } | null>(null);
+  // Tagged with their pane, so switching tabs never shows another pane's content.
+  const [screenState, setScreen] = useState<LiveScreen>({ paneId: null, rows: [], cursor: null });
+  const [scrollbackState, setScrollback] = useState<{ paneId: string | null; lines: StyledLine[] }>({ paneId: null, lines: [] });
+  const screen = screenState.paneId === paneId ? screenState : { paneId, rows: NO_LINES, cursor: null };
+  const scrollback = scrollbackState.paneId === paneId ? scrollbackState.lines : NO_LINES;
+  const agentStatus = agent?.agent_status ?? null;
+  const isAgent = agent !== null;
+  const readable = agentStatus === "idle" || agentStatus === "done";
+  // Counts the agent's turns: each time it goes back to work, its transcript goes stale.
+  const [turn, setTurn] = useState({ paneId, status: agentStatus, n: 0 });
+  if (turn.paneId !== paneId || turn.status !== agentStatus) {
+    setTurn({ paneId, status: agentStatus, n: turn.paneId === paneId && !readable ? turn.n + 1 : turn.n });
+  }
+  const [transcriptState, setTranscriptState] = useState<{ paneId: string | null; turn: number; ok: boolean }>({
+    paneId: null,
+    turn: 0,
+    ok: false,
+  });
+  const hasTranscript = transcriptState.paneId === paneId;
+  const transcriptOk = hasTranscript && transcriptState.ok;
+  const scrollbackMeta = useRef<{ at: number; rows: number } | null>(null);
+  // A transcript runs up to what's on screen now; show that part only once.
+  const scrollbackText = useMemo(() => scrollback.map(lineText), [scrollback]);
+  const history = useMemo(
+    () => (transcriptOk ? withoutLiveOverlap(scrollback, scrollbackText, screen.rows) : scrollback),
+    [transcriptOk, scrollback, scrollbackText, screen.rows],
+  );
+
+  // Full-width view state.
+  const [webReady, setWebReady] = useState(false);
+
+  const live = useRef<LiveTerminalHandle>(null);
+  const web = useRef<TerminalViewHandle>(null);
+  const capture = useRef<KeyboardCaptureHandle>(null);
+  const stream = useRef<TerminalHandle | null>(null);
+  const paneIdRef = useRef(paneId);
+  useEffect(() => {
+    paneIdRef.current = paneId;
+  }, [paneId]);
+
+  // Remember the chosen view.
   useEffect(() => {
     void loadPref("viewMode").then((v) => {
       if (v === "native" || v === "fit") setViewMode(v);
@@ -94,97 +153,164 @@ export default function TerminalScreen() {
     setViewMode(next);
     void savePref("viewMode", next);
   };
-
   useEffect(() => {
-    if (ready) terminal.current?.setMode(viewMode);
-  }, [ready, viewMode]);
+    if (webReady && viewMode === "native") web.current?.setMode("native");
+  }, [webReady, viewMode]);
 
-  // Load the scrollback, then stream the live screen. Re-runs when the pane,
-  // view, size or connection changes.
-  const fitCols = fitSize?.cols;
-  const fitRows = fitSize?.rows;
+  /**
+   * Agents' real transcripts: herdr collects them from full-screen agents like
+   * Claude Code by scrolling them while they're idle, but not while anyone
+   * controls the pane. So the phone view lets go of the pane while this runs:
+   * when you open an idle agent, and when you scroll up after it has worked
+   * since. Busy agents fall back to herdr's scrollback below.
+   */
+  const needsTranscript =
+    viewMode === "fit" && online && isAgent && readable && (!hasTranscript || (transcriptState.turn !== turn.n && !atBottom));
+  const collectingFor = needsTranscript ? `${paneId}:${turn.n}` : null;
   useEffect(() => {
-    if (!client || !paneId || !ready || !online) return;
-    if (viewMode === "fit" && (!fitCols || !fitRows)) return;
-
+    if (!collectingFor || !client || !paneId) return;
+    const target = paneId;
+    const forTurn = turn.n;
     let cancelled = false;
-    let handle: TerminalHandle | null = null;
-    let reopen: ReturnType<typeof setTimeout> | null = null;
-    terminal.current?.reset();
-    scrollOffset.current = 0;
-
     void (async () => {
-      setAtBottom(true);
-      // Full width only observes, so load the scrollback to scroll through
-      // locally. In fit mode herdr scrolls the pane itself.
-      if (viewMode === "native") {
-        try {
-          const { read } = await client.call<{ read: PaneReadResult }>("pane.read", {
-            pane_id: paneId,
-            source: "recent_unwrapped",
-            format: "ansi",
-            lines: HISTORY_LINES,
-          });
-          if (!cancelled && read.text) terminal.current?.writeHistory(textToBase64(read.text.replace(/\r?\n/g, "\r\n") + "\r\n"));
-        } catch {
-          // history is a nice-to-have
-        }
+      await new Promise((resolve) => setTimeout(resolve, HANDOFF_MS));
+      if (cancelled) return;
+      let lines: StyledLine[] | null = null;
+      try {
+        const { read } = await client.call<{ read: PaneReadResult }>(
+          "agent.read",
+          { target, source: "recent_unwrapped", format: "text", lines: TRANSCRIPT_LINES },
+          { timeoutMs: TRANSCRIPT_TIMEOUT_MS },
+        );
+        lines = toStyledLines(parseAnsi(read.text));
+      } catch {
+        // keep what we had; the live screen still works
       }
       if (cancelled) return;
+      if (lines) setScrollback({ paneId: target, lines });
+      setTranscriptState((prev) => ({ paneId: target, turn: forTurn, ok: lines !== null || (prev.paneId === target && prev.ok) }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Keyed on `collectingFor`, which already covers the pane and turn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectingFor, client]);
+
+  /** Shells, and agents without a transcript yet: herdr's scrollback, in colour. */
+  const loadScrollback = useCallback(
+    async (rows: number) => {
+      if (!client || !paneId) return;
+      const target = paneId;
+      scrollbackMeta.current = { at: Date.now(), rows };
+      try {
+        const { read } = await client.call<{ read: PaneReadResult }>("pane.read", {
+          pane_id: target,
+          source: "recent",
+          format: "ansi",
+          lines: SCROLLBACK_LINES,
+        });
+        if (target !== paneIdRef.current) return;
+        const lines = read.text.replace(/\r\n?/g, "\n").split("\n");
+        const scrollback = toStyledLines(parseAnsi(lines.slice(0, Math.max(0, lines.length - rows)).join("\n")));
+        // A busy agent's scrollback is only its screen; keep an earlier transcript instead.
+        setScrollback((prev) =>
+          isAgent && prev.paneId === target && scrollback.length < prev.lines.length ? prev : { paneId: target, lines: scrollback },
+        );
+      } catch {
+        // the live screen still works without it
+      }
+    },
+    [client, paneId, isAgent],
+  );
+
+  // The stream effect calls the latest loader without re-running when it changes.
+  const loadScrollbackRef = useRef(loadScrollback);
+  const hasTranscriptRef = useRef(false);
+  useEffect(() => {
+    loadScrollbackRef.current = loadScrollback;
+    hasTranscriptRef.current = transcriptOk;
+  }, [loadScrollback, transcriptOk]);
+
+  // Open the stream. Phone view: the host renders styled lines at the phone's
+  // size. Full width: raw frames for xterm at the pane's own size.
+  const cols = liveSize?.cols;
+  const rows = liveSize?.rows;
+  useEffect(() => {
+    if (!client || !paneId || !online) return;
+    if (viewMode === "fit" && (!cols || !rows || needsTranscript)) return;
+    if (viewMode === "native" && !webReady) return;
+
+    let reopen: ReturnType<typeof setTimeout> | null = null;
+    let first = true;
+    const onClosed = (reason: string) => {
+      stream.current = null;
+      setClosedReason(reason);
+      if (reason !== "disconnected") reopen = setTimeout(() => setEpoch((e) => e + 1), REOPEN_MS);
+    };
+
+    let handle: TerminalHandle | null;
+    if (viewMode === "fit") {
       handle = client.openTerminal(
         paneId,
-        viewMode === "fit" ? { mode: "control", cols: fitCols, rows: fitRows } : { mode: "observe" },
+        { mode: "control", cols, rows, render: "lines" },
+        {
+          onLines: (update) => {
+            setClosedReason(null);
+            setScreen((prev) => {
+              const next = update.full || prev.paneId !== paneId ? [] : prev.rows.slice(0, update.height);
+              for (let y = 0; y < update.height; y++) {
+                const changed = update.lines[y];
+                if (changed) next[y] = changed;
+                else if (next[y] === undefined) next[y] = [];
+              }
+              return { paneId, rows: next, cursor: update.cursor };
+            });
+            if (first && !hasTranscriptRef.current) void loadScrollbackRef.current(update.height);
+            first = false;
+          },
+          onClosed,
+        },
+      );
+    } else {
+      web.current?.reset();
+      handle = client.openTerminal(
+        paneId,
+        { mode: "observe" },
         {
           onFrame: (frame) => {
             setClosedReason(null);
-            terminal.current?.write(frame);
+            web.current?.write(frame);
           },
-          onClosed: (reason) => {
-            stream.current = null;
-            setClosedReason(reason);
-            if (reason !== "disconnected") reopen = setTimeout(() => setEpoch((e) => e + 1), REOPEN_MS);
-          },
+          onClosed,
         },
       );
-      stream.current = handle;
-    })();
-
+    }
+    stream.current = handle;
     return () => {
-      cancelled = true;
       if (reopen) clearTimeout(reopen);
       handle?.close();
       stream.current = null;
     };
-  }, [client, paneId, ready, online, viewMode, fitCols, fitRows, epoch]);
+  }, [client, paneId, online, viewMode, cols, rows, webReady, epoch, needsTranscript]);
 
-  const openTerminal = async () => {
+  const onAtBottomChange = (bottom: boolean) => {
+    setAtBottom(bottom);
+    const meta = scrollbackMeta.current;
+    // Shells: refresh the scrollback when you start reading back. (Agents'
+    // transcripts are collected by scrolling the agent, so not on every look.)
+    if (!bottom && !isAgent && meta && Date.now() - meta.at > SCROLLBACK_STALE_MS) void loadScrollback(meta.rows);
+  };
+
+  const toLive = () => live.current?.scrollToBottom();
+
+  const openTerminalTab = async () => {
     if (!client || !workspaceId) return;
     try {
       const result = await client.call<StartAgentResult>("sheperd.start_agent", { kind: TERMINAL_KIND, workspaceId });
       router.setParams({ paneId: result.paneId });
     } catch (err) {
       Alert.alert("Couldn't open a terminal", (err as Error).message);
-    }
-  };
-
-  const onWheel = (lines: number) => {
-    const handle = stream.current;
-    if (!handle) return;
-    const next = Math.max(0, scrollOffset.current + lines);
-    const delta = next - scrollOffset.current;
-    scrollOffset.current = next;
-    if (delta > 0) handle.scroll("up", delta);
-    else if (delta < 0) handle.scroll("down", -delta);
-    setAtBottom(next === 0);
-  };
-
-  const toLive = () => {
-    if (viewMode === "fit" && scrollOffset.current > 0) {
-      stream.current?.scroll("down", scrollOffset.current + 5);
-      scrollOffset.current = 0;
-      setAtBottom(true);
-    } else {
-      terminal.current?.scrollToBottom();
     }
   };
 
@@ -218,6 +344,19 @@ export default function TerminalScreen() {
     }
   };
 
+  const toggleTyping = () => {
+    if (typing) {
+      capture.current?.blur();
+      return;
+    }
+    if (viewMode !== "fit") {
+      Alert.alert("Switch to the phone view", "Typing straight into the terminal works in the phone view. Use the message box in full width.");
+      return;
+    }
+    toLive();
+    capture.current?.focus();
+  };
+
   const title = agent ? (agentTitle(agent) ?? agentName(agent)) : (pane?.terminal_title_stripped ?? pane?.title ?? "Terminal");
   const canSend = draft.trim().length > 0 && !sending;
 
@@ -247,24 +386,38 @@ export default function TerminalScreen() {
             </Text>
           </View>
         </View>
-        <IconButton label={viewMode === "native" ? "Fit to phone" : "Full width"} onPress={toggleMode}>
-          {viewMode === "native" ? <Maximize2 size={17} color={colors.text} /> : <Minimize2 size={17} color={colors.text} />}
+        <IconButton label={viewMode === "native" ? "Phone view" : "Full width"} onPress={toggleMode}>
+          {viewMode === "native" ? <Minimize2 size={17} color={colors.text} /> : <Maximize2 size={17} color={colors.text} />}
         </IconButton>
       </View>
 
       {!online ? <Banner>{state.status === "connecting" ? "Connecting…" : "Can't reach your computer. Retrying…"}</Banner> : null}
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+      <View style={{ flex: 1, paddingBottom: keyboard.inset }}>
         <View style={styles.terminal}>
-          <TerminalView
-            ref={terminal}
-            onReady={() => setReady(true)}
-            onFitSize={(cols, rows) => setFitSize((prev) => (prev?.cols === cols && prev.rows === rows ? prev : { cols, rows }))}
-            onTap={() => Keyboard.dismiss()}
-            onScrollChange={(bottom) => viewMode === "native" && setAtBottom(bottom)}
-            onWheel={onWheel}
-          />
-          {!atBottom ? (
+          {viewMode === "fit" ? (
+            <LiveTerminal
+              ref={live}
+              history={history}
+              screen={screen.rows}
+              cursor={screen.cursor}
+              onSize={(c, r) => setLiveSize((prev) => (prev?.cols === c && prev.rows === r ? prev : { cols: c, rows: r }))}
+              onAtBottomChange={onAtBottomChange}
+            />
+          ) : (
+            <TerminalView
+              ref={web}
+              onReady={() => setWebReady(true)}
+              onFitSize={() => {}}
+              onTap={() => Keyboard.dismiss()}
+            />
+          )}
+          {needsTranscript ? (
+            <View style={styles.loading} pointerEvents="none">
+              <Text style={styles.loadingText}>Loading history…</Text>
+            </View>
+          ) : null}
+          {!atBottom && viewMode === "fit" ? (
             <PressableScale onPress={toLive} style={styles.toBottom} accessibilityLabel="Back to live">
               <ArrowDown size={18} color={colors.text} />
             </PressableScale>
@@ -274,7 +427,9 @@ export default function TerminalScreen() {
           ) : null}
         </View>
 
-        <View style={[styles.bottom, { paddingBottom: keyboardVisible ? space.sm : Math.max(insets.bottom, space.sm) }]}>
+        <KeyboardCapture ref={capture} onKeys={(data) => stream.current?.input(data)} onActiveChange={setTyping} />
+
+        <View style={[styles.bottom, { paddingBottom: keyboard.visible ? space.sm : Math.max(insets.bottom, space.sm) }]}>
           {agent?.agent_status === "blocked" && prompt ? <PromptChips key={JSON.stringify(prompt)} client={client} paneId={paneId!} prompt={prompt} /> : null}
 
           <WorkspaceTabs
@@ -283,14 +438,19 @@ export default function TerminalScreen() {
             onSelect={(tab) => {
               if (tab.paneId === paneId) return;
               setClosedReason(null);
+              setAtBottom(true);
+              scrollbackMeta.current = null;
               router.setParams({ paneId: tab.paneId });
             }}
             onNew={() => setNewSheet(true)}
           />
 
           <View style={styles.keys}>
+            <PressableScale onPress={toggleTyping} style={[styles.key, styles.typeKey, typing && styles.typeKeyActive]} accessibilityLabel="Type into the terminal">
+              <KeyboardIcon size={16} color={typing ? colors.onPrimary : colors.text} />
+            </PressableScale>
             {QUICK_KEYS.map((group, gi) => (
-              <View key={gi} style={[styles.keyGroup, gi > 0 && styles.keyGroupDivider]}>
+              <View key={gi} style={[styles.keyGroup, styles.keyGroupDivider]}>
                 {group.map((k) => (
                   <PressableScale key={k.label} onPress={() => sendKeys(k.keys, k.confirm)} style={styles.key}>
                     <Text style={styles.keyLabel}>{k.label}</Text>
@@ -300,24 +460,27 @@ export default function TerminalScreen() {
             ))}
           </View>
 
-          <View style={styles.composer}>
-            <TextInput
-              style={styles.input}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Type a message…"
-              placeholderTextColor={colors.subtle}
-              multiline
-              numberOfLines={1}
-            />
-            {canSend || sending ? (
-              <PressableScale onPress={submit} disabled={!canSend} style={styles.send} accessibilityLabel="Send">
-                <ArrowUp size={18} color={colors.onPrimary} strokeWidth={2.5} />
-              </PressableScale>
-            ) : null}
-          </View>
+          {!typing ? (
+            <View style={styles.composer}>
+              <TextInput
+                style={styles.input}
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={agent ? `Message ${agentName(agent)}…` : "Run a command…"}
+                placeholderTextColor={colors.subtle}
+                multiline
+              />
+              {canSend || sending ? (
+                <PressableScale onPress={submit} disabled={!canSend} style={styles.send} accessibilityLabel="Send">
+                  <ArrowUp size={18} color={colors.onPrimary} strokeWidth={2.5} />
+                </PressableScale>
+              ) : null}
+            </View>
+          ) : (
+            <Text style={styles.typingHint}>Typing into the terminal · tap ⌨ to stop</Text>
+          )}
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       <ActionSheet
         visible={newSheet}
@@ -328,7 +491,7 @@ export default function TerminalScreen() {
             icon: <SquareTerminal size={19} color={colors.text} />,
             title: "Terminal",
             detail: "A new shell tab, opened right away",
-            onPress: () => void openTerminal(),
+            onPress: () => void openTerminalTab(),
           },
           {
             icon: <Sparkles size={19} color={colors.text} />,
@@ -343,8 +506,8 @@ export default function TerminalScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
-  headerText: { flex: 1, gap: 3 },
+  header: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
+  headerText: { flex: 1, gap: 3, marginLeft: 4 },
   title: { fontSize: 16, fontWeight: "600", color: colors.text },
   subline: { flexDirection: "row", alignItems: "center", gap: 7 },
   sublineText: { fontSize: 12.5, color: colors.muted, flexShrink: 1 },
@@ -362,8 +525,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  loading: {
+    position: "absolute",
+    top: 10,
+    alignSelf: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(38,38,38,0.95)",
+  },
+  loadingText: { fontSize: 12, color: colors.muted },
   notice: { position: "absolute", bottom: 10, left: 12, right: 12, textAlign: "center", fontSize: 12, color: colors.muted },
-  bottom: { backgroundColor: colors.background, gap: 8, paddingTop: 8 },
+  bottom: { backgroundColor: colors.background, gap: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.hairline },
   keys: {
     flexDirection: "row",
     alignSelf: "stretch",
@@ -372,12 +545,13 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     height: 36,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
   },
   keyGroup: { flexDirection: "row", alignItems: "center", flexGrow: 1, justifyContent: "space-around" },
   keyGroupDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.14)" },
-  key: { minWidth: 32, height: 30, paddingHorizontal: 6, alignItems: "center", justifyContent: "center", borderRadius: 7 },
+  key: { minWidth: 30, height: 30, paddingHorizontal: 5, alignItems: "center", justifyContent: "center", borderRadius: 7 },
+  typeKey: { marginRight: 3, width: 34 },
+  typeKeyActive: { backgroundColor: colors.primary },
   keyLabel: { fontFamily: fonts.mono, fontSize: 13, color: colors.text },
   composer: {
     flexDirection: "row",
@@ -394,4 +568,5 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, color: colors.text, fontSize: 15, maxHeight: 120, paddingTop: 8, paddingBottom: 8, textAlignVertical: "top" },
   send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  typingHint: { fontSize: 12.5, color: colors.muted, textAlign: "center", paddingVertical: 12 },
 });

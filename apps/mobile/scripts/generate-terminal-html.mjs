@@ -23,20 +23,21 @@ const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=6, user-scalable=yes">
 <style>${xtermCss}
-html, body { margin: 0; padding: 0; height: 100%; background: #0A0A0A; overflow: hidden; }
+html, body { margin: 0; padding: 0; background: #0A0A0A; }
+body.fit { overflow-x: hidden; overflow-y: auto; overscroll-behavior: none; }
 body.native { overflow: auto; }
-#terminal { padding: 6px 6px 0 8px; box-sizing: border-box; height: 100%; }
+#history { display: none; padding: 0 6px 0 8px; font: 12px/1.15 Menlo, 'DejaVu Sans Mono', 'Droid Sans Mono', monospace; color: #E5E5E5; white-space: pre-wrap; word-break: break-all; }
+body.fit #history { display: block; }
+#history div { min-height: 1.15em; }
+#terminal { padding: 2px 6px 2px 8px; box-sizing: border-box; }
 .xterm .xterm-viewport { background-color: #0A0A0A !important; overflow-y: hidden !important; }
-/* xterm 6 draws its own scrollbar; ours is slimmer and only shows while scrolling back. */
+/* xterm 6 draws its own scrollbar; there's no scrollback in the terminal itself. */
 .xterm .xterm-scrollable-element > .scrollbar, .xterm .xterm-scrollable-element > .shadow { display: none !important; }
-#scrollbar { position: fixed; top: 6px; bottom: 6px; right: 2px; width: 3px; opacity: 0; transition: opacity 180ms; pointer-events: none; }
-#scrollbar.visible { opacity: 1; }
-#thumb { width: 3px; border-radius: 2px; background: rgba(250,250,250,0.35); }
 </style>
 </head>
 <body>
+<div id="history"></div>
 <div id="terminal"></div>
-<div id="scrollbar"><div id="thumb"></div></div>
 <script>${inline(xtermJs)}</script>
 <script>${inline(fitJs)}</script>
 <script>${inline(pageJs)}</script>

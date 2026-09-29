@@ -52,7 +52,11 @@ export class HerdrClient {
     this.timeoutMs = timeoutMs;
   }
 
-  request<T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  request<T = Record<string, unknown>>(
+    method: string,
+    params: Record<string, unknown> = {},
+    { timeoutMs = this.timeoutMs }: { timeoutMs?: number } = {},
+  ): Promise<T> {
     const id = `sheperd:${++this.nextId}`;
     return new Promise<T>((resolve, reject) => {
       const conn = createConnection(this.socketPath);
@@ -67,8 +71,8 @@ export class HerdrClient {
         fn();
       };
       const timer = setTimeout(
-        () => settle(() => reject(new HerdrRequestError("timeout", `herdr ${method} timed out after ${this.timeoutMs}ms`))),
-        this.timeoutMs,
+        () => settle(() => reject(new HerdrRequestError("timeout", `herdr ${method} timed out after ${timeoutMs}ms`))),
+        timeoutMs,
       );
 
       conn.on("connect", () => conn.write(JSON.stringify({ id, method, params }) + "\n"));

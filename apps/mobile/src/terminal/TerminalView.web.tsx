@@ -10,9 +10,10 @@ type Props = {
   onTap?: () => void;
   onScrollChange?: (atBottom: boolean) => void;
   onWheel?: (lines: number) => void;
+  onInput?: (data: string) => void;
 };
 
-export const TerminalView = forwardRef<TerminalViewHandle, Props>(function TerminalView({ onReady, onFitSize, onTap, onScrollChange, onWheel }, ref) {
+export const TerminalView = forwardRef<TerminalViewHandle, Props>(function TerminalView({ onReady, onFitSize, onTap, onScrollChange, onWheel, onInput }, ref) {
   const frame = useRef<HTMLIFrameElement>(null);
   const call = (msg: unknown) => (frame.current?.contentWindow as { __sheperd?: (m: unknown) => void } | null)?.__sheperd?.(msg);
 
@@ -27,13 +28,15 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         else if (msg.type === "tap") onTap?.();
         else if (msg.type === "scroll") onScrollChange?.(msg.atBottom);
         else if (msg.type === "wheel") onWheel?.(msg.lines);
+        else if (msg.type === "input") onInput?.(msg.data);
       },
     };
   });
 
   useImperativeHandle(ref, () => ({
     write: (f: TerminalFrame) => call({ type: "frames", frames: [{ width: f.width, height: f.height, bytes: f.bytes }] }),
-    writeHistory: (bytes: string) => call({ type: "history", bytes }),
+    setHistoryHtml: (html: string) => call({ type: "historyHtml", html }),
+    focus: () => call({ type: "focus" }),
     reset: () => call({ type: "reset" }),
     setMode: (mode: TerminalViewMode) => call({ type: "mode", mode }),
     scrollToBottom: () => call({ type: "scrollToBottom" }),

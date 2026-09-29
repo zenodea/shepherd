@@ -16,6 +16,7 @@ import {
   type SessionCiphers,
   type StatusChange,
   type TerminalMode,
+  type TerminalRender,
 } from "@sheperd/protocol";
 
 export type ConnectionSettings = {
@@ -55,9 +56,12 @@ export type HostState = {
 };
 
 export type TerminalFrame = Extract<ServerMessage, { type: "terminal.frame" }>;
+export type TerminalLines = Extract<ServerMessage, { type: "terminal.lines" }>;
 
 export type TerminalHandlers = {
-  onFrame: (frame: TerminalFrame) => void;
+  onFrame?: (frame: TerminalFrame) => void;
+  /** Streams opened with render "lines". */
+  onLines?: (lines: TerminalLines) => void;
   /** Called once when the stream ends, including when the connection drops. */
   onClosed: (reason: string) => void;
 };
@@ -214,7 +218,7 @@ export class HostClient {
    */
   openTerminal(
     paneId: string,
-    opts: { mode: TerminalMode; cols?: number; rows?: number },
+    opts: { mode: TerminalMode; cols?: number; rows?: number; render?: TerminalRender },
     handlers: TerminalHandlers,
   ): TerminalHandle | null {
     if (!this.ws || this.state.status !== "online") return null;
@@ -398,7 +402,10 @@ export class HostClient {
         for (const listener of this.statusListeners) listener(msg);
         return;
       case "terminal.frame":
-        this.terminals.get(msg.streamId)?.onFrame(msg);
+        this.terminals.get(msg.streamId)?.onFrame?.(msg);
+        return;
+      case "terminal.lines":
+        this.terminals.get(msg.streamId)?.onLines?.(msg);
         return;
       case "terminal.closed": {
         const handlers = this.terminals.get(msg.streamId);

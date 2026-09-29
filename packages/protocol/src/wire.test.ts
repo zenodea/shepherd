@@ -41,6 +41,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ ...ok, cols: undefined }))).toBeNull();
     const { cols: _c, rows: _r, ...native } = ok;
     expect(parseClientMessage(JSON.stringify(native))).toEqual(native);
+    expect(parseClientMessage(JSON.stringify({ ...ok, render: "lines" }))).toEqual({ ...ok, render: "lines" });
+    expect(parseClientMessage(JSON.stringify({ ...ok, render: "pixels" }))).toBeNull();
   });
 
   it("requires exactly one of text or bytes for terminal.input", () => {

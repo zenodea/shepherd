@@ -2,6 +2,7 @@
 // WebSocket (directly on the LAN, or spliced through the relay).
 
 import { AGENT_STATUSES, type AgentInfo, type AgentStatus } from "./herdr.ts";
+import type { StyledLine } from "./palette.ts";
 
 export const WIRE_PROTOCOL_VERSION = 3;
 
@@ -118,6 +119,11 @@ export type StartAgentResult = {
 };
 
 export type TerminalMode = "observe" | "control";
+/**
+ * "ansi": raw ANSI frames for an xterm view. "lines": the host runs a
+ * terminal emulator and sends the screen as styled lines, for native views.
+ */
+export type TerminalRender = "ansi" | "lines";
 
 export type DeviceInfo = { id: string; name: string };
 
@@ -134,7 +140,7 @@ export type ClientMessage =
    * resized). A `control` stream with cols/rows resizes the pane for the phone;
    * the host restores the original size when the stream closes.
    */
-  | { type: "terminal.open"; streamId: string; paneId: string; mode: TerminalMode; cols?: number; rows?: number }
+  | { type: "terminal.open"; streamId: string; paneId: string; mode: TerminalMode; cols?: number; rows?: number; render?: TerminalRender }
   | { type: "terminal.input"; streamId: string; text: string }
   | { type: "terminal.input"; streamId: string; bytes: string }
   | { type: "terminal.resize"; streamId: string; cols: number; rows: number }
@@ -175,6 +181,16 @@ export type ServerMessage =
       height: number;
       /** base64-encoded ANSI bytes */
       bytes: string;
+    }
+  /** render "lines": the screen rows that changed (all of them when `full`). */
+  | {
+      type: "terminal.lines";
+      streamId: string;
+      width: number;
+      height: number;
+      cursor: { x: number; y: number; visible: boolean };
+      lines: Record<string, StyledLine>;
+      full: boolean;
     }
   | { type: "terminal.closed"; streamId: string; reason: string }
   | { type: "pong"; t: number };
@@ -235,9 +251,11 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const { streamId, paneId, mode, cols, rows } = msg;
       if (!isStreamId(streamId) || !isPaneId(paneId)) return null;
       if (mode !== "observe" && mode !== "control") return null;
-      if (cols === undefined && rows === undefined) return { type: "terminal.open", streamId, paneId, mode };
+      if (msg.render !== undefined && msg.render !== "ansi" && msg.render !== "lines") return null;
+      const extra: { render?: TerminalRender } = msg.render === "lines" ? { render: "lines" } : {};
+      if (cols === undefined && rows === undefined) return { type: "terminal.open", streamId, paneId, mode, ...extra };
       if (!isDim(cols) || !isDim(rows)) return null;
-      return { type: "terminal.open", streamId, paneId, mode, cols, rows };
+      return { type: "terminal.open", streamId, paneId, mode, cols, rows, ...extra };
     }
     case "terminal.input": {
       const { streamId, text, bytes } = msg;

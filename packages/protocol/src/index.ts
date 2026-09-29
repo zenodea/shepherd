@@ -3,3 +3,4 @@ export * from "./wire.ts";
 export * from "./tunnel.ts";
 export * from "./pairing.ts";
 export * from "./secure.ts";
+export * from "./palette.ts";

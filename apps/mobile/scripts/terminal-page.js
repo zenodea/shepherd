@@ -1,27 +1,27 @@
 /* global Terminal, FitAddon */
 // Runs inside the terminal WebView. React Native drives it through
 // window.__sheperd(message) and hears back via ReactNativeWebView.postMessage:
-//   in:  frames | history | reset | mode | scrollToBottom
-//   out: ready | fitSize | tap | scroll {atBottom} | wheel {lines}
+//   in:  frames | historyHtml | reset | mode | scrollToBottom | focus
+//   out: ready | fitSize | tap | input {data} | scroll {atBottom} | wheel {lines}
 //
-// Scrolling: in fit mode the phone controls the pane, so a drag asks herdr to
-// scroll (wheel, positive = back in time). That works for shells (herdr's
-// scrollback) and full-screen agents like Claude Code (herdr forwards the
-// wheel). In full-width mode we only observe, so drags scroll locally through
-// the history loaded when the terminal opened.
+// Fit mode ("fit to phone"): the page scrolls natively. Earlier output (as
+// HTML, loaded by React Native) sits above the live terminal, which is sized
+// to exactly one screen, so you scroll up out of the live view into history.
+// Tapping the terminal opens the keyboard and types straight into the pane.
+//
+// Full-width mode: the pane at its real size, scaled to the screen and
+// pinch-zoomable; a drag down asks React Native for its history view.
 (function () {
   var BG = "#0A0A0A";
   var el = document.getElementById("terminal");
+  var historyEl = document.getElementById("history");
   var term = new Terminal({
     fontFamily: "Menlo, 'DejaVu Sans Mono', 'Droid Sans Mono', monospace",
     fontSize: 12,
     lineHeight: 1.15,
     cursorBlink: false,
     disableStdin: true,
-    scrollback: 5000,
-    // A full redraw keeps what was on screen in the scrollback (the history we
-    // load first ends up there instead of being wiped).
-    scrollOnEraseInDisplay: true,
+    scrollback: 0,
     theme: { background: BG, foreground: "#E5E5E5", cursor: "#FAFAFA", selectionBackground: "rgba(250,250,250,0.25)" },
   });
   var fit = new FitAddon.FitAddon();
@@ -31,6 +31,7 @@
   var mode = "fit";
   var lastWidth = window.innerWidth;
   var viewport = document.querySelector('meta[name="viewport"]');
+  var scroller = document.scrollingElement || document.documentElement;
 
   function post(msg) {
     if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(msg));
@@ -41,6 +42,30 @@
     var out = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
+  }
+
+  // --- sizing ----------------------------------------------------------------
+  function cellSize() {
+    try {
+      var cell = term._core._renderService.dimensions.css.cell;
+      if (cell.width > 0 && cell.height > 0) return cell;
+    } catch (e) {}
+    var probe = document.createElement("span");
+    probe.style.cssText =
+      "position:absolute;visibility:hidden;white-space:pre;font-family:" + term.options.fontFamily + ";font-size:" + term.options.fontSize + "px";
+    probe.textContent = "WWWWWWWWWW";
+    document.body.appendChild(probe);
+    var width = probe.getBoundingClientRect().width / 10;
+    document.body.removeChild(probe);
+    return { width: width, height: Math.round(term.options.fontSize * term.options.lineHeight) };
+  }
+
+  // One screen of the phone: columns across, rows down the visible height.
+  function proposeFit() {
+    var cell = cellSize();
+    var cols = Math.max(20, Math.floor((window.innerWidth - 14) / cell.width));
+    var rows = Math.max(8, Math.floor((window.innerHeight - 4) / cell.height));
+    post({ type: "fitSize", cols: cols, rows: rows });
   }
 
   // Full width: fit all of the pane's columns across the screen (pinch to zoom).
@@ -55,137 +80,82 @@
     }
   }
 
-  function proposeFit() {
-    var dims = fit.proposeDimensions();
-    if (dims && dims.cols > 0 && dims.rows > 0) post({ type: "fitSize", cols: dims.cols, rows: dims.rows });
+  // --- scroll position (fit mode: the page scrolls) ------------------------
+  var atBottom = true;
+  function distanceFromBottom() {
+    return scroller.scrollHeight - scroller.scrollTop - window.innerHeight;
   }
+  function toBottom() {
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+  window.addEventListener(
+    "scroll",
+    function () {
+      var now = distanceFromBottom() < 8;
+      if (now !== atBottom) {
+        atBottom = now;
+        post({ type: "scroll", atBottom: atBottom });
+      }
+    },
+    { passive: true },
+  );
 
   function writeFrame(frame) {
     if (frame.width !== term.cols || frame.height !== term.rows) {
       term.resize(frame.width, frame.height);
       if (mode === "native") scaleToWidth();
     }
-    term.write(decode(frame.bytes));
+    term.write(decode(frame.bytes), function () {
+      if (mode === "fit" && atBottom) toBottom();
+    });
   }
 
-  // --- scroll position ----------------------------------------------------
-  var atBottom = true;
-  var scrollbar = document.getElementById("scrollbar");
-  var thumb = document.getElementById("thumb");
-  var hideTimer = 0;
-
-  function updateScroll() {
-    var buffer = term.buffer.active;
-    var hidden = buffer.length - term.rows;
-    var nowAtBottom = hidden <= 0 || buffer.viewportY >= hidden;
-    if (nowAtBottom !== atBottom) {
-      atBottom = nowAtBottom;
-      post({ type: "scroll", atBottom: atBottom });
-    }
-    if (hidden <= 0) return;
-    var track = scrollbar.clientHeight;
-    var size = Math.max(28, (track * term.rows) / buffer.length);
-    thumb.style.height = size + "px";
-    thumb.style.transform = "translateY(" + ((track - size) * buffer.viewportY) / hidden + "px)";
-    scrollbar.classList.add("visible");
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(function () {
-      if (atBottom) scrollbar.classList.remove("visible");
-    }, 900);
-  }
-  term.onScroll(updateScroll);
-  term.onWriteParsed(updateScroll);
-
-  // --- touch: drag to scroll with momentum, tap to dismiss the keyboard ----
-  function cellHeight() {
-    var rows = el.querySelector(".xterm-rows");
-    return rows && rows.firstChild ? rows.firstChild.getBoundingClientRect().height || 16 : 16;
-  }
+  // --- touch -----------------------------------------------------------------
   function zoomed() {
     return window.visualViewport && window.visualViewport.scale > 1.01;
   }
-
   var touch = null;
-  var momentum = 0;
-  var carry = 0;
-  var pendingWheel = 0;
-  var wheelTimer = 0;
-
-  function flushWheel() {
-    wheelTimer = 0;
-    if (pendingWheel !== 0) post({ type: "wheel", lines: pendingWheel });
-    pendingWheel = 0;
-  }
-
-  function scrollByPixels(dy) {
-    carry += dy;
-    var h = cellHeight();
-    var lines = carry > 0 ? Math.floor(carry / h) : Math.ceil(carry / h);
-    if (lines === 0) return;
-    carry -= lines * h;
-    if (mode === "fit") {
-      pendingWheel += lines;
-      if (!wheelTimer) wheelTimer = setTimeout(flushWheel, 50);
-    } else {
-      term.scrollLines(-lines);
-    }
-  }
-
-  el.addEventListener(
+  document.addEventListener(
     "touchstart",
     function (e) {
-      cancelAnimationFrame(momentum);
-      if (e.touches.length !== 1 || zoomed()) {
-        touch = null;
-        return;
-      }
-      var t = e.touches[0];
-      touch = { y: t.clientY, startY: t.clientY, startX: t.clientX, at: Date.now(), lastAt: Date.now(), velocity: 0, moved: false };
-      carry = 0;
+      touch =
+        e.touches.length === 1 && !zoomed()
+          ? { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now(), sent: false, moved: false, target: e.target }
+          : null;
     },
     { passive: true },
   );
-
-  el.addEventListener(
+  document.addEventListener(
     "touchmove",
     function (e) {
       if (!touch || e.touches.length !== 1) return;
-      var t = e.touches[0];
-      var dy = t.clientY - touch.y;
-      var now = Date.now();
-      if (Math.abs(t.clientY - touch.startY) > 6) touch.moved = true;
-      touch.velocity = dy / Math.max(1, now - touch.lastAt);
-      touch.y = t.clientY;
-      touch.lastAt = now;
-      scrollByPixels(dy);
-      e.preventDefault();
+      var dy = e.touches[0].clientY - touch.y;
+      var dx = e.touches[0].clientX - touch.x;
+      if (Math.abs(dy) > 6 || Math.abs(dx) > 6) touch.moved = true;
+      // Full width has no history in the page: a drag down opens the history view.
+      if (mode === "native" && !touch.sent && dy > 24 && Math.abs(dy) > Math.abs(dx)) {
+        touch.sent = true;
+        post({ type: "wheel", lines: 1 });
+      }
     },
-    { passive: false },
+    { passive: true },
   );
+  document.addEventListener("touchend", function () {
+    var t = touch;
+    touch = null;
+    if (!t || t.moved || Date.now() - t.at > 300) return;
+    // A tap on the live terminal in fit mode: type into it. Elsewhere: hide the keyboard.
+    if (mode === "fit" && el.contains(t.target)) {
+      term.focus();
+    } else {
+      term.blur();
+      post({ type: "tap" });
+    }
+  });
 
-  el.addEventListener(
-    "touchend",
-    function (e) {
-      if (!touch) return;
-      var t = touch;
-      touch = null;
-      if (!t.moved && Date.now() - t.at < 300) {
-        post({ type: "tap" });
-        return;
-      }
-      // Glide to a stop, like a native list.
-      var v = t.velocity * 16;
-      function glide() {
-        if (Math.abs(v) < 0.5) return;
-        scrollByPixels(v);
-        v *= 0.95;
-        momentum = requestAnimationFrame(glide);
-      }
-      momentum = requestAnimationFrame(glide);
-      e.preventDefault();
-    },
-    { passive: false },
-  );
+  term.onData(function (data) {
+    if (mode === "fit") post({ type: "input", data: data });
+  });
 
   // --- messages from React Native -----------------------------------------
   window.__sheperd = function (msg) {
@@ -193,28 +163,36 @@
       case "frames":
         for (var i = 0; i < msg.frames.length; i++) writeFrame(msg.frames[i]);
         break;
-      case "history":
-        // Earlier output, written before the live screen so it can be scrolled back to.
-        term.write(decode(msg.bytes));
+      case "historyHtml": {
+        // Keep the reader's place: measure from the bottom, which doesn't move.
+        var fromBottom = distanceFromBottom();
+        historyEl.innerHTML = msg.html;
+        scroller.scrollTop = scroller.scrollHeight - window.innerHeight - fromBottom;
         break;
+      }
       case "reset":
         term.reset();
+        historyEl.innerHTML = "";
         atBottom = true;
-        scrollbar.classList.remove("visible");
+        toBottom();
         break;
       case "scrollToBottom":
-        cancelAnimationFrame(momentum);
-        term.scrollToBottom();
+        scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+        break;
+      case "focus":
+        if (mode === "fit") term.focus();
         break;
       case "mode":
         mode = msg.mode;
         document.body.className = mode;
+        term.options.disableStdin = mode !== "fit";
         viewport.setAttribute(
           "content",
           mode === "fit"
             ? "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
             : "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=6, user-scalable=yes",
         );
+        historyEl.innerHTML = "";
         if (mode === "fit") {
           term.options.fontSize = msg.fontSize || 12;
           proposeFit();
@@ -227,10 +205,9 @@
 
   window.addEventListener("resize", function () {
     // The keyboard only changes the height: keep the pane's size (resizing it
-    // would reflow the agent on your computer) and stay pinned to the bottom.
+    // would reflow the agent on your computer) and keep the live line in view.
     if (window.innerWidth === lastWidth) {
-      if (atBottom) term.scrollToBottom();
-      window.scrollTo(0, document.body.scrollHeight);
+      if (atBottom) toBottom();
       return;
     }
     lastWidth = window.innerWidth;

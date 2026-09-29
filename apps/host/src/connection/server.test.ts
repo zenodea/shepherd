@@ -236,6 +236,23 @@ describe("local server", () => {
     expect(JSON.parse(child.stdinLines.at(-1)!)).toEqual({ type: "terminal.release" });
   });
 
+  it("renders a stream as styled lines on request", async () => {
+    const c = await open();
+    c.send({ type: "terminal.open", streamId: "s1", paneId: "w1:p1", mode: "control", cols: 20, rows: 3, render: "lines" });
+    await until(() => children.length === 1);
+    const bytes = Buffer.from("\u001b[2J\u001b[H\u001b[31mred\u001b[0m text").toString("base64");
+    children[0]!.stdout.write(JSON.stringify({ type: "terminal.frame", seq: 1, encoding: "ansi", width: 20, height: 3, full: true, bytes }) + "\n");
+    await until(() => find(c, "terminal.lines") !== undefined);
+    expect(find(c, "terminal.lines")).toMatchObject({
+      streamId: "s1",
+      width: 20,
+      height: 3,
+      full: true,
+      lines: { 0: [["red", "#F87171", null, 0], [" text", null, null, 0]], 1: [], 2: [] },
+    });
+    expect(find(c, "terminal.frame")).toBeUndefined();
+  });
+
   it("does not accept input on observe streams", async () => {
     const c = await open();
     c.send({ type: "terminal.open", streamId: "s1", paneId: "w1:p1", mode: "observe", cols: 60, rows: 20 });

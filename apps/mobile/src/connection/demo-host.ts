@@ -2,6 +2,7 @@
 // running sheperd (EXPO_PUBLIC_DEMO=1) and for design previews.
 import type { AgentInfo, AgentStatus, CallMethod, ProjectsResult, StatusChange } from "@sheperd/protocol";
 import type { ConnectionSettings, HostConnection, HostState, TerminalHandle, TerminalHandlers } from "./host-client";
+import { parseAnsi, toStyledLines } from "../agents/ansi";
 import { HostCallError } from "./host-client";
 
 /** "1" for a paired demo host; "unpaired" to preview the pairing onboarding. */
@@ -190,21 +191,21 @@ export class DemoHost implements HostConnection {
     }
   }
 
-  openTerminal(paneId: string, opts: { cols?: number; rows?: number }, handlers: TerminalHandlers): TerminalHandle {
+  openTerminal(paneId: string, opts: { cols?: number; rows?: number; render?: string }, handlers: TerminalHandlers): TerminalHandle {
     const screen = paneId === "w1:p2" ? SHELL_SCREEN : TERMINAL_SCREEN;
-    const timer = setTimeout(
-      () =>
-        handlers.onFrame({
-          type: "terminal.frame",
-          streamId: "demo",
-          seq: 1,
-          full: true,
-          width: opts.cols ?? 60,
-          height: opts.rows ?? 24,
-          bytes: base64(screen),
-        }),
-      50,
-    );
+    const width = opts.cols ?? 60;
+    const height = opts.rows ?? 24;
+    const timer = setTimeout(() => {
+      if (opts.render === "lines") {
+        // The host would emulate the terminal; the canned screen is plain enough to parse.
+        const rows = toStyledLines(parseAnsi(screen.replace(/\u001b\[2J|\u001b\[H/g, "")));
+        const lines: Record<string, (typeof rows)[number]> = {};
+        for (let y = 0; y < height; y++) lines[y] = rows[y] ?? [];
+        handlers.onLines?.({ type: "terminal.lines", streamId: "demo", width, height, cursor: { x: 0, y: Math.min(rows.length, height - 1), visible: false }, lines, full: true });
+      } else {
+        handlers.onFrame?.({ type: "terminal.frame", streamId: "demo", seq: 1, full: true, width, height, bytes: base64(screen) });
+      }
+    }, 50);
     return { input: () => {}, scroll: () => {}, close: () => clearTimeout(timer) };
   }
 

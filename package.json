@@ -9,6 +9,7 @@
   "scripts": {
     "host": "npm start --silent -w @sheperd/host --",
     "app": "npm start -w @sheperd/mobile",
+    "app:prod": "npm start -w @sheperd/mobile -- --no-dev --minify",
     "app:demo": "npm run demo -w @sheperd/mobile",
     "relay": "npm run dev -w @sheperd/relay",
     "typecheck": "npm run typecheck --workspaces --if-present",
