@@ -109,6 +109,9 @@ describe("DeviceRegistry", () => {
     if (!paired.ok) throw new Error();
     let changed = false;
     host.on("changed", () => (changed = true));
+    // Let the watcher take its first reading of the file (it's async), or the
+    // change below can land before it and never look like a change.
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     new DeviceRegistry(path).revoke(paired.device.id);
     await until(() => changed, 3000);
