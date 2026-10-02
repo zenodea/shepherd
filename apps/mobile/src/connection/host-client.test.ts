@@ -184,4 +184,24 @@ describe("HostClient", () => {
     await startServer(Number(new URL(good).port));
     await until(() => client!.getState().status === "online", 8000);
   }, 15_000);
+
+  it("keeps a live connection and replaces one that has gone quiet", async () => {
+    client = new HostClient({ urls: [good], token: devices.token });
+    const states: string[] = [];
+    client.subscribe(() => states.push(client!.getState().status));
+    client.start();
+    await until(() => client!.getState().status === "online", 5000);
+
+    // Heard from recently: just a ping, the connection stays.
+    states.length = 0;
+    client.checkConnection(60_000);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(states).not.toContain("connecting");
+
+    // Nothing heard within the limit (a socket that died without closing): start over.
+    client.checkConnection(-1);
+    expect(client.getState().status).toBe("connecting");
+    await until(() => client!.getState().status === "online", 5000);
+    await expect(client.call("agent.list")).resolves.toMatchObject({ agents: [{ pane_id: "w1:p1" }] });
+  });
 });

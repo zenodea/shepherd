@@ -180,7 +180,7 @@ export class DemoHost implements HostConnection {
   private state: HostState = {
     status: "online",
     error: null,
-    host: { name: "studio-mac", herdrVersion: "0.9.1", notifyUrl: "ntfy://ntfy.sh/shepherd-demo?display=Shepherd" },
+    host: { name: "studio-mac", herdrVersion: "0.9.1" },
     activeUrl: DEMO_SETTINGS.urls[1]!,
     urls: DEMO_SETTINGS.urls,
     device: { id: "a1b2c3", name: "Pixel 9" },
@@ -204,6 +204,7 @@ export class DemoHost implements HostConnection {
   start(): void {}
   stop(): void {}
   reconnectNow(): void {}
+  checkConnection(): void {}
 
   async call<T = Record<string, unknown>>(method: CallMethod, params: Record<string, unknown> = {}): Promise<T> {
     switch (method) {

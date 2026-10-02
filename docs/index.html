@@ -266,6 +266,44 @@ h2 .dim { color: var(--subtle); }
 .qk { display: flex; align-items: center; justify-content: space-between; background: var(--p-surface); border-radius: 10px; padding: 6px 8px; font-family: var(--mono); font-size: 11px; color: var(--p-text); margin-bottom: 7px; }
 .msg { border-radius: 999px; background: var(--p-surface); border: 1px solid var(--p-border); padding: 9px 14px; font-size: 12.5px; color: var(--p-subtle); }
 
+/* ---------- chat or terminal ---------- */
+.phone-slot.with-switch { flex-direction: column; align-items: center; gap: 18px; }
+.viewsw { position: relative; display: inline-flex; padding: 4px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.03); }
+.viewsw button { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); background: none; border: 0; padding: 9px 18px; border-radius: 999px; cursor: pointer; transition: color .3s; }
+.viewsw button svg { width: 16px; height: 16px; }
+.viewsw button.on { color: var(--night); }
+.viewsw button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.viewsw .knob { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 999px; background: var(--ink); box-shadow: 0 6px 24px -8px rgba(234,240,248,.55); transition: transform .45s var(--ease), width .45s var(--ease); }
+.term-head .t { flex: 1; min-width: 0; }
+.vflip { width: 30px; height: 30px; border-radius: 50%; border: 0; background: none; color: var(--p-muted); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.vflip svg { width: 17px; height: 17px; grid-area: 1 / 1; transition: opacity .3s, transform .4s var(--ease); }
+.view-chat .vflip .i-chat, .view-term .vflip .i-term { opacity: 0; transform: scale(.6) rotate(-20deg); }
+.term, .chatv { transition: opacity .35s, transform .45s var(--ease), bottom .4s var(--ease); }
+.view-chat .term { opacity: 0; transform: translateX(-18px); pointer-events: none; }
+.view-term .chatv { opacity: 0; transform: translateX(18px); pointer-events: none; }
+.view-chat .kbkey { display: none; }
+.chatv {
+  position: absolute; top: 88px; bottom: 150px; left: 0; right: 0; padding: 0 14px 12px;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; overflow: hidden;
+  font-size: 12.5px; line-height: 1.45; color: var(--p-text);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 40px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 40px);
+}
+.chatv.with-chips { bottom: 186px; }
+.chatv > * { flex: none; animation: lnIn .3s ease-out; }
+.cv-user { align-self: flex-end; max-width: 86%; background: var(--p-raised); border-radius: 15px 15px 5px 15px; padding: 8px 11px; }
+.cv-ai { padding-right: 6px; }
+.cv-ai code { font-family: var(--mono); font-size: 11px; background: var(--p-raised); border-radius: 4px; padding: 0 3px; }
+.cv-tool { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; color: var(--p-muted); white-space: nowrap; overflow: hidden; margin: -3px 0; }
+.cv-tool .ch { color: var(--p-subtle); width: 8px; }
+.cv-tool .dt { width: 6px; height: 6px; border-radius: 50%; background: var(--working); flex: none; transition: background .3s; }
+.cv-tool.ok .dt { background: var(--done); }
+.cv-tool b { color: var(--p-text); font-weight: 500; }
+.cv-tool i { font-style: normal; overflow: hidden; text-overflow: ellipsis; }
+.cv-out { font-family: var(--mono); font-size: 10.5px; color: var(--p-subtle); margin: -6px 0 0 23px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-out.add { color: #4ADE80; }
+.cv-ask { font-size: 12.5px; font-weight: 600; color: var(--blocked); }
+
 /* ---------- routes ---------- */
 .routes-top { display: grid; grid-template-columns: 1fr auto; gap: 24px 40px; align-items: end; margin-bottom: 44px; }
 .seg { display: inline-flex; padding: 4px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.02); }
@@ -439,7 +477,7 @@ footer .links a:hover { color: var(--ink); }
       <h1 id="h1" aria-live="polite">
         <span class="swap" id="h1text"><span class="line"><span class="who" id="who">claude</span> has been</span><span class="line">waiting on you</span><span class="line">for <span class="clock" id="clock">11:42</span></span></span>
       </h1>
-      <p class="lede">Shepherd puts your herdr agents on your phone. <strong>See which ones are stuck, read what they wrote, and tap the answer.</strong> Your laptop can stay shut in the bag.</p>
+      <p class="lede">Shepherd puts your herdr agents on your phone. <strong>See which ones are stuck, read what they wrote, and tap the answer.</strong> Your computer keeps working; you don't have to sit at it.</p>
       <div class="cta">
         <a class="btn primary" href="#install">Set it up <span class="arrow">→</span></a>
         <a class="btn" href="https://github.com/zenodea/shepherd">Read the code</a>
@@ -478,33 +516,39 @@ footer .links a:hover { color: var(--ink); }
 <section class="block" id="terminal">
   <div class="wrap split">
     <div>
-      <p class="kicker">// the live terminal</p>
-      <h2 class="rv">It's the actual terminal. <span class="dim">Not a summary of it.</span></h2>
+      <p class="kicker">// two ways to read it</p>
+      <h2 class="rv">Read it like a chat. <span class="dim">Or as the actual terminal.</span></h2>
       <div class="body fade">
-        <p>The host runs a headless xterm next to herdr and sends only the rows that changed. The app draws them as real text, fitted to your screen.</p>
-        <p>So you can <strong>scroll back through the whole session</strong>, pinch to change the size, search, long-press to copy and tap links. When the agent asks something, the answers turn into buttons.</p>
+        <p>Agents open on their <strong>conversation</strong>: your messages, their replies, and every tool call as one tidy line you can tap open. It comes from the transcript Claude Code, Codex or pi writes, so it scrolls like a chat app, even when the agent is full-screen.</p>
+        <p>Flip to the <strong>terminal</strong> for everything else. The host runs a headless xterm next to herdr and sends only the rows that changed, drawn as real text fitted to your screen: pinch to resize, search, long-press to copy, tap links. Either way, when the agent asks something, the answers turn into buttons.</p>
       </div>
       <ul class="keys fade" style="--d:120ms">
         <li><code>esc ↵ tab ↑ ↓ ^C</code><span>Quick keys along the bottom, for when buttons aren't enough.</span></li>
         <li><code><svg class="kb" viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="18" height="12" rx="2"/><path d="M4.5 4.5h1M8 4.5h1M11.5 4.5h1M15 4.5h.5M4.5 7.5h1M8 7.5h1M11.5 7.5h1M15 7.5h.5M6 10.5h8" stroke-linecap="round"/></svg></code><span>Type straight into the pane, like you're at the keyboard.</span></li>
         <li><code>tabs</code><span>Hop between herdr tabs. Open a shell, or start an agent in a project or a fresh git worktree.</span></li>
-        <li><code>chat</code><span>Or read it as a conversation, from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app, even when the agent is full-screen.</span></li>
       </ul>
     </div>
-    <div class="phone-slot order-first fade">
-      <div class="phone" id="termPhone">
+    <div class="phone-slot with-switch order-first fade">
+      <div class="viewsw" role="tablist" aria-label="How to read the agent">
+        <span class="knob" aria-hidden="true"></span>
+        <button role="tab" data-view="chat" aria-selected="true" class="on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/><path d="M5 6h6M5 8.2h4" stroke-linecap="round"/></svg>Chat</button>
+        <button role="tab" data-view="term" aria-selected="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M5 6.5l2 1.7-2 1.7M8.5 10.3H11"/></svg>Terminal</button>
+      </div>
+      <div class="phone view-chat" id="termPhone">
         <div class="screen">
           <div class="notch"></div>
           <div class="statusbar"><span>23:16</span><span class="sb-icons"><i style="width:14px;height:9px;border-radius:2px;opacity:.9"></i><i style="width:3px;height:5px"></i></span></div>
           <div class="term-head">
             <span class="back"><svg viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2L2 8l6 6"/></svg></span>
             <div class="t"><b>Fix flaky login test</b><span><span class="s st-working" id="tstat"><span class="sdot"></span> <span id="tstatx">Working</span></span>· claude · api</span></div>
+            <button class="vflip" id="vflip" aria-label="Switch between the conversation and the terminal"><svg class="i-term" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M5 6.5l2 1.7-2 1.7M8.5 10.3H11"/></svg><svg class="i-chat" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/><path d="M5 6h6M5 8.2h4" stroke-linecap="round"/></svg></button>
           </div>
           <div class="term" id="term"></div>
+          <div class="chatv" id="chatv" aria-live="off"></div>
           <div class="tdock">
             <div class="chips" id="tchips"><span class="chip">Yes</span><span class="chip">Yes, allow all edits during this session</span><span class="chip">No, and tell Claude</span></div>
             <div class="tabs"><span class="tab on"><span class="m">✻</span>Fix flaky login test <span class="o" id="ttabdot"></span></span><span class="tab">▭ dev server</span><span class="tab"><span class="m">✻</span>Refactor billing</span></div>
-            <div class="qk"><span><svg class="kb" viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="18" height="12" rx="2"/><path d="M4.5 4.5h1M8 4.5h1M11.5 4.5h1M15 4.5h.5M4.5 7.5h1M8 7.5h1M11.5 7.5h1M15 7.5h.5M6 10.5h8" stroke-linecap="round"/></svg></span><span>esc</span><span>↵</span><span>tab</span><span>⇧tab</span><span>↑</span><span>↓</span><span>←</span><span>→</span><span>^C</span></div>
+            <div class="qk"><span class="kbkey"><svg class="kb" viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="18" height="12" rx="2"/><path d="M4.5 4.5h1M8 4.5h1M11.5 4.5h1M15 4.5h.5M4.5 7.5h1M8 7.5h1M11.5 7.5h1M15 7.5h.5M6 10.5h8" stroke-linecap="round"/></svg></span><span>esc</span><span>↵</span><span>tab</span><span>⇧tab</span><span>↑</span><span>↓</span><span>←</span><span>→</span><span>^C</span></div>
             <div class="msg">Message claude…</div>
           </div>
         </div>
@@ -574,8 +618,8 @@ footer .links a:hover { color: var(--ink); }
       <p class="kicker">// notifications</p>
       <h2 class="rv">Or answer without opening it.</h2>
       <div class="body fade">
-        <p>When an agent asks a question, your phone buzzes with the question and up to three of its answers as buttons. You get one when it finishes, too.</p>
-        <p>Notifications go through <a href="https://ntfy.sh" style="color:var(--ink)">ntfy</a>, so <strong>there's no Firebase and no Google account</strong>. A button can only pick an answer the agent offered. It works once, expires after 30 minutes, and does nothing if the agent has already moved on.</p>
+        <p>When an agent asks a question, your phone buzzes with the question and up to three of its answers as buttons. You get one when it finishes, too. Switch them on in the app's Settings.</p>
+        <p>Shepherd stays connected to your computer in the background and sends them itself, over the same end-to-end encrypted connection. <strong>No Firebase, no Google account, no push service in between.</strong> A button only answers if the agent is still asking that question.</p>
       </div>
     </div>
   </div>
@@ -613,8 +657,8 @@ footer .links a:hover { color: var(--ink); }
       <ol class="steps fade">
         <li><div><b>Install the herdr plugin</b>It runs a small host in the background whenever herdr does. The host talks to herdr's local socket and only lets in phones you've paired.
           <div class="cmd"><code>herdr plugin install zenodea/shepherd</code><button data-copy>copy</button></div></div></li>
-        <li><div><b>Get the app</b>Build it in the cloud with a free Expo account, then open the link it prints on your phone.
-          <div class="cmd"><code>git clone https://github.com/zenodea/shepherd.git &amp;&amp; cd shepherd &amp;&amp; npm install &amp;&amp; npm run build:apk -w @shepherd/mobile</code><button data-copy>copy</button></div></div></li>
+        <li><div><b>Get the app</b>Download the APK from the <a href="https://github.com/zenodea/shepherd/releases/latest">latest release</a> on your phone and install it. Or build it yourself; the <a href="https://github.com/zenodea/shepherd#4-get-the-app-on-your-phone">README</a> has the steps.
+          <div class="cmd"><code>github.com/zenodea/shepherd/releases/latest</code><button data-copy>copy</button></div></div></li>
         <li><div><b>Scan the code</b>herdr opens a pane with a pairing code. It works once and expires after ten minutes, so a photo of it is useless afterwards. Your phone gets its own token.
           <div class="cmd"><code>herdr plugin action invoke shepherd.pair</code><button data-copy>copy</button></div></div></li>
       </ol>
@@ -1016,37 +1060,84 @@ function setTStat(s) {
 }
 const termVis = whenVisible($("#termPhone"), null, .3);
 const waitVisible = async () => { while (!termVis.visible || document.visibilityState !== "visible") await sleep(250); };
+/* The same session as a conversation, the way the app reads it from the transcript. */
+const chatv = $("#chatv");
+let lastTool = null;
+const chatAdd = (cls, html) => { const el = document.createElement("div"); el.className = cls; el.innerHTML = html; chatv.append(el); while (chatv.children.length > 30) chatv.firstChild.remove(); return el; };
+const segText = (segs) => segs.map(([, t]) => t).join("");
+function chatLine(segs) {
+  if (!segs.length || segs[0][0] === "c-o") return; // blank lines and the welcome banner
+  const [first, second] = segs;
+  if (first[1] === "● " && second?.[0] === "c-b") {
+    lastTool = chatAdd("cv-tool", `<span class="ch">›</span><span class="dt"></span><b>${esc(second[1])}</b><i>${esc(segText(segs.slice(2)).replace(/^\(|\)$/g, ""))}</i>`);
+  } else if (first[1] === "● ") {
+    chatAdd("cv-ai", segs.slice(1).map(([c, t]) => (c === "c-c" ? `<code>${esc(t)}</code>` : esc(t))).join(""));
+  } else if (first[1].includes("└")) {
+    lastTool?.classList.add("ok");
+    const out = segText(segs.slice(1)).trim();
+    chatAdd(`cv-out${out.startsWith("+") ? " add" : ""}`, esc(out));
+  }
+  // The rest of a diff: the tool line already says what changed.
+}
 async function playLines(lines) {
   for (const l of lines) {
     await waitVisible();
     if (l.type) {
       const d = line([]);
+      const bubble = chatAdd("cv-user", "");
       for (const [c, t] of l.type) {
         const sp = document.createElement("span"); sp.className = c; d.append(sp);
-        for (const ch of t) { sp.textContent += ch; await sleep(reduced ? 0 : 18 + Math.random() * 30); }
+        for (const ch of t) {
+          sp.textContent += ch;
+          if (c !== "c-d") bubble.textContent += ch;
+          await sleep(reduced ? 0 : 18 + Math.random() * 30);
+        }
       }
       await sleep(500);
-    } else { line(l); await sleep(l.length ? 170 + Math.random() * 260 : 60); }
+    } else { line(l); chatLine(l); await sleep(l.length ? 170 + Math.random() * 260 : 60); }
   }
 }
 async function termLoop() {
   for (;;) {
-    term.innerHTML = ""; setTStat("working");
+    term.innerHTML = ""; chatv.innerHTML = ""; lastTool = null; setTStat("working");
     await playLines(SCRIPT_A);
     await sleep(300);
     const box = document.createElement("div"); box.className = "tbox";
     box.innerHTML = `Do you want to make this edit?<br><span class="sel">❯ 1. Yes</span><br>  2. Yes, allow all edits this session<br>  3. No, tell Claude what to change`.replace(/  /g, "&nbsp;&nbsp;");
-    term.append(box); setTStat("blocked"); tchips.classList.add("on"); term.classList.add("with-chips");
+    const ask = chatAdd("cv-ask", "Do you want to make this edit?");
+    term.append(box); setTStat("blocked"); tchips.classList.add("on"); term.classList.add("with-chips"); chatv.classList.add("with-chips");
     await sleep(2400); await waitVisible();
     tchips.firstElementChild.classList.add("chosen");
     await sleep(500);
-    box.remove(); tchips.classList.remove("on"); term.classList.remove("with-chips");
+    box.remove(); ask.remove(); tchips.classList.remove("on"); term.classList.remove("with-chips"); chatv.classList.remove("with-chips");
     tchips.firstElementChild.classList.remove("chosen");
     setTStat("working");
     await playLines(SCRIPT_B);
     setTStat("done");
     await sleep(5000);
   }
+}
+
+/* ---------- chat or terminal switch ---------- */
+{
+  const phone = $("#termPhone");
+  const buttons = Array.from(document.querySelectorAll(".viewsw button"));
+  const knob = $(".viewsw .knob");
+  let view = "chat";
+  const setView = (v) => {
+    view = v;
+    phone.classList.toggle("view-chat", v === "chat");
+    phone.classList.toggle("view-term", v === "term");
+    for (const b of buttons) { const on = b.dataset.view === v; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
+    const on = buttons.find((b) => b.dataset.view === v);
+    knob.style.width = `${on.offsetWidth}px`;
+    knob.style.transform = `translateX(${on.offsetLeft}px)`;
+  };
+  for (const b of buttons) b.addEventListener("click", () => setView(b.dataset.view));
+  $("#vflip").addEventListener("click", () => setView(view === "chat" ? "term" : "chat"));
+  setView("chat");
+  document.fonts?.ready.then(() => setView(view));
+  addEventListener("resize", () => setView(view));
 }
 
 /* ---------- routes ---------- */
@@ -1137,7 +1228,7 @@ async function ntfLoop() {
     while (!lockVis.visible) await sleep(250);
     const n = NTFS[k++ % NTFS.length];
     const el = document.createElement("div"); el.className = "ntf";
-    el.innerHTML = `<div class="app"><i>n</i>ntfy · Shepherd · now</div><h5>${n.ico} ${n.t}</h5><p>${n.m}</p>${n.q ? `<p style="margin-top:6px;color:#EEF2F8">${n.q}</p><div class="acts">${n.a.map((x) => `<span>${x}</span>`).join("")}</div><div class="sentmsg">✓ Sent “${n.a[n.pick]}” to ${n.t.split(" ")[0]}</div>` : ""}`;
+    el.innerHTML = `<div class="app"><i>s</i>Shepherd · now</div><h5>${n.ico} ${n.t}</h5><p>${n.m}</p>${n.q ? `<p style="margin-top:6px;color:#EEF2F8">${n.q}</p><div class="acts">${n.a.map((x) => `<span>${x}</span>`).join("")}</div><div class="sentmsg">✓ Sent “${n.a[n.pick]}” to ${n.t.split(" ")[0]}</div>` : ""}`;
     wrap.innerHTML = ""; wrap.append(el);
     await sleep(60); el.classList.add("on");
     const now = new Date(); $("#lockclock").textContent = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;

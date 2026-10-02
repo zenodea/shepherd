@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultConfigPath, disableNotifications, enableNotifications, envVar, hostCommand, readStoredConfig, setDisabled } from "./config.ts";
+import { defaultConfigPath, envVar, hostCommand, loadOrCreateStoredConfig, readStoredConfig, setDisabled } from "./config.ts";
 
 describe("config location", () => {
   const dirs: string[] = [];
@@ -43,7 +43,7 @@ describe("hostCommand", () => {
   });
 });
 
-describe("notification and on/off switches", () => {
+describe("stored settings", () => {
   const dirs: string[] = [];
   afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
   const configPath = () => {
@@ -52,16 +52,14 @@ describe("notification and on/off switches", () => {
     return join(dir, "host.json");
   };
 
-  it("keeps the ntfy topic when notifications go off and on again", () => {
+  it("drops the ntfy settings from before notifications moved into the app", () => {
     const path = configPath();
-    const first = enableNotifications(path);
-    expect(first.topic).toMatch(/^shepherd-/);
-    disableNotifications(path);
-    expect(readStoredConfig(path)?.notify).toBeUndefined();
-    expect(enableNotifications(path)).toEqual(first);
-    expect(readStoredConfig(path)?.pausedNotify).toBeUndefined();
-    expect(enableNotifications(path, "https://ntfy.example.com").topic).not.toBe(first.topic);
-    expect(() => enableNotifications(path, "not a url")).toThrow();
+    loadOrCreateStoredConfig(path);
+    const old = JSON.parse(readFileSync(path, "utf8"));
+    writeFileSync(path, JSON.stringify({ ...old, notify: { server: "https://ntfy.sh", topic: "t" }, pausedNotify: { server: "x", topic: "y" } }));
+    const migrated = loadOrCreateStoredConfig(path);
+    expect(migrated).not.toHaveProperty("notify");
+    expect(readStoredConfig(path)).not.toHaveProperty("pausedNotify");
   });
 
   it("remembers that Shepherd was turned off", () => {

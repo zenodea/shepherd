@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
-import { Bell, BellOff, ChevronLeft, Globe, Laptop, Network, QrCode, Smartphone, Trash2, Wifi } from "lucide-react-native";
+import { ChevronLeft, Globe, Laptop, Network, QrCode, Smartphone, Trash2, Wifi } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { normaliseHostUrl } from "@shepherd/protocol";
 import { addressHost, addressKind } from "../connection/addresses";
 import { useConnection, useHostState } from "../connection/connection";
@@ -10,19 +10,6 @@ import { IconButton } from "../ui/IconButton";
 import { ListGroup, ListRow } from "../ui/ListRow";
 import { Divider, Screen } from "../ui/Screen";
 import { colors, fonts, radii, space, statusColors, type, themed } from "../ui/theme";
-
-const NTFY_PLAY_STORE = "https://play.google.com/store/apps/details?id=io.heckel.ntfy";
-
-async function subscribeToNotifications(url: string) {
-  try {
-    await Linking.openURL(url);
-  } catch {
-    Alert.alert("Install ntfy", "Shepherd sends notifications through the free ntfy app. Install it, then tap this again.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Open Play Store", onPress: () => void Linking.openURL(NTFY_PLAY_STORE) },
-    ]);
-  }
-}
 
 export default function HostScreen() {
   const router = useRouter();
@@ -122,24 +109,6 @@ function PairedHost() {
           ) : null}
         </ListGroup>
       </View>
-
-      {online ? (
-        <View>
-          <Text style={styles.groupLabel}>Notifications</Text>
-          <ListGroup>
-            {state.host?.notifyUrl ? (
-              <ListRow
-                icon={<Bell size={19} color={colors.muted} />}
-                title="Get notifications"
-                detail="When an agent needs input or finishes, through the ntfy app"
-                onPress={() => void subscribeToNotifications(state.host!.notifyUrl!)}
-              />
-            ) : (
-              <ListRow icon={<BellOff size={19} color={colors.muted} />} title="Notifications are off" detail="Turn them on with: npm run host -- notify on" />
-            )}
-          </ListGroup>
-        </View>
-      ) : null}
 
       <ListGroup>
         <ListRow icon={<QrCode size={19} color={colors.muted} />} title="Pair again" detail="Scan a new QR code from your computer" onPress={() => router.push("/scan")} />

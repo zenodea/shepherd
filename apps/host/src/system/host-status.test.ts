@@ -21,7 +21,6 @@ describe("host status", () => {
       addresses: [],
       agents: { total: 0, blocked: 0, working: 0 },
       relay: null,
-      notify: null,
     });
     expect(readHostStatus(config, process.pid)?.phones).toEqual([]);
     expect(readHostStatus(config, process.pid + 1)).toBeNull();

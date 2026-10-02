@@ -4,9 +4,6 @@ import { dirname, join } from "node:path";
 import { extractPrompt, toHex, type PaneReadResult, type TerminalMode } from "@shepherd/protocol";
 import { AgentTracker } from "./herdr/agent-tracker.ts";
 import {
-  DEFAULT_NTFY_SERVER,
-  disableNotifications,
-  enableNotifications,
   hostCommand,
   hostKeyPair,
   loadConfig,
@@ -18,8 +15,6 @@ import { DeviceRegistry } from "./pairing/devices.ts";
 import { HerdrClient } from "./herdr/herdr-client.ts";
 import { ActivityLog } from "./herdr/activity-log.ts";
 import { Launcher } from "./herdr/launcher.ts";
-import { NotificationActions } from "./notifications/actions.ts";
-import { Notifier, ntfyBase, ntfySubscribeUrl, sendTestNotification, type NotifyConfig } from "./notifications/notifier.ts";
 import { hostAddresses, printDevices, printHostInfo, printPairing, renderQr } from "./pairing/pairing.ts";
 import { RelayTunnel, appRelayUrl } from "./connection/relay-tunnel.ts";
 import { startLocalServer } from "./connection/server.ts";
@@ -41,9 +36,6 @@ Usage (from the repo root):
   npm run host -- devices revoke <id|all>  Unpair a device (disconnects it immediately)
   npm run host -- relay <url> <host-token> Also connect through a shepherd relay
   npm run host -- relay off                Stop using the relay
-  npm run host -- notify on [ntfy-server]  Push notifications via ntfy (default https://ntfy.sh)
-  npm run host -- notify test              Send a test notification
-  npm run host -- notify off               Stop notifications
   npm run host -- service install          Run in the background (launchd / systemd)
   npm run host -- service uninstall|status|logs
   npm run host -- status                   Is the host running, addresses, devices, recent log
@@ -108,7 +100,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     tracker,
     devices,
     hostKey: hostKeyPair(config),
-    host: { name: config.name, herdrVersion, notifyUrl: config.notify ? ntfySubscribeUrl(config.notify) : undefined },
+    host: { name: config.name, herdrVersion },
     openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) =>
       new TerminalStream({ herdrBin: config.herdrBin, socketPath: config.socketPath, paneId, mode, cols, rows }),
     launcher: new Launcher({ herdr, onError: (err) => console.error(`[launch] ${err.message}`) }),
@@ -140,7 +132,6 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     addresses: hostAddresses(config, server.port),
     agents: agentCounts(),
     relay: null,
-    notify: config.notify ? { url: ntfySubscribeUrl(config.notify), actions: config.notify.actions !== false } : null,
   });
   deps.presence = status;
   tracker.on("agents", () => status.update({ agents: agentCounts() }));
@@ -151,40 +142,6 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   else console.log(`Pair a phone with: ${hostCommand("pair")}`);
   printDevices(devices);
   console.log("");
-
-  let actions: NotificationActions | null = null;
-  if (config.notify) {
-    const onError = (err: Error) => console.error(`[notify] ${err.message}`);
-    const readPrompt = async (paneId: string) => {
-      const { read } = await herdr.request<{ read: PaneReadResult }>("agent.read", { target: paneId, source: "visible", format: "text" });
-      return extractPrompt(read.text);
-    };
-    if (config.notify.actions !== false) {
-      actions = new NotificationActions({
-        server: config.notify.server,
-        topic: config.notify.topic,
-        secret: deps.hostKey.secretKey,
-        readPrompt,
-        isBlocked: (paneId) => tracker.get(paneId)?.agent_status === "blocked",
-        sendKey: async (paneId, key) => void (await herdr.request("agent.send_keys", { target: paneId, keys: [key] })),
-        onOutcome: (outcome) => {
-          if (outcome.ok) console.log(`[notify] answered ${outcome.paneId}: ${outcome.label}`);
-          else if (outcome.reason !== "invalid") void notifier.actionFailed(outcome, outcome.paneId ? tracker.get(outcome.paneId) : null);
-        },
-        onError,
-      });
-      actions.start();
-    }
-    const notifier = new Notifier({
-      config: config.notify,
-      hostName: config.name,
-      hostId: toHex(deps.hostKey.publicKey).slice(0, 16),
-      prompts: actions ? { read: readPrompt, actions } : undefined,
-      onError,
-    });
-    notifier.attach(tracker);
-    console.log(`Notifications on: ${ntfyBase(config.notify.server)}/${config.notify.topic}${actions ? " (with answer buttons)" : ""}`);
-  }
 
   let tunnel: RelayTunnel | null = null;
   if (config.relayUrl && config.relayHostToken) {
@@ -223,7 +180,6 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     clearPidFile(config.configPath);
     status.clear();
     tunnel?.stop();
-    actions?.stop();
     devices.unwatch();
     tracker.stop();
     activity.flush();
@@ -233,61 +189,6 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
-}
-
-async function notifyCommand(args: string[]): Promise<void> {
-  const config = loadConfig();
-  const stored = loadOrCreateStoredConfig(config.configPath);
-  const [action, server = DEFAULT_NTFY_SERVER] = args;
-
-  if (action === "on") {
-    let notify: NotifyConfig;
-    try {
-      notify = enableNotifications(config.configPath, server);
-    } catch {
-      console.error(`Invalid ntfy server URL: ${server}`);
-      process.exit(2);
-    }
-    const subscribe = ntfySubscribeUrl(notify);
-    console.log("\n  Notifications enabled. On your phone:");
-    console.log("   1. Install ntfy (https://ntfy.sh, Play Store or F-Droid)");
-    console.log("   2. Scan this with your camera, or tap Host → Get notifications in Shepherd:\n");
-    console.log((await renderQr(subscribe)).trimEnd().replace(/^/gm, "  ") + "\n");
-    console.log(`  Topic: ${ntfyBase(notify.server)}/${notify.topic}`);
-    console.log("  Treat the topic like a password: anyone who knows it can read your notifications.");
-    console.log("  Restart the host to apply.\n");
-    return;
-  }
-  if (action === "actions") {
-    const mode = args[1];
-    if (!stored.notify || (mode !== "on" && mode !== "off")) {
-      console.error(stored.notify ? "Usage: notify actions on|off" : "Notifications are off. Run: npm run host -- notify on");
-      process.exit(2);
-    }
-    saveStoredConfig(config.configPath, { ...stored, notify: { ...stored.notify, actions: mode === "on" } });
-    console.log(`Answer buttons ${mode === "on" ? "on" : "off"}. Restart the host to apply.`);
-    return;
-  }
-  if (action === "off") {
-    disableNotifications(config.configPath);
-    console.log("Notifications disabled. Restart the host to apply.");
-    return;
-  }
-  if (action === "test") {
-    if (!stored.notify) {
-      console.error("Notifications are off. Run: npm run host -- notify on");
-      process.exit(1);
-    }
-    const failed = await sendTestNotification(stored.notify, config.name);
-    if (failed) {
-      console.error(`Failed: ${failed.message}`);
-      process.exit(1);
-    }
-    console.log("Sent. Check your phone.");
-    return;
-  }
-  console.error("Usage: notify on [ntfy-server] | notify off | notify test | notify actions on|off");
-  process.exit(2);
 }
 
 async function serviceCommand(action: string | undefined): Promise<void> {
@@ -454,8 +355,6 @@ async function main(argv: string[]): Promise<void> {
       console.log("Relay saved. Restart the host; paired phones learn the relay address the next time they connect.");
       return;
     }
-    case "notify":
-      return notifyCommand(argv.slice(1));
     case "service":
       return serviceCommand(argv[1]);
     case "help":

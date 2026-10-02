@@ -4,11 +4,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { encodePairingLink } from "@shepherd/protocol";
 import { DeviceRegistry, type Device } from "../pairing/devices.ts";
 import { hostAddresses, pairingInfo, renderQr, type HostAddress } from "../pairing/pairing.ts";
-import { disableNotifications, enableNotifications, loadConfig, type HostConfig } from "../system/config.ts";
+import { loadConfig, type HostConfig } from "../system/config.ts";
 import { readRunningHost, restartHost, turnOff, turnOn, type RunningHost } from "../system/daemon.ts";
 import { readHostStatus, type ConnectedPhone, type HostStatus } from "../system/host-status.ts";
 import { Service } from "../system/service.ts";
-import { sendTestNotification, ntfySubscribeUrl } from "../notifications/notifier.ts";
 import { duration, frame, pad, screen, style, visibleLength, when } from "./ansi.ts";
 
 export const SCREENS = ["overview", "pair", "phones", "log"] as const;
@@ -31,7 +30,6 @@ export type WindowData = {
   turnedOff: boolean;
   devices: Device[];
   addresses: HostAddress[];
-  notify: { url: string; actions: boolean } | null;
   relayConfigured: boolean;
   log: string[];
   logFile: string;
@@ -63,8 +61,15 @@ export function phoneRows(data: WindowData): PhoneRow[] {
 }
 
 const label = (s: string) => style.dim(pad(s, 15));
-/** A key and what it does, at the end of a row. */
-const action = (key: string, what: string) => `   ${style.inverse(` ${key} `)} ${style.dim(what)}`;
+
+/** A key to press: [s], with the letter in the accent colour. */
+export const keycap = (key: string) => `${style.dim("[")}${style.bold(style.cyan(key))}${style.dim("]")}`;
+/** An on/off slider: knob right and green when on, left and grey when off (red if it should be on but isn't). */
+const slider = (on: boolean, broken = false) =>
+  on ? style.green("━━━● on ") : broken ? style.red("●━━━ off") : style.dim("●━━━ off");
+/** A switch with the key that flips it, then what it's about. */
+const switchRow = (name: string, slide: string, key: string | null, detail: string) =>
+  `  ${label(name)}${slide}    ${key ? keycap(key) : "   "}   ${detail}`;
 
 function stateText(data: WindowData): string {
   if (data.running) return style.green("● on");
@@ -76,13 +81,13 @@ function overview(data: WindowData, now: number): string[] {
   const lines: string[] = [];
   lines.push(`  ${label("Host")}${data.name}`);
   // The background service keeps the host running itself, so there's no switch for it here.
-  const toggle = data.service.installed ? "" : running ? action("s", "turn off") : action("s", "turn on");
+  const key = data.service.installed ? null : "s";
   if (running) {
-    lines.push(`  ${label("Shepherd")}${stateText(data)}${style.dim(` · running for ${duration(now - Date.parse(running.startedAt))} · pid ${running.pid}`)}${toggle}`);
+    lines.push(switchRow("Shepherd", slider(true), key, style.dim(`running for ${duration(now - Date.parse(running.startedAt))} · pid ${running.pid}`)));
   } else if (data.turnedOff) {
-    lines.push(`  ${label("Shepherd")}${stateText(data)}${style.dim(" · phones can't connect, and herdr won't start it")}${toggle}`);
+    lines.push(switchRow("Shepherd", slider(false), key, style.dim("phones can't connect, and herdr won't start it")));
   } else {
-    lines.push(`  ${label("Shepherd")}${stateText(data)}${toggle}`);
+    lines.push(switchRow("Shepherd", slider(false, true), key, style.red("not running")));
   }
   if (data.service.installed) lines.push(`  ${label("")}${style.dim(`Run by the background service (${data.service.detail})`)}`);
   lines.push(`  ${label("herdr")}${status ? `${status.herdr.version}${style.dim(` · ${status.herdr.socketPath}`)}` : style.dim("—")}`);
@@ -102,11 +107,6 @@ function overview(data: WindowData, now: number): string[] {
   const sub = (s: string) => style.dim(pad(s, 13));
   for (const a of direct) lines.push(`    ${sub(a.label)}${a.url}`);
   lines.push(`    ${sub("Relay")}${relayText(data)}`);
-  lines.push("");
-  const notify = data.notify
-    ? `${style.green("on")}${style.dim(data.notify.actions ? " · with answer buttons" : " · without answer buttons")}${action("t", "turn off")}${action("n", "test")}`
-    : `${style.dim("off")}${action("t", "turn on")}`;
-  lines.push(`  ${label("Notifications")}${notify}`);
   return lines;
 }
 
@@ -168,18 +168,20 @@ function logScreen(data: WindowData, height: number): string[] {
   return [...lines, ...data.log.slice(-(height - 2)).map((l) => `  ${l}`)];
 }
 
-const HINTS: Record<Screen, string> = {
-  overview: "s on/off · t notifications · r restart · q close",
-  pair: "p new code · r restart · q close",
-  phones: "↑↓ select · x revoke · p pair · q close",
-  log: "r restart · q close",
+const HINTS: Record<Screen, [string, string][]> = {
+  overview: [["s", "shepherd on/off"], ["r", "restart"], ["q", "close"]],
+  pair: [["p", "new code"], ["r", "restart"], ["q", "close"]],
+  phones: [["↑↓", "select"], ["x", "revoke"], ["p", "pair"], ["q", "close"]],
+  log: [["r", "restart"], ["q", "close"]],
 };
+
+const hints = (screen: Screen) => "  " + HINTS[screen].map(([key, what]) => `${keycap(key)} ${style.dim(what)}`).join("  ");
 
 export function render(view: ViewState, data: WindowData, cols: number, rows: number): string[] {
   const header = `  ${style.bold("Shepherd")}  ${stateText(data)}${style.dim(` · ${data.name}`)}`;
   const tabs =
     "  " +
-    SCREENS.map((s) => (s === view.screen ? style.inverse(` ${TABS[s].label} `) : ` ${style.dim(TABS[s].key)} ${TABS[s].label} `)).join(" ");
+    SCREENS.map((s) => (s === view.screen ? `${keycap(TABS[s].key)} ${style.bold(style.underline(TABS[s].label))}` : `${style.dim(`[${TABS[s].key}]`)} ${style.dim(TABS[s].label)}`)).join("   ");
   const top = [header, "", tabs, style.dim("─".repeat(cols)), ""];
   const bodyHeight = Math.max(0, rows - top.length - 3);
 
@@ -209,7 +211,7 @@ export function render(view: ViewState, data: WindowData, cols: number, rows: nu
     const tone = view.flash.tone === "ok" ? style.green : view.flash.tone === "warn" ? style.yellow : style.red;
     message = `  ${tone(view.flash.text)}`;
   }
-  return [...top, ...body, "", message, style.dim(`  ${HINTS[view.screen]}`)];
+  return [...top, ...body, "", message, hints(view.screen)];
 }
 
 const LOG_LINES = 200;
@@ -241,7 +243,6 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       turnedOff: config.disabled === true,
       devices: devices.list(),
       addresses: status?.addresses ?? hostAddresses(config, config.port),
-      notify: status?.notify ?? (config.notify ? { url: ntfySubscribeUrl(config.notify), actions: config.notify.actions !== false } : null),
       relayConfigured: Boolean(config.relayUrl && config.relayHostToken),
       log: tail(svc.logFile),
       logFile: svc.logFile,
@@ -329,35 +330,6 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
     refresh();
     setTimeout(refresh, 1500);
   };
-  const toggleNotifications = async () => {
-    if (busy) return;
-    busy = true;
-    try {
-      let message: string;
-      if (config.notify) {
-        disableNotifications(config.configPath);
-        message = "Notifications off.";
-      } else {
-        enableNotifications(config.configPath);
-        message = "Notifications on. On your phone, install ntfy, then in Shepherd tap Host → Get notifications.";
-      }
-      // The host reads its notification settings when it starts.
-      if (data.running) await restartHost(config.configPath, service);
-      flash(message);
-    } catch (err) {
-      flash((err as Error).message, "error");
-    }
-    busy = false;
-    refresh();
-    setTimeout(refresh, 1500);
-  };
-  const testNotification = async () => {
-    if (!config.notify) return flash("Notifications are off. Press t to turn them on.", "warn");
-    flash("Sending a test notification…", "warn");
-    const failed = await sendTestNotification(config.notify, config.name);
-    flash(failed ? `Failed: ${failed.message}` : "Sent. Check your phone.", failed ? "error" : "ok");
-  };
-
   const close = () => {
     devices.unwatch();
     out.write(screen.leave);
@@ -400,14 +372,8 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
         return show(SCREENS[(SCREENS.indexOf(view.screen) + SCREENS.length - 1) % SCREENS.length]!);
       case "r":
         return void restart();
-      case "n":
-        if (view.screen === "overview") void testNotification();
-        return;
       case "s":
         if (view.screen === "overview" && !data.service.installed) void toggleShepherd();
-        return;
-      case "t":
-        if (view.screen === "overview") void toggleNotifications();
         return;
     }
     if (view.screen === "phones") {

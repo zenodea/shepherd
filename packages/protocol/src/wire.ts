@@ -215,8 +215,6 @@ export type ClientMessage =
 export type HostInfo = {
   name: string;
   herdrVersion: string;
-  /** ntfy subscribe link, when the host sends push notifications. */
-  notifyUrl?: string;
   /** Every address the host is currently reachable on; the app adopts these. */
   addresses?: string[];
 };

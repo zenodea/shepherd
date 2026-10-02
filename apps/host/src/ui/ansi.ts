@@ -6,10 +6,13 @@ export const style = {
   bold: (s: string) => `${ESC}1m${s}${ESC}22m`,
   dim: (s: string) => `${ESC}2m${s}${ESC}22m`,
   inverse: (s: string) => `${ESC}7m${s}${ESC}27m`,
+  underline: (s: string) => `${ESC}4m${s}${ESC}24m`,
   green: (s: string) => `${ESC}32m${s}${ESC}39m`,
   yellow: (s: string) => `${ESC}33m${s}${ESC}39m`,
   red: (s: string) => `${ESC}31m${s}${ESC}39m`,
   cyan: (s: string) => `${ESC}36m${s}${ESC}39m`,
+  /** 256-colour foreground and background, for the switches and keycaps. */
+  paint: (s: string, fg: number, bg: number) => `${ESC}38;5;${fg};48;5;${bg}m${s}${ESC}39;49m`,
 };
 
 export const screen = {

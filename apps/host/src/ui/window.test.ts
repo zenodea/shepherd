@@ -17,7 +17,6 @@ const data = (patch: Partial<WindowData> = {}): WindowData => ({
     agents: { total: 3, blocked: 1, working: 1 },
     phones: [{ deviceId: "new", via: "relay", since: "2026-10-02T11:30:00Z" }],
     relay: { state: "online" },
-    notify: null,
     updatedAt: "2026-10-02T12:00:00Z",
   },
   service: { installed: false, detail: "not loaded" },
@@ -27,7 +26,6 @@ const data = (patch: Partial<WindowData> = {}): WindowData => ({
     { id: "new", name: "Pixel 8", tokenHash: "", createdAt: "2026-10-01T00:00:00Z" },
   ],
   addresses: [{ label: "LAN", url: "ws://192.168.1.20:7420/connect" }],
-  notify: null,
   relayConfigured: true,
   log: ["[agent] w1:p1 working → idle"],
   logFile: "/tmp/host.log",
@@ -47,7 +45,7 @@ const view = (patch: Partial<ViewState> = {}): ViewState => ({
 describe("Shepherd window", () => {
   it("summarises a running host", () => {
     const out = plain(render(view(), data(), 100, 40));
-    expect(out).toContain("● on · running for 2h 14m · pid 42    s  turn off");
+    expect(out).toMatch(/Shepherd +━━━● on +\[s\] +running for 2h 14m · pid 42/);
     expect(out).toContain("3 · 1 needs you · 1 working");
     expect(out).toContain("1 connected · 2 paired");
     expect(out).toContain("online");
@@ -55,21 +53,18 @@ describe("Shepherd window", () => {
 
   it("offers to turn a stopped host on, and says when it was turned off", () => {
     const out = plain(render(view(), data({ running: null, status: null }), 120, 40));
-    expect(out).toContain("○ not running    s  turn on");
+    expect(out).toMatch(/Shepherd +●━━━ off +\[s\] +not running/);
     expect(out).not.toContain("connected ·");
-    expect(plain(render(view(), data({ running: null, status: null, turnedOff: true }), 120, 40))).toContain("○ off · phones can't connect, and herdr won't start it    s  turn on");
+    expect(plain(render(view(), data({ running: null, status: null, turnedOff: true }), 120, 40))).toMatch(
+      /Shepherd +●━━━ off +\[s\] +phones can't connect, and herdr won't start it/,
+    );
   });
 
   it("has no switch when the background service runs the host", () => {
     const out = plain(render(view(), data({ service: { installed: true, detail: "running" } }), 120, 40));
-    expect(out).not.toContain("turn off");
+    expect(out).toMatch(/Shepherd +━━━● on +running/);
+    expect(out).not.toContain("[s]  ");
     expect(out).toContain("Run by the background service (running)");
-  });
-
-  it("toggles notifications", () => {
-    expect(plain(render(view(), data(), 120, 40))).toMatch(/Notifications +off +t  turn on/);
-    const on = plain(render(view(), data({ notify: { url: "https://ntfy.sh/x", actions: true } }), 120, 40));
-    expect(on).toMatch(/Notifications +on · with answer buttons +t  turn off +n  test/);
   });
 
   it("lists connected phones first, with how they connect", () => {
@@ -106,5 +101,29 @@ describe("truncate", () => {
     const cut = truncate("\x1b[32mhello\x1b[39m world", 7);
     expect(visibleLength(cut)).toBe(7);
     expect(cut.endsWith("\x1b[0m")).toBe(true);
+  });
+});
+
+describe("the window process", () => {
+  it("starts and keeps running until it's closed", async () => {
+    const { spawn } = await import("node:child_process");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "shepherd-ui-"));
+    const child = spawn(process.execPath, [new URL("../cli.ts", import.meta.url).pathname, "ui"], {
+      env: { ...process.env, SHEPHERD_CONFIG: join(dir, "host.json"), SHEPHERD_PORT: "7499" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let output = "";
+    child.stdout.on("data", (d) => (output += d));
+    child.stderr.on("data", (d) => (output += d));
+    const exited = new Promise<number | null>((resolve) => child.on("exit", resolve));
+    const early = await Promise.race([exited, new Promise((r) => setTimeout(() => r("running"), 1500))]);
+    child.stdin.write("q");
+    expect(early, output).toBe("running");
+    expect(output).toContain("Shepherd");
+    expect(await exited).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

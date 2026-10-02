@@ -1,7 +1,9 @@
 import { useRouter } from "expo-router";
-import { Check, ChevronLeft, Fingerprint, Laptop, QrCode } from "lucide-react-native";
-import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BatteryCharging, Bell, BellOff, Check, ChevronLeft, Fingerprint, Laptop, QrCode } from "lucide-react-native";
+import { useEffect, useState } from "react";
+import { Alert, AppState, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import Background from "../../modules/shepherd-background/src/ShepherdBackgroundModule";
+import { NOTIFICATIONS_SUPPORTED, setNotificationsEnabled, useNotificationsEnabled } from "../notifications/setting";
 import { useConnection } from "../connection/connection";
 import { PressableScale } from "../ui/Pressable";
 import { useTheme } from "../ui/ThemeProvider";
@@ -18,6 +20,26 @@ export default function SettingsScreen() {
   const { hosts, settings, switchTo } = useConnection();
   const [busy, setBusy] = useState(false);
   const theme = useTheme();
+  const notifications = useNotificationsEnabled();
+  // What Android allows, re-checked when you come back from its settings.
+  const [system, setSystem] = useState({ allowed: true, unrestricted: true });
+  useEffect(() => {
+    if (!Background) return;
+    const native = Background;
+    const check = () => setSystem({ allowed: native.notificationsEnabled(), unrestricted: native.isIgnoringBatteryOptimizations() });
+    check();
+    const sub = AppState.addEventListener("change", (s) => s === "active" && check());
+    return () => sub.remove();
+  }, []);
+
+  const toggleNotifications = async (on: boolean) => {
+    if (!(await setNotificationsEnabled(on)) && on) {
+      Alert.alert("Notifications are blocked", "Allow notifications for Shepherd in Android's settings, then turn this on again.", [
+        { text: "Not now", style: "cancel" },
+        { text: "Open settings", onPress: () => void Linking.openSettings() },
+      ]);
+    }
+  };
 
   const toggleLock = async (on: boolean) => {
     setBusy(true);
@@ -103,6 +125,43 @@ export default function SettingsScreen() {
             })}
           </ListGroup>
         </View>
+
+        {NOTIFICATIONS_SUPPORTED ? (
+          <View>
+            <Text style={styles.groupLabel}>Notifications</Text>
+            <ListGroup>
+              <ListRow
+                icon={<Bell size={19} color={colors.muted} />}
+                title="Notifications"
+                detail="When an agent needs input or finishes. Shepherd stays connected to your computer in the background."
+                chevron={false}
+                trailing={<Toggle value={notifications === true} onValueChange={(on) => void toggleNotifications(on)} disabled={notifications === null} />}
+              />
+              {notifications && !system.allowed ? (
+                <>
+                  <Divider inset={56} />
+                  <ListRow
+                    icon={<BellOff size={19} color={colors.danger} />}
+                    title="Blocked in Android settings"
+                    detail="Tap to allow notifications for Shepherd"
+                    onPress={() => void Linking.openSettings()}
+                  />
+                </>
+              ) : null}
+              {notifications && !system.unrestricted ? (
+                <>
+                  <Divider inset={56} />
+                  <ListRow
+                    icon={<BatteryCharging size={19} color={colors.muted} />}
+                    title="Run in the background without limits"
+                    detail="Otherwise Android can delay notifications while your phone is idle"
+                    onPress={() => void Background?.requestIgnoreBatteryOptimizations().catch(() => {})}
+                  />
+                </>
+              ) : null}
+            </ListGroup>
+          </View>
+        ) : null}
 
         <View>
           <Text style={styles.groupLabel}>Security</Text>

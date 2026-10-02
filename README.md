@@ -43,31 +43,27 @@ herdr plugin action invoke shepherd.pair
 
 This opens the **Shepherd window** in herdr on its Pair screen, with a **pairing QR code**. Once your phone has paired, the window switches to your phones and shows it connected.
 
-```
-  Shepherd  ● running · my-laptop
-
-   o Overview    Pair    d Phones   l Log
-  ─────────────────────────────────────────────────────
-
-  Scan with the Shepherd app (Host → Scan QR code). One-time code, valid for 9:41.
-   ▄▄▄▄▄▄▄ ▄▄▄▄▄ ▄   ▄▄▄▄ …
-  Or enter it by hand: p_…
-```
+<p align="center"><img src="docs/screenshots/herdr-pair.png" width="520" alt="The Shepherd window in herdr on its Pair screen: a pairing QR code with a countdown and the code to type by hand" /></p>
 
 The QR code holds the host's name, every address it can be reached on, and a **one-time pairing code**. The code works once and expires after 10 minutes. When your phone scans it, the host gives that phone its own token, so a photo of the QR code is useless afterwards. Press `p` in the window for a new code.
 
 ### The Shepherd window
 
+<p align="center">
+  <img src="docs/screenshots/herdr-overview.png" width="49%" alt="The Shepherd window's Overview: Shepherd on with its switch, herdr version, agents, connected phones and the addresses it's reachable on" />
+  <img src="docs/screenshots/herdr-phones.png" width="49%" alt="The Shepherd window's Phones screen: a connected phone first, then the others with when they were last seen" />
+</p>
+
 The window has four screens; switch with the letter keys or Tab:
 
-- **Overview (`o`):** whether Shepherd is on and for how long, the herdr session, your agents, how many phones are connected, the addresses it's reachable on, the relay and notifications. Two switches live here: `s` turns Shepherd on or off, and `t` turns notifications on or off.
+- **Overview (`o`):** whether Shepherd is on and for how long, the herdr session, your agents, how many phones are connected, the addresses it's reachable on and the relay. `s` turns Shepherd on or off.
 - **Pair (`p`):** the QR code, with a countdown.
 - **Phones (`d`):** every paired phone, connected ones first with how they're connected (direct or through the relay). Select one and press `x` to revoke it.
 - **Log (`l`):** the host's recent log.
 
-`r` restarts the host from any screen, `n` sends a test notification from the Overview, and `q` or Esc closes the window.
+`r` restarts the host from any screen, and `q` or Esc closes the window.
 
-Turning Shepherd **off** stops the host and keeps it stopped: herdr won't start it again until you turn it back on, so no phone can connect. Turning notifications off and on again keeps the same ntfy topic, so your phone stays subscribed.
+Turning Shepherd **off** stops the host and keeps it stopped: herdr won't start it again until you turn it back on, so no phone can connect.
 
 To open it with a key, add this to herdr's `config.toml` (then `herdr server reload-config`):
 
@@ -91,7 +87,9 @@ description = "pair a phone"
 
 ### 4. Get the app on your phone
 
-The app is built from this repo:
+**Easiest: download the APK** from the [latest release](https://github.com/zenodea/shepherd/releases/latest) on your phone and install it. You may need to allow installing apps from your browser.
+
+**Or build it yourself** from this repo:
 
 ```bash
 git clone https://github.com/zenodea/shepherd.git
@@ -123,7 +121,7 @@ This APK is signed with the debug key, which is fine for personal use but not fo
 
 **Option C: Try it without building (development)**
 
-Install **Expo Go** from the Play Store, run `npm run app:prod` (or `npm run app` while developing), and scan the QR code **from inside the Expo Go app**. The app doesn't run in a web browser.
+Install **Expo Go** from the Play Store, run `npm run app:prod` (or `npm run app` while developing), and scan the QR code **from inside the Expo Go app**. The app doesn't run in a web browser. Notifications need an APK: Expo Go can't run the app's background connection.
 
 If Expo Go can't load the project, your phone probably can't reach your computer at the `exp://…:8081` address Metro prints. This happens on guest, office and university Wi-Fi. If both devices are on Tailscale, use your computer's Tailscale IP instead:
 
@@ -135,7 +133,7 @@ REACT_NATIVE_PACKAGER_HOSTNAME=100.x.y.z npm run app
 
 Open the app, tap **Scan QR code**, and point the camera at the QR code from step 3. If you installed the APK, scanning with your phone's own camera app works too.
 
-The app tries every address in the QR code at once and uses whichever answers first. It works at home, on Tailscale or through the relay without you choosing, and it switches over when you change networks. If you can't scan, choose **Enter address and pairing code manually** and use the `Code:` line.
+The app tries every address in the QR code at once and uses whichever answers first. It works at home, on Tailscale or through the relay without you choosing, and it switches over when you change networks. If you can't scan, choose **Enter address and pairing code manually** and use the code under the QR code ("Or enter it by hand"), with an address from the window's Overview.
 
 ## What you can do
 
@@ -152,16 +150,13 @@ The app tries every address in the QR code at once and uses whichever answers fi
 
 ## Notifications
 
-Notifications go through [ntfy](https://ntfy.sh), a free, open-source push service. No Firebase or Google account needed.
+Turn on **Settings → Notifications** in the app. Shepherd then stays connected to your computer in the background and notifies you when an agent needs input or finishes. There's no push service in between: no Firebase, no Google account and no third-party server. The notifications come over the same end-to-end encrypted connection the app already uses, directly or through your relay.
 
-```bash
-npm run host -- notify on       # or: notify on https://your-ntfy-server
-herdr plugin action invoke shepherd.restart   # apply (or restart `npm run host`)
-```
+To stay connected, Android requires the app to show a permanent notification while it runs in the background. Shepherd uses it to show how your agents are doing. You can collapse it, or silence its channel in Android's notification settings. Settings also has **Run in the background without limits**, which asks Android not to pause Shepherd when the phone is idle. Without it, notifications can arrive late while the screen is off.
 
-Install **ntfy** on your phone, scan the QR code `notify on` prints (or tap **Host → Get notifications** in Shepherd), then run `npm run host -- notify test`.
+When an agent asks a question, the notification shows it with up to three answers as buttons. A button only answers if the agent is still asking that same question; otherwise it tells you to open Shepherd.
 
-When an agent asks a question, the notification shows it with up to three answers as buttons. A button can only pick one of the offered answers, works once, expires after 30 minutes, and is ignored if the agent has moved on. Anyone who can read your topic could press them, so treat the topic like a password, or run `npm run host -- notify actions off`.
+Notifications come from the computer you're connected to. If you've paired several, switch to the one you want to hear from.
 
 ## Keep the host running in the background
 
@@ -232,10 +227,6 @@ npm run host -- devices           # list paired phones
 npm run host -- devices revoke <id|all>  # unpair (disconnects immediately)
 npm run host -- relay <url> <tok> # connect through a relay
 npm run host -- relay off         # stop using the relay
-npm run host -- notify on [url]   # push notifications via ntfy
-npm run host -- notify test       # send a test notification
-npm run host -- notify off        # stop notifications
-npm run host -- notify actions on|off  # answer buttons on notifications (default on)
 npm run host -- status            # is the host running, addresses, devices, recent log
 npm run host -- restart | stop    # restart or stop a host running in the background
 npm run host -- on | off          # turn Shepherd on or off (off: herdr doesn't start it)
@@ -277,7 +268,6 @@ apps/
     herdr/            herdr socket client, agent tracker, activity log, terminal streams, agent launcher
     connection/       WebSocket server, encrypted session, relay tunnel
     pairing/          paired devices, pairing codes, QR output
-    notifications/    ntfy notifier and answer buttons
     conversation/     agents' conversations from Claude Code, Codex and pi transcripts
     system/           config file, launchd/systemd service, background host for the plugin, live status
     ui/               the Shepherd window (a terminal UI)
@@ -286,9 +276,11 @@ apps/
     app/              screens (Expo Router)
     connection/       host client (address racing, encryption), saved settings, pairing
     agents/           agent list helpers, answer cards, agent actions, activity feed, conversation view
+    notifications/    background connection and notifications (what's worth one, answer buttons)
     security/         app lock
     terminal/         native terminal view, links and search, raw keyboard input
     ui/               design system: tokens, buttons, rows, status indicators, agent marks
+  mobile/modules/shepherd-background/  native Android module: the background service and notifications
   mobile/assets/icon-src/  icon source (SVG); scripts/render-icons.sh renders the PNGs
   relay/src/          Cloudflare Worker + one HostRoom Durable Object per host
 packages/

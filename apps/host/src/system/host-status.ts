@@ -1,5 +1,5 @@
 // What the running host is doing right now, for the Shepherd window in herdr:
-// which phones are connected, the relay, notifications. The host writes it
+// which phones are connected and the relay. The host writes it
 // next to its config whenever something changes; the window reads it.
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -16,7 +16,6 @@ export type HostStatus = {
   agents: { total: number; blocked: number; working: number };
   phones: ConnectedPhone[];
   relay: { state: string; detail?: string } | null;
-  notify: { url: string; actions: boolean } | null;
   updatedAt: string;
 };
 

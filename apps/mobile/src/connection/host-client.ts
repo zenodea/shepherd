@@ -120,7 +120,7 @@ function toBytes(data: unknown): Uint8Array | null {
 /** What screens use; implemented by HostClient and by the demo host. */
 export type HostConnection = Pick<
   HostClient,
-  "getState" | "subscribe" | "onStatusChange" | "start" | "stop" | "reconnectNow" | "call" | "openTerminal"
+  "getState" | "subscribe" | "onStatusChange" | "start" | "stop" | "reconnectNow" | "checkConnection" | "call" | "openTerminal"
 >;
 
 /**
@@ -140,6 +140,9 @@ export class HostClient {
   private nextId = 0;
   private retryMs = MIN_RETRY_MS;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When the host last sent anything, and when the current connection attempt began. */
+  private lastHeard = 0;
+  private openedAt = 0;
   private stopped = true;
   private settings: ConnectionSettings;
   private savedHostKey: string | undefined;
@@ -183,6 +186,34 @@ export class HostClient {
     this.ws = null;
     this.failPending("disconnected");
     this.setState({ status: "idle", activeUrl: null });
+  }
+
+  /**
+   * For the background service, which ticks even while Android pauses JS
+   * timers: ping the host, and start over when the connection has gone quiet
+   * (a dropped network can leave a socket that never reports closing).
+   */
+  checkConnection(staleMs: number): void {
+    if (this.stopped) return;
+    const now = Date.now();
+    if (this.state.status === "online" && this.ws) {
+      if (now - this.lastHeard <= staleMs) {
+        this.send({ type: "ping", t: now });
+        return;
+      }
+      const dead = this.ws;
+      this.ws = null;
+      this.ciphers = null;
+      this.failPending("disconnected");
+      dead.close();
+      this.retryMs = MIN_RETRY_MS;
+      this.open();
+      return;
+    }
+    if (this.state.status === "connecting" && now - this.openedAt <= staleMs) return;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryMs = MIN_RETRY_MS;
+    this.open();
   }
 
   /** Reconnect now (e.g. when the app returns to the foreground). */
@@ -257,6 +288,7 @@ export class HostClient {
   /** Dial every address at once; the first to send `hello` wins, the rest are closed. */
   private open(): void {
     const attempt = ++this.attempt;
+    this.openedAt = Date.now();
     this.setState({ status: "connecting", error: null });
 
     const sockets: WebSocket[] = [];
@@ -382,6 +414,7 @@ export class HostClient {
   }
 
   private handle(msg: ServerMessage): void {
+    this.lastHeard = Date.now();
     switch (msg.type) {
       case "hello":
         this.retryMs = MIN_RETRY_MS;
