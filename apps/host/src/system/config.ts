@@ -24,6 +24,10 @@ export type StoredConfig = {
   relayHostToken?: string;
   /** Push notifications through ntfy. */
   notify?: NotifyConfig;
+  /** Notifications that were turned off, kept so turning them back on reuses the topic your phone subscribed to. */
+  pausedNotify?: NotifyConfig;
+  /** Turned off in the Shepherd window: the herdr plugin doesn't start the host. */
+  disabled?: boolean;
 };
 
 export type HostConfig = StoredConfig & {
@@ -147,4 +151,27 @@ export function hostCommand(args: string, env: NodeJS.ProcessEnv = process.env):
   if (!env.HERDR_PLUGIN_ROOT) return `npm run host -- ${args}`;
   if (args === "pair") return `herdr plugin action invoke ${env.HERDR_PLUGIN_ID ?? "shepherd"}.pair`;
   return `node ${join(env.HERDR_PLUGIN_ROOT, "apps", "host", "src", "cli.ts")} ${args}`;
+}
+
+export const DEFAULT_NTFY_SERVER = "https://ntfy.sh";
+
+/** Turn notifications on, reusing the topic from before if they were on with this server. */
+export function enableNotifications(configPath: string, server = DEFAULT_NTFY_SERVER): NotifyConfig {
+  new URL(server); // throws on a bad URL
+  const stored = loadOrCreateStoredConfig(configPath);
+  const previous = [stored.notify, stored.pausedNotify].find((n) => n?.server === server);
+  const notify = previous ?? { server, topic: `shepherd-${generateSecret(15)}` };
+  const { pausedNotify: _paused, ...rest } = stored;
+  saveStoredConfig(configPath, { ...rest, notify });
+  return notify;
+}
+
+export function disableNotifications(configPath: string): void {
+  const { notify, ...rest } = loadOrCreateStoredConfig(configPath);
+  saveStoredConfig(configPath, notify ? { ...rest, pausedNotify: notify } : rest);
+}
+
+export function setDisabled(configPath: string, disabled: boolean): void {
+  const { disabled: _was, ...rest } = loadOrCreateStoredConfig(configPath);
+  saveStoredConfig(configPath, disabled ? { ...rest, disabled: true } : rest);
 }

@@ -85,7 +85,7 @@ export const FORWARDED_METHODS = [
 export type ForwardedMethod = (typeof FORWARDED_METHODS)[number];
 
 /** Methods the host implements itself, with validated, narrow parameters. */
-export const HOST_METHODS = ["shepherd.projects", "shepherd.start_agent", "shepherd.activity"] as const;
+export const HOST_METHODS = ["shepherd.projects", "shepherd.start_agent", "shepherd.activity", "shepherd.conversation"] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
 
@@ -139,6 +139,41 @@ export type ActivityEntry = {
 
 export type ActivityParams = { before?: number; limit?: number };
 export type ActivityResult = { entries: ActivityEntry[] };
+
+/**
+ * One item of an agent's conversation, read from the transcript file its
+ * harness (Claude Code, Codex, pi…) writes, rather than from its screen.
+ * Ids increase through a session; a tool call's result is its own entry.
+ */
+export type ConversationEntry = { id: number; at?: string } & (
+  | { kind: "user"; text: string }
+  | { kind: "assistant"; text: string }
+  | { kind: "thinking"; text: string }
+  | { kind: "tool"; callId: string; name: string; summary: string; input?: string }
+  | { kind: "tool_result"; callId: string; ok: boolean; output: string }
+  /** Something about the session itself, e.g. "Conversation compacted". */
+  | { kind: "notice"; text: string }
+);
+
+/**
+ * `after`: entries newer than this id (for polling). `before`: older ones (for
+ * scrolling back). Neither: the latest `limit` entries.
+ */
+export type ConversationParams = { paneId: string; after?: number; before?: number; limit?: number };
+
+export type ConversationResult =
+  | { available: false; reason: string }
+  | {
+      available: true;
+      agent: string;
+      /** Changes when the agent starts a new session (e.g. after /clear); start over then. */
+      session: string;
+      entries: ConversationEntry[];
+      /** Oldest id the host has for this session, so the app knows when it has scrolled to the start. */
+      first: number;
+      /** Newest id so far. */
+      last: number;
+    };
 
 export type StartAgentResult = {
   paneId: string;

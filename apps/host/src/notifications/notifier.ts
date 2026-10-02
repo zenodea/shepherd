@@ -159,3 +159,17 @@ export class Notifier {
     }
   }
 }
+
+/** Send a "notifications work" message; resolves to the error if it failed. */
+export async function sendTestNotification(config: NotifyConfig, hostName: string): Promise<Error | null> {
+  let failed: Error | null = null;
+  await new Notifier({ config, hostName, onError: (e) => (failed = e) }).publish({
+    topic: config.topic,
+    title: "Shepherd test",
+    message: `Notifications from ${hostName} are working.`,
+    priority: 3,
+    tags: ["tada"],
+    click: "shepherd://",
+  });
+  return failed;
+}

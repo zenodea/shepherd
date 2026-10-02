@@ -1,6 +1,6 @@
 // A fake host with realistic agents, for trying the app without a computer
 // running shepherd (EXPO_PUBLIC_DEMO=1) and for design previews.
-import type { ActivityEntry, AgentInfo, AgentStatus, CallMethod, ProjectsResult, StatusChange } from "@shepherd/protocol";
+import type { ActivityEntry, AgentInfo, AgentStatus, CallMethod, ConversationEntry, ConversationResult, ProjectsResult, StatusChange } from "@shepherd/protocol";
 import type { ConnectionSettings, HostConnection, HostState, TerminalHandle, TerminalHandlers } from "./host-client";
 import { parseAnsi, toStyledLines } from "../agents/ansi";
 import { HostCallError } from "./host-client";
@@ -37,6 +37,22 @@ const AGENTS: AgentInfo[] = [
   agent("w2:p1", "codex", "working", "Create branch from PR-12", "/Users/demo/code/web"),
   agent("w1:p3", "claude", "done", "Refactor billing module", "/Users/demo/code/api", 3),
   agent("w4:p1", "gemini", "idle", "Ready", "/Users/demo/code/docs"),
+];
+
+/** The fix-the-flaky-test conversation, as the host would read it from Claude Code's transcript. */
+const CONVERSATION: ConversationEntry[] = [
+  { id: 0, kind: "user", text: "The login test fails about one run in five on CI. Can you find out why and fix it?" },
+  { id: 1, kind: "thinking", text: "Flaky one in five sounds like timing. Run it a few times locally and look at what the test waits on." },
+  { id: 2, kind: "tool", callId: "t1", name: "Bash", summary: "npx vitest run src/auth/login.test.ts --repeat 10" },
+  { id: 3, kind: "tool_result", callId: "t1", ok: false, output: "  ✓ login > accepts a valid password (8 runs)\n  × login > accepts a valid password (2 runs)\n    expected 'pending' to be 'signed-in'" },
+  { id: 4, kind: "tool", callId: "t2", name: "Read", summary: "src/auth/login.test.ts" },
+  { id: 5, kind: "tool_result", callId: "t2", ok: true, output: "…" },
+  {
+    id: 6,
+    kind: "assistant",
+    text: "Found it. The test checks the session right after `submit()`, but signing in finishes on the next tick, so it passes or fails depending on timing:\n\n```ts\nawait form.submit();\nexpect(session.state).toBe(\"signed-in\");\n```\n\nI'll wait for the state change instead of assuming it already happened.",
+  },
+  { id: 7, kind: "tool", callId: "t3", name: "Edit", summary: "src/auth/login.test.ts" },
 ];
 
 const SNAPSHOT = {
@@ -202,6 +218,18 @@ export class DemoHost implements HostConnection {
       case "pane.send_keys":
       case "pane.send_input":
         return { type: "ok" } as T;
+      case "shepherd.conversation": {
+        if (params.paneId !== "w1:p1") return { available: false, reason: "No conversation in the demo for this agent." } satisfies ConversationResult as T;
+        const after = typeof params.after === "number" ? params.after : -1;
+        return {
+          available: true,
+          agent: "claude",
+          session: "demo",
+          entries: CONVERSATION.filter((e) => e.id > after),
+          first: 0,
+          last: CONVERSATION.length - 1,
+        } satisfies ConversationResult as T;
+      }
       case "shepherd.activity":
         return { entries: (params as { before?: number }).before ? [] : demoActivity() } as T;
       case "shepherd.start_agent":

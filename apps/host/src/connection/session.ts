@@ -11,7 +11,8 @@ import type {
   TerminalMode,
   TerminalRender,
 } from "@shepherd/protocol";
-import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, parseClientMessage } from "@shepherd/protocol";
+import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, isPaneId, parseClientMessage } from "@shepherd/protocol";
+import { conversationParams, type Conversations } from "../conversation/conversations.ts";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
@@ -46,12 +47,18 @@ export type SessionDeps = {
   launcher?: Launcher;
   /** Backs `shepherd.activity`; without it the feed is empty. */
   activity?: ActivityLog;
+  /** Backs `shepherd.conversation`; without it there are no conversations. */
+  conversations?: Conversations;
+  /** Told which phones are connected, for the Shepherd window. */
+  presence?: { connected: (deviceId: string, via: "direct" | "relay") => () => void };
 };
 
 export type SessionTransport = {
   send: (msg: ServerMessage) => void;
   /** Close the underlying socket. */
   close: (code: number, reason: string) => void;
+  /** How the phone reached the host. */
+  via?: "direct" | "relay";
 };
 
 /**
@@ -67,6 +74,7 @@ export class AppSession {
   private closed = false;
   private device: Device | null = null;
   private authTimer: ReturnType<typeof setTimeout> | null;
+  private releasePresence: (() => void) | null = null;
   private readonly transport: SessionTransport;
   private readonly deps: SessionDeps;
   private readonly onAgents = (agents: AgentInfo[]) => this.send({ type: "agents", agents });
@@ -107,6 +115,7 @@ export class AppSession {
     if (this.closed) return;
     this.closed = true;
     if (this.authTimer) clearTimeout(this.authTimer);
+    this.releasePresence?.();
     this.deps.tracker.off("agents", this.onAgents);
     this.deps.tracker.off("status", this.onStatus);
     this.deps.devices.off("changed", this.onDevicesChanged);
@@ -131,6 +140,7 @@ export class AppSession {
     if (this.authTimer) clearTimeout(this.authTimer);
     this.authTimer = null;
     this.device = result.device;
+    this.releasePresence = this.deps.presence?.connected(result.device.id, this.transport.via ?? "direct") ?? null;
     this.deps.tracker.on("agents", this.onAgents);
     this.deps.tracker.on("status", this.onStatus);
     this.deps.devices.on("changed", this.onDevicesChanged);
@@ -208,6 +218,12 @@ export class AppSession {
     if (method === "agent.read" || method === "pane.read") return this.deps.herdr.request(method, params, { timeoutMs: READ_TIMEOUT_MS });
     if (!method.startsWith("shepherd.")) return this.deps.herdr.request(method, params);
     if (method === "shepherd.activity") return Promise.resolve(this.deps.activity?.page(params as ActivityParams) ?? { entries: [] });
+    if (method === "shepherd.conversation") {
+      const parsed = conversationParams(params, isPaneId);
+      if (!parsed) return Promise.reject(new LaunchError("invalid_params", "shepherd.conversation needs a paneId and whole-number after, before and limit"));
+      if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
+      return Promise.resolve(this.deps.conversations.get(this.deps.tracker.get(parsed.paneId) ?? null, parsed));
+    }
     const launcher = this.deps.launcher;
     if (!launcher) return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
     if (method === "shepherd.projects") return launcher.projects();

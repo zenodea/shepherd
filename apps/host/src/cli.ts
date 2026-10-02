@@ -3,19 +3,32 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { extractPrompt, toHex, type PaneReadResult, type TerminalMode } from "@shepherd/protocol";
 import { AgentTracker } from "./herdr/agent-tracker.ts";
-import { generateSecret, hostCommand, hostKeyPair, loadConfig, loadOrCreateStoredConfig, saveStoredConfig, type HostConfig } from "./system/config.ts";
+import {
+  DEFAULT_NTFY_SERVER,
+  disableNotifications,
+  enableNotifications,
+  hostCommand,
+  hostKeyPair,
+  loadConfig,
+  loadOrCreateStoredConfig,
+  saveStoredConfig,
+  type HostConfig,
+} from "./system/config.ts";
 import { DeviceRegistry } from "./pairing/devices.ts";
 import { HerdrClient } from "./herdr/herdr-client.ts";
 import { ActivityLog } from "./herdr/activity-log.ts";
 import { Launcher } from "./herdr/launcher.ts";
 import { NotificationActions } from "./notifications/actions.ts";
-import { Notifier, ntfyBase, ntfySubscribeUrl } from "./notifications/notifier.ts";
+import { Notifier, ntfyBase, ntfySubscribeUrl, sendTestNotification, type NotifyConfig } from "./notifications/notifier.ts";
 import { hostAddresses, printDevices, printHostInfo, printPairing, renderQr } from "./pairing/pairing.ts";
 import { RelayTunnel, appRelayUrl } from "./connection/relay-tunnel.ts";
 import { startLocalServer } from "./connection/server.ts";
 import type { SessionDeps } from "./connection/session.ts";
 import { Service, serviceSpec } from "./system/service.ts";
-import { clearPidFile, readRunningHost, startDetached, stopRunningHost, writePidFile } from "./system/daemon.ts";
+import { HostStatusWriter } from "./system/host-status.ts";
+import { Conversations } from "./conversation/conversations.ts";
+import { SCREENS, runWindow, type Screen } from "./ui/window.ts";
+import { clearPidFile, readRunningHost, restartHost, startDetached, stopRunningHost, turnOff, turnOn, writePidFile } from "./system/daemon.ts";
 import { TerminalStream } from "./herdr/terminal-stream.ts";
 
 const USAGE = `shepherd-host — bridge your herdr agents to the shepherd app
@@ -34,11 +47,12 @@ Usage (from the repo root):
   npm run host -- service install          Run in the background (launchd / systemd)
   npm run host -- service uninstall|status|logs
   npm run host -- status                   Is the host running, addresses, devices, recent log
+  npm run host -- ui [pair|phones|log]     The Shepherd window: status, pairing, phones, log
 
 As a herdr plugin (herdr-plugin.toml) the host runs in the background while herdr does:
   npm run host -- ensure                   Start it in the background unless it's already running
   npm run host -- restart | stop           Restart or stop it
-  npm run host -- pair --wait              Wait for a key (or a phone to pair) before exiting
+  npm run host -- on | off                 Turn Shepherd on or off (off: herdr doesn't start it)
 
 Environment:
   SHEPHERD_PORT    Port for direct connections (default 7420)
@@ -99,6 +113,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
       new TerminalStream({ herdrBin: config.herdrBin, socketPath: config.socketPath, paneId, mode, cols, rows }),
     launcher: new Launcher({ herdr, onError: (err) => console.error(`[launch] ${err.message}`) }),
     activity,
+    conversations: new Conversations(),
   };
 
   const server = await startLocalServer({ port: config.port, bind: config.bind, deps }).catch((err: NodeJS.ErrnoException) => {
@@ -110,6 +125,26 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   });
   deps.host.addresses = hostAddresses(config, server.port).map((a) => a.url);
   writePidFile(config.configPath, config.socketPath);
+
+  const agentCounts = () => {
+    const list = tracker.list();
+    return {
+      total: list.length,
+      blocked: list.filter((a) => a.agent_status === "blocked").length,
+      working: list.filter((a) => a.agent_status === "working").length,
+    };
+  };
+  const status = new HostStatusWriter(config.configPath, {
+    herdr: { version: herdrVersion, socketPath: config.socketPath },
+    port: server.port,
+    addresses: hostAddresses(config, server.port),
+    agents: agentCounts(),
+    relay: null,
+    notify: config.notify ? { url: ntfySubscribeUrl(config.notify), actions: config.notify.actions !== false } : null,
+  });
+  deps.presence = status;
+  tracker.on("agents", () => status.update({ agents: agentCounts() }));
+  tracker.on("status", () => status.update({ agents: agentCounts() }));
   console.log(`shepherd-host connected to herdr ${herdrVersion}, tracking ${tracker.list().length} agent(s).`);
   // A QR code is only useful to a person at a terminal, not in a service log.
   if (process.stdout.isTTY) await printPairing(config, devices, server.port);
@@ -159,7 +194,10 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
       hostToken: config.relayHostToken,
       deps,
     });
-    tunnel.on("state", (state, detail) => console.log(`[relay] ${state}${detail ? `: ${detail}` : ""}`));
+    tunnel.on("state", (state, detail) => {
+      console.log(`[relay] ${state}${detail ? `: ${detail}` : ""}`);
+      status.update({ relay: { state, detail } });
+    });
     tunnel.start();
   }
 
@@ -183,6 +221,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   const shutdown = async () => {
     clearInterval(herdrWatch);
     clearPidFile(config.configPath);
+    status.clear();
     tunnel?.stop();
     actions?.stop();
     devices.unwatch();
@@ -199,17 +238,16 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
 async function notifyCommand(args: string[]): Promise<void> {
   const config = loadConfig();
   const stored = loadOrCreateStoredConfig(config.configPath);
-  const [action, server = "https://ntfy.sh"] = args;
+  const [action, server = DEFAULT_NTFY_SERVER] = args;
 
   if (action === "on") {
+    let notify: NotifyConfig;
     try {
-      new URL(server);
+      notify = enableNotifications(config.configPath, server);
     } catch {
       console.error(`Invalid ntfy server URL: ${server}`);
       process.exit(2);
     }
-    const notify = stored.notify?.server === server ? stored.notify : { server, topic: `shepherd-${generateSecret(15)}` };
-    saveStoredConfig(config.configPath, { ...stored, notify });
     const subscribe = ntfySubscribeUrl(notify);
     console.log("\n  Notifications enabled. On your phone:");
     console.log("   1. Install ntfy (https://ntfy.sh, Play Store or F-Droid)");
@@ -231,8 +269,7 @@ async function notifyCommand(args: string[]): Promise<void> {
     return;
   }
   if (action === "off") {
-    const { notify: _notify, ...rest } = stored;
-    saveStoredConfig(config.configPath, rest);
+    disableNotifications(config.configPath);
     console.log("Notifications disabled. Restart the host to apply.");
     return;
   }
@@ -241,17 +278,9 @@ async function notifyCommand(args: string[]): Promise<void> {
       console.error("Notifications are off. Run: npm run host -- notify on");
       process.exit(1);
     }
-    let failed: Error | null = null;
-    await new Notifier({ config: stored.notify, hostName: config.name, onError: (e) => (failed = e) }).publish({
-      topic: stored.notify.topic,
-      title: "Shepherd test",
-      message: `Notifications from ${config.name} are working.`,
-      priority: 3,
-      tags: ["tada"],
-      click: "shepherd://",
-    });
+    const failed = await sendTestNotification(stored.notify, config.name);
     if (failed) {
-      console.error(`Failed: ${(failed as Error).message}`);
+      console.error(`Failed: ${failed.message}`);
       process.exit(1);
     }
     console.log("Sent. Check your phone.");
@@ -304,6 +333,10 @@ async function ensureCommand(): Promise<void> {
     console.log("The background service runs the host; nothing to start.");
     return;
   }
+  if (config.disabled) {
+    console.log(`Shepherd is turned off, so the host isn't started. Turn it on in the Shepherd window or with: ${hostCommand("on")}`);
+    return;
+  }
   const running = readRunningHost(config.configPath);
   if (running) {
     console.log(`The host is already running (pid ${running.pid}, herdr at ${running.socketPath}).`);
@@ -314,17 +347,7 @@ async function ensureCommand(): Promise<void> {
 }
 
 async function restartCommand(): Promise<void> {
-  const config = loadConfig();
-  if (new Service().restart()) {
-    console.log("Restarted the background service.");
-    return;
-  }
-  const running = readRunningHost(config.configPath);
-  await stopRunningHost(config.configPath);
-  // Stay on the herdr session the stopped host was following.
-  const env = running ? { ...process.env, HERDR_SOCKET_PATH: running.socketPath } : process.env;
-  const { logFile } = serviceSpec();
-  console.log(`${running ? "Restarted" : "Started"} the host (pid ${startDetached(logFile, env)}). Logs: ${logFile}`);
+  console.log(await restartHost(loadConfig().configPath));
 }
 
 async function stopCommand(): Promise<void> {
@@ -357,46 +380,6 @@ function statusCommand(): void {
   }
 }
 
-/** For herdr plugin panes, which close when the command exits. */
-function waitToClose(prompt = "Press any key to close."): Promise<void> {
-  if (!process.stdin.isTTY) return Promise.resolve();
-  console.log(`  ${prompt}`);
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
-  return new Promise((resolve) =>
-    process.stdin.once("data", () => {
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
-      resolve();
-    }),
-  );
-}
-
-async function pairCommand(wait: boolean): Promise<void> {
-  const config = loadConfig();
-  const devices = new DeviceRegistry(config.configPath);
-  if (wait && !readRunningHost(config.configPath)) {
-    console.log(`\n  The host isn't running, so a phone can't pair yet. Start it with: ${hostCommand("restart")}`);
-  }
-  await printPairing(config, devices);
-  if (!wait) return;
-  // Close by itself once the phone has paired.
-  const before = new Set(devices.list().map((d) => d.id));
-  const paired = new Promise<string>((resolve) => {
-    devices.on("changed", () => {
-      const added = devices.list().find((d) => !before.has(d.id));
-      if (added) resolve(added.name);
-    });
-    devices.watch(500);
-  });
-  const name = await Promise.race([paired, waitToClose("Waiting for your phone. Press any key to close.").then(() => null)]);
-  if (name) {
-    console.log(`\n  Paired ${name}.`);
-    await new Promise((r) => setTimeout(r, 1500));
-  }
-  process.exit(0);
-}
-
 async function main(argv: string[]): Promise<void> {
   const [command = "serve"] = argv;
   switch (command) {
@@ -408,15 +391,33 @@ async function main(argv: string[]): Promise<void> {
       return restartCommand();
     case "stop":
       return stopCommand();
+    case "on":
+      return console.log(await turnOn(loadConfig().configPath));
+    case "off":
+      try {
+        return console.log(await turnOff(loadConfig().configPath));
+      } catch (err) {
+        console.error((err as Error).message);
+        process.exit(1);
+      }
     case "status":
-      statusCommand();
-      return argv.includes("--wait") ? waitToClose() : undefined;
+      return statusCommand();
+    case "ui": {
+      const screen = argv[1] ?? process.env.SHEPHERD_SCREEN ?? "overview";
+      if (!(SCREENS as readonly string[]).includes(screen)) {
+        console.error(`Usage: ui [${SCREENS.join("|")}]`);
+        process.exit(2);
+      }
+      return runWindow(screen as Screen);
+    }
     case "info": {
       const config = loadConfig();
       return printHostInfo(config, new DeviceRegistry(config.configPath));
     }
-    case "pair":
-      return pairCommand(argv.includes("--wait"));
+    case "pair": {
+      const config = loadConfig();
+      return printPairing(config, new DeviceRegistry(config.configPath));
+    }
     case "devices": {
       const config = loadConfig();
       const devices = new DeviceRegistry(config.configPath);

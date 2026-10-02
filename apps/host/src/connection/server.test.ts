@@ -7,6 +7,7 @@ import { CLOSE_CODES, generateKeyPair, type ServerMessage } from "@shepherd/prot
 import { AgentTracker } from "../herdr/agent-tracker.ts";
 import { HerdrClient, lineReader } from "../herdr/herdr-client.ts";
 import { startLocalServer, type LocalServer } from "./server.ts";
+import { Conversations } from "../conversation/conversations.ts";
 import { TerminalStream, terminalSessionArgs } from "../herdr/terminal-stream.ts";
 import { testDevices } from "../testing/devices.ts";
 import { secureClient, type SecureTestClient } from "../testing/secure-client.ts";
@@ -61,6 +62,7 @@ describe("local server", () => {
   let children: FakeChild[];
   let devices: ReturnType<typeof testDevices>;
   const clients: Client[] = [];
+  let presence: string[];
 
   beforeEach(async () => {
     herdr = new FakeHerdr();
@@ -71,6 +73,7 @@ describe("local server", () => {
     tracker.on("error", () => {});
     await tracker.start();
     children = [];
+    presence = [];
     devices = testDevices();
     server = await startLocalServer({
       port: 0,
@@ -81,6 +84,13 @@ describe("local server", () => {
         devices: devices.registry,
         hostKey: generateKeyPair(),
         host: { name: "test-host", herdrVersion: "fake" },
+        conversations: new Conversations({ claude: "/nonexistent/claude", codex: "/nonexistent/codex", pi: "/nonexistent/pi" }),
+        presence: {
+          connected: (id, via) => {
+            presence.push(`+${id} ${via}`);
+            return () => presence.push(`-${id}`);
+          },
+        },
         openTerminal: (paneId, mode, cols, rows) =>
           new TerminalStream({ herdrBin: "herdr", socketPath: herdr.socketPath, paneId, mode, cols, rows }, (_bin, args) => {
             const child = new FakeChild(args);
@@ -113,6 +123,14 @@ describe("local server", () => {
     await until(() => c.closeCode() !== null);
     expect(c.closeCode()).toBe(CLOSE_CODES.unauthorized);
     expect(c.messages).toEqual([{ type: "auth.error", code: "invalid", message: expect.any(String) }]);
+  });
+
+  it("reports a phone as connected from auth until it disconnects", async () => {
+    const c = await open();
+    expect(presence).toEqual([`+${devices.deviceId} direct`]);
+    c.ws.terminate();
+    await until(() => presence.length === 2);
+    expect(presence[1]).toBe(`-${devices.deviceId}`);
   });
 
   it("requires auth before anything else", async () => {
@@ -193,6 +211,17 @@ describe("local server", () => {
     await until(() => find(c, "result", (m) => m.id === "a") !== undefined && find(c, "error", (m) => m.id === "b") !== undefined);
     expect(find(c, "result", (m) => m.id === "a")?.result).toEqual({ type: "ok", echoed: { target: "w1:p1", text: "hello" } });
     expect(herdr.requests.some((r) => r.method === "agent.prompt")).toBe(true);
+  });
+
+  it("answers conversation requests for agents and rejects bad parameters", async () => {
+    const c = await open();
+    c.send({ type: "call", id: "a", method: "shepherd.conversation", params: { paneId: "w1:p1" } });
+    c.send({ type: "call", id: "b", method: "shepherd.conversation", params: { paneId: "w1:p1", after: "0; rm" } });
+    c.send({ type: "call", id: "c", method: "shepherd.conversation", params: { paneId: "w9:p9" } });
+    await until(() => ["a", "b", "c"].every((id) => find(c, "result", (m) => m.id === id) || find(c, "error", (m) => m.id === id)));
+    expect(find(c, "result", (m) => m.id === "a")?.result).toEqual({ available: false, reason: "No conversation found for this agent yet." });
+    expect(find(c, "error", (m) => m.id === "b")?.error.code).toBe("invalid_params");
+    expect(find(c, "result", (m) => m.id === "c")?.result).toEqual({ available: false, reason: "This tab isn't an agent." });
   });
 
   it("refuses methods outside the allowlist without calling herdr", async () => {

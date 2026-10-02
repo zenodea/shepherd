@@ -133,7 +133,7 @@ export class RelayTunnel extends EventEmitter<TunnelEvents> {
       maxPayload: 1024 * 1024,
     });
     this.dataSockets.add(ws);
-    ws.on("open", () => attachSession(ws, this.opts.deps));
+    ws.on("open", () => attachSession(ws, this.opts.deps, "relay"));
     ws.on("close", () => this.dataSockets.delete(ws));
     ws.on("error", () => ws.terminate());
   }

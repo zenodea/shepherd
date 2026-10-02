@@ -1,6 +1,6 @@
 # Shepherd as a herdr plugin: herdr installs the host, starts it in the
-# background when the herdr server starts, and shows pairing and status
-# in a pane. See "Install as a herdr plugin" in the README.
+# background when the herdr server starts, and opens the Shepherd window
+# (status, pairing, phones, log) in a pane. See "Install as a herdr plugin" in the README.
 id = "shepherd"
 name = "Shepherd"
 version = "0.1.0"
@@ -17,15 +17,16 @@ command = ["npm", "ci", "--workspace", "@shepherd/host", "--omit=dev", "--no-aud
 [[startup]]
 command = ["node", "apps/host/src/cli.ts", "ensure"]
 
+# Each opens the Shepherd window on its own screen.
+[[actions]]
+id = "open"
+title = "Shepherd"
+command = ["sh", "-c", "exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint window --focus"]
+
 [[actions]]
 id = "pair"
 title = "Shepherd: pair a phone"
-command = ["sh", "-c", "exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint pair --focus"]
-
-[[actions]]
-id = "status"
-title = "Shepherd: status"
-command = ["sh", "-c", "exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint status --focus"]
+command = ["sh", "-c", "exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint window --focus --env SHEPHERD_SCREEN=pair"]
 
 [[actions]]
 id = "restart"
@@ -33,13 +34,7 @@ title = "Shepherd: restart the host"
 command = ["node", "apps/host/src/cli.ts", "restart"]
 
 [[panes]]
-id = "pair"
-title = "Pair a phone"
-placement = "overlay"
-command = ["node", "apps/host/src/cli.ts", "pair", "--wait"]
-
-[[panes]]
-id = "status"
+id = "window"
 title = "Shepherd"
 placement = "overlay"
-command = ["node", "apps/host/src/cli.ts", "status", "--wait"]
+command = ["node", "apps/host/src/cli.ts", "ui"]

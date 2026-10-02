@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultConfigPath, envVar, hostCommand } from "./config.ts";
+import { defaultConfigPath, disableNotifications, enableNotifications, envVar, hostCommand, readStoredConfig, setDisabled } from "./config.ts";
 
 describe("config location", () => {
   const dirs: string[] = [];
@@ -40,5 +40,35 @@ describe("hostCommand", () => {
     const plugin = { HERDR_PLUGIN_ID: "shepherd", HERDR_PLUGIN_ROOT: "/plugins/shepherd" };
     expect(hostCommand("pair", plugin)).toBe("herdr plugin action invoke shepherd.pair");
     expect(hostCommand("devices revoke <id>", plugin)).toBe(`node ${join("/plugins/shepherd", "apps", "host", "src", "cli.ts")} devices revoke <id>`);
+  });
+});
+
+describe("notification and on/off switches", () => {
+  const dirs: string[] = [];
+  afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+  const configPath = () => {
+    const dir = mkdtempSync(join(tmpdir(), "shepherd-switch-"));
+    dirs.push(dir);
+    return join(dir, "host.json");
+  };
+
+  it("keeps the ntfy topic when notifications go off and on again", () => {
+    const path = configPath();
+    const first = enableNotifications(path);
+    expect(first.topic).toMatch(/^shepherd-/);
+    disableNotifications(path);
+    expect(readStoredConfig(path)?.notify).toBeUndefined();
+    expect(enableNotifications(path)).toEqual(first);
+    expect(readStoredConfig(path)?.pausedNotify).toBeUndefined();
+    expect(enableNotifications(path, "https://ntfy.example.com").topic).not.toBe(first.topic);
+    expect(() => enableNotifications(path, "not a url")).toThrow();
+  });
+
+  it("remembers that Shepherd was turned off", () => {
+    const path = configPath();
+    setDisabled(path, true);
+    expect(readStoredConfig(path)?.disabled).toBe(true);
+    setDisabled(path, false);
+    expect(readStoredConfig(path)).not.toHaveProperty("disabled");
   });
 });

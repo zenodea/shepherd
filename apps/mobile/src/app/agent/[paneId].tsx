@@ -1,11 +1,13 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ALargeSmall, ArrowDown, ArrowUp, ChevronLeft, Ellipsis, Keyboard as KeyboardIcon, Search, Sparkles, SquareTerminal } from "lucide-react-native";
+import { ALargeSmall, ArrowDown, ArrowUp, ChevronLeft, Ellipsis, Keyboard as KeyboardIcon, MessageSquareText, Search, Sparkles, SquareTerminal } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
 import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
+import { Conversation, type ConversationHandle } from "../../agents/Conversation";
+import { useConversation } from "../../agents/use-conversation";
 import { parseAnsi, toStyledLines } from "../../agents/ansi";
 import { PromptChips } from "../../agents/PromptCard";
 import { useBlockedPrompts } from "../../agents/use-blocked-prompts";
@@ -136,6 +138,19 @@ export default function TerminalScreen() {
     setFontSize(size);
     void savePref("terminalFontSize", String(size));
   };
+  // Agents open on their conversation (read from their transcript) when there is one.
+  const [view, setView] = useState<"chat" | "terminal">("chat");
+  useEffect(() => {
+    void loadPref("agentView").then((v) => {
+      if (v === "terminal" || v === "chat") setView(v);
+    });
+  }, []);
+  const switchView = () => {
+    const next = view === "chat" ? "terminal" : "chat";
+    setView(next);
+    setSearching(false);
+    void savePref("agentView", next);
+  };
 
   // Phone view state.
   const [liveSize, setLiveSize] = useState<{ cols: number; rows: number } | null>(null);
@@ -146,6 +161,9 @@ export default function TerminalScreen() {
   const scrollback = scrollbackState.paneId === paneId ? scrollbackState.lines : NO_LINES;
   const agentStatus = agent?.agent_status ?? null;
   const isAgent = agent !== null;
+  const conversation = useConversation(client, isAgent ? paneId : null, online);
+  const chatAvailable = isAgent && conversation.available !== false;
+  const chat = chatAvailable && view === "chat";
   const readable = agentStatus === "idle" || agentStatus === "done";
   // Counts the agent's turns: each time it goes back to work, its transcript goes stale.
   const [turn, setTurn] = useState({ paneId, status: agentStatus, n: 0 });
@@ -168,6 +186,7 @@ export default function TerminalScreen() {
   );
 
   const live = useRef<LiveTerminalHandle>(null);
+  const conversationView = useRef<ConversationHandle>(null);
   const capture = useRef<KeyboardCaptureHandle>(null);
   const stream = useRef<TerminalHandle | null>(null);
   const paneIdRef = useRef(paneId);
@@ -182,7 +201,7 @@ export default function TerminalScreen() {
    * when you open an idle agent, and when you scroll up after it has worked
    * since. Busy agents fall back to herdr's scrollback below.
    */
-  const needsTranscript = online && isAgent && readable && (!hasTranscript || (transcriptState.turn !== turn.n && !atBottom));
+  const needsTranscript = online && isAgent && !chat && readable && (!hasTranscript || (transcriptState.turn !== turn.n && !atBottom));
   const collectingFor = needsTranscript ? `${paneId}:${turn.n}` : null;
   useEffect(() => {
     if (!collectingFor || !client || !paneId) return;
@@ -253,7 +272,7 @@ export default function TerminalScreen() {
   const cols = liveSize?.cols;
   const rows = liveSize?.rows;
   useEffect(() => {
-    if (!client || !paneId || !online) return;
+    if (!client || !paneId || !online || chat) return;
     if (!cols || !rows || needsTranscript) return;
 
     let reopen: ReturnType<typeof setTimeout> | null = null;
@@ -291,7 +310,7 @@ export default function TerminalScreen() {
       handle?.close();
       stream.current = null;
     };
-  }, [client, paneId, online, cols, rows, epoch, needsTranscript]);
+  }, [client, paneId, online, cols, rows, epoch, needsTranscript, chat]);
 
   const onAtBottomChange = (bottom: boolean) => {
     setAtBottom(bottom);
@@ -301,7 +320,7 @@ export default function TerminalScreen() {
     if (!bottom && !isAgent && meta && Date.now() - meta.at > SCROLLBACK_STALE_MS) void loadScrollback(meta.rows);
   };
 
-  const toLive = () => live.current?.scrollToBottom();
+  const toLive = () => (chat ? conversationView.current?.scrollToBottom() : live.current?.scrollToBottom());
 
   const openTerminalTab = async () => {
     if (!client || !workspaceId) return;
@@ -381,9 +400,16 @@ export default function TerminalScreen() {
             </Text>
           </View>
         </View>
-        <IconButton label="Find in terminal" onPress={() => setSearching((s) => !s)} filled={false}>
-          <Search size={18} color={searching ? colors.text : colors.muted} />
-        </IconButton>
+        {chatAvailable ? (
+          <IconButton label={chat ? "Show the terminal" : "Show the conversation"} onPress={switchView} filled={false}>
+            {chat ? <SquareTerminal size={18} color={colors.muted} /> : <MessageSquareText size={18} color={colors.muted} />}
+          </IconButton>
+        ) : null}
+        {chat ? null : (
+          <IconButton label="Find in terminal" onPress={() => setSearching((s) => !s)} filled={false}>
+            <Search size={18} color={searching ? colors.text : colors.muted} />
+          </IconButton>
+        )}
         <IconButton label="More" onPress={() => workspaceId && actions.show(paneId!, workspaceId, agent)} filled={false}>
           <Ellipsis size={19} color={colors.muted} />
         </IconButton>
@@ -392,34 +418,46 @@ export default function TerminalScreen() {
       {!online ? <Banner>{state.status === "connecting" ? "Connecting…" : "Can't reach your computer. Retrying…"}</Banner> : null}
 
       <View style={{ flex: 1, paddingBottom: keyboard.inset }}>
-        <View style={styles.terminal}>
-          <LiveTerminal
-            ref={live}
-            history={history}
-            fontSize={fontSize}
-            onFontSizeChange={changeFontSize}
-            searching={searching}
-            onCloseSearch={() => setSearching(false)}
-            screen={screen.rows}
-            cursor={screen.cursor}
-            onSize={(c, r) => setLiveSize((prev) => (prev?.cols === c && prev.rows === r ? prev : { cols: c, rows: r }))}
-            onAtBottomChange={onAtBottomChange}
+        {chat ? (
+          <Conversation
+            ref={conversationView}
+            entries={conversation.entries}
+            ready={conversation.available === true}
+            working={agent?.agent_status === "working"}
+            atStart={conversation.atStart}
+            loadingOlder={conversation.loadingOlder}
+            onLoadOlder={() => void conversation.loadOlder()}
           />
+        ) : (
+          <View style={styles.terminal}>
+            <LiveTerminal
+              ref={live}
+              history={history}
+              fontSize={fontSize}
+              onFontSizeChange={changeFontSize}
+              searching={searching}
+              onCloseSearch={() => setSearching(false)}
+              screen={screen.rows}
+              cursor={screen.cursor}
+              onSize={(c, r) => setLiveSize((prev) => (prev?.cols === c && prev.rows === r ? prev : { cols: c, rows: r }))}
+              onAtBottomChange={onAtBottomChange}
+            />
 
-          {needsTranscript ? (
-            <View style={styles.loading} pointerEvents="none">
-              <Text style={styles.loadingText}>Loading history…</Text>
-            </View>
-          ) : null}
-          {!atBottom ? (
-            <PressableScale onPress={toLive} style={styles.toBottom} accessibilityLabel="Back to live">
-              <ArrowDown size={18} color={colors.text} />
-            </PressableScale>
-          ) : null}
-          {closedReason && closedReason !== "closed by client" && closedReason !== "disconnected" ? (
-            <Text style={styles.notice}>Terminal closed: {closedReason}</Text>
-          ) : null}
-        </View>
+            {needsTranscript ? (
+              <View style={styles.loading} pointerEvents="none">
+                <Text style={styles.loadingText}>Loading history…</Text>
+              </View>
+            ) : null}
+            {!atBottom ? (
+              <PressableScale onPress={toLive} style={styles.toBottom} accessibilityLabel="Back to live">
+                <ArrowDown size={18} color={colors.text} />
+              </PressableScale>
+            ) : null}
+            {closedReason && closedReason !== "closed by client" && closedReason !== "disconnected" ? (
+              <Text style={styles.notice}>Terminal closed: {closedReason}</Text>
+            ) : null}
+          </View>
+        )}
 
         <KeyboardCapture ref={capture} onKeys={(data) => stream.current?.input(data)} onActiveChange={setTyping} />
 
@@ -442,15 +480,17 @@ export default function TerminalScreen() {
           )}
 
           <View style={styles.keys}>
-            <PressableScale
-              onPress={toggleTyping}
-              style={[styles.key, styles.typeKey, typing && styles.typeKeyActive]}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: typing }}
-              accessibilityLabel="Type straight into the terminal"
-            >
-              <KeyboardIcon size={16} color={typing ? colors.onPrimary : colors.text} />
-            </PressableScale>
+            {chat ? null : (
+              <PressableScale
+                onPress={toggleTyping}
+                style={[styles.key, styles.typeKey, typing && styles.typeKeyActive]}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: typing }}
+                accessibilityLabel="Type straight into the terminal"
+              >
+                <KeyboardIcon size={16} color={typing ? colors.onPrimary : colors.text} />
+              </PressableScale>
+            )}
             {QUICK_KEYS.map((group, gi) => (
               <View key={gi} style={[styles.keyGroup, styles.keyGroupDivider]}>
                 {group.map((k) => (

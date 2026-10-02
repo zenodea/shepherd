@@ -32,7 +32,7 @@ const HANDSHAKE_TIMEOUT_MS = 10_000;
  * is encrypted (see @shepherd/protocol secure.ts). The session, including
  * authentication, only exists inside that channel.
  */
-export function attachSession(ws: WebSocket, deps: SessionDeps): void {
+export function attachSession(ws: WebSocket, deps: SessionDeps, via: "direct" | "relay" = "direct"): void {
   const ephemeral = generateKeyPair();
   let ciphers: SessionCiphers | null = null;
   let session: AppSession | null = null;
@@ -77,7 +77,7 @@ export function attachSession(ws: WebSocket, deps: SessionDeps): void {
         return closeWith(CLOSE_CODES.insecure, "bad handshake");
       }
       clearTimeout(handshakeTimer);
-      session = new AppSession({ send, close: closeWith }, deps);
+      session = new AppSession({ send, close: closeWith, via }, deps);
       return;
     }
     if (!isBinary) return closeWith(CLOSE_CODES.insecure, "unencrypted frame");

@@ -21,6 +21,8 @@ export type AgentInfo = {
   terminal_title_stripped?: string | null;
   revision: number;
   state_change_seq?: number;
+  /** Reported by herdr's agent integrations: the agent's session, as an id or its transcript file. */
+  agent_session?: { agent: string; kind: "id" | "path"; source: string; value: string } | null;
 };
 
 export type WorkspaceInfo = {

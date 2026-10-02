@@ -41,26 +41,43 @@ herdr shows what the plugin runs before installing it, then installs the host's 
 herdr plugin action invoke shepherd.pair
 ```
 
-This opens a pane in herdr with a **pairing QR code**, followed by the addresses the host can be reached on. The pane closes by itself once your phone has paired.
+This opens the **Shepherd window** in herdr on its Pair screen, with a **pairing QR code**. Once your phone has paired, the window switches to your phones and shows it connected.
 
 ```
-  Scan with the Shepherd app (Host → Scan QR code) to pair a phone:
+  Shepherd  ● running · my-laptop
 
-  ▄▄▄▄▄▄▄ ▄▄▄▄▄ ▄   ▄▄▄▄ …
+   o Overview    Pair    d Phones   l Log
+  ─────────────────────────────────────────────────────
 
-  One-time code, valid until 14:52. For another: herdr plugin action invoke shepherd.pair
-
-  Host:      my-laptop (ENUEyLClAden)
-  LAN:       ws://192.168.1.20:7420/connect
-  Tailscale: ws://100.101.102.103:7420/connect
-  Code:      p_…   (for manual entry)
+  Scan with the Shepherd app (Host → Scan QR code). One-time code, valid for 9:41.
+   ▄▄▄▄▄▄▄ ▄▄▄▄▄ ▄   ▄▄▄▄ …
+  Or enter it by hand: p_…
 ```
 
-The QR code holds the host's name, every address above, and a **one-time pairing code**. The code works once and expires after 10 minutes. When your phone scans it, the host gives that phone its own token, so a photo of the QR code is useless afterwards. Open the pane again whenever you need a new code.
+The QR code holds the host's name, every address it can be reached on, and a **one-time pairing code**. The code works once and expires after 10 minutes. When your phone scans it, the host gives that phone its own token, so a photo of the QR code is useless afterwards. Press `p` in the window for a new code.
+
+### The Shepherd window
+
+The window has four screens; switch with the letter keys or Tab:
+
+- **Overview (`o`):** whether Shepherd is on and for how long, the herdr session, your agents, how many phones are connected, the addresses it's reachable on, the relay and notifications. Two switches live here: `s` turns Shepherd on or off, and `t` turns notifications on or off.
+- **Pair (`p`):** the QR code, with a countdown.
+- **Phones (`d`):** every paired phone, connected ones first with how they're connected (direct or through the relay). Select one and press `x` to revoke it.
+- **Log (`l`):** the host's recent log.
+
+`r` restarts the host from any screen, `n` sends a test notification from the Overview, and `q` or Esc closes the window.
+
+Turning Shepherd **off** stops the host and keeps it stopped: herdr won't start it again until you turn it back on, so no phone can connect. Turning notifications off and on again keeps the same ntfy topic, so your phone stays subscribed.
 
 To open it with a key, add this to herdr's `config.toml` (then `herdr server reload-config`):
 
 ```toml
+[[keys.command]]
+key = "prefix+alt+s"
+type = "plugin_action"
+command = "shepherd.open"
+description = "shepherd"
+
 [[keys.command]]
 key = "prefix+alt+p"
 type = "plugin_action"
@@ -68,9 +85,9 @@ command = "shepherd.pair"
 description = "pair a phone"
 ```
 
-The plugin has two more actions: `shepherd.status` shows whether the host is running, its addresses, paired phones and its recent log, and `shepherd.restart` restarts it.
+`shepherd.restart` restarts the host without opening the window. Outside herdr, `npm run host -- ui` opens the same window in any terminal.
 
-**Without the plugin:** run the host from a clone of this repo with `npm run host` (after `npm install`). It prints the same QR code in your terminal.
+**Without the plugin:** run the host from a clone of this repo with `npm run host` (after `npm install`). It prints a pairing QR code in your terminal.
 
 ### 4. Get the app on your phone
 
@@ -123,7 +140,8 @@ The app tries every address in the QR code at once and uses whichever answers fi
 ## What you can do
 
 - **See every agent at a glance.** Agents that need input come first, with their question and one button per answer.
-- **Watch the live terminal.** The agent is fitted to your screen as native text. Scroll up for the full history, pinch to resize, search, long-press to copy, tap links.
+- **Read the conversation.** Agents open on their conversation: your messages, their replies and each tool call (tap one to see its output), read from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app however the agent draws its screen, and older messages load as you scroll up.
+- **Watch the live terminal.** Tap the terminal icon to switch. The agent is fitted to your screen as native text. Scroll up for the history, pinch to resize, search, long-press to copy, tap links.
 - **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal.
 - **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project or a fresh git worktree.
 - **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
@@ -220,6 +238,8 @@ npm run host -- notify off        # stop notifications
 npm run host -- notify actions on|off  # answer buttons on notifications (default on)
 npm run host -- status            # is the host running, addresses, devices, recent log
 npm run host -- restart | stop    # restart or stop a host running in the background
+npm run host -- on | off          # turn Shepherd on or off (off: herdr doesn't start it)
+npm run host -- ui                # the Shepherd window (status, pairing, phones, log)
 ```
 
 | Variable | Default | |
@@ -235,6 +255,7 @@ npm run host -- restart | stop    # restart or stop a host running in the backgr
 - **Pairing:** each phone gets its own random token (the host stores only a hash). Pairing codes work once and expire after 10 minutes. `devices revoke` cuts a phone off immediately.
 - **End-to-end encryption** on every connection, including through the relay: a Noise NK-style handshake with the host's X25519 key pinned from the QR code, then ChaCha20-Poly1305. The relay only ever sees ciphertext. Built on the audited [@noble](https://paulmillr.com/noble/) libraries (`packages/protocol/src/secure.ts`).
 - **Limited API:** the host forwards only an allowlist of herdr methods (`FORWARDED_METHODS` in `packages/protocol/src/wire.ts`), and starts agents only as installed agent types in existing workspaces. A leaked token can't run shell commands through the API, but it can type into your terminals, so revoke lost phones.
+- **Conversations:** the app asks for an agent's conversation by its pane, never by a file path. The host reads only the transcript that belongs to that agent (in `~/.claude/projects`, `~/.codex/sessions` or `~/.pi/agent/sessions`), which shows what the pane already shows.
 
 ## Development
 
@@ -249,7 +270,7 @@ npm run demo:web -w @shepherd/mobile   # the demo in a browser, handy for design
 ```
 
 ```
-herdr-plugin.toml     the herdr plugin: installs the host, starts it with herdr, pairing and status panes
+herdr-plugin.toml     the herdr plugin: installs the host, starts it with herdr, opens the Shepherd window
 apps/
   host/src/
     cli.ts            entry point and commands
@@ -257,12 +278,14 @@ apps/
     connection/       WebSocket server, encrypted session, relay tunnel
     pairing/          paired devices, pairing codes, QR output
     notifications/    ntfy notifier and answer buttons
-    system/           config file, launchd/systemd service, background host for the plugin
+    conversation/     agents' conversations from Claude Code, Codex and pi transcripts
+    system/           config file, launchd/systemd service, background host for the plugin, live status
+    ui/               the Shepherd window (a terminal UI)
     testing/          fake herdr and test clients
   mobile/src/
     app/              screens (Expo Router)
     connection/       host client (address racing, encryption), saved settings, pairing
-    agents/           agent list helpers, answer cards, agent actions, activity feed
+    agents/           agent list helpers, answer cards, agent actions, activity feed, conversation view
     security/         app lock
     terminal/         native terminal view, links and search, raw keyboard input
     ui/               design system: tokens, buttons, rows, status indicators, agent marks
@@ -276,6 +299,7 @@ packages/
 How the host talks to herdr:
 - **Agents and events:** herdr's socket API (`herdr api schema --json`). herdr answers one request per connection.
 - **Live terminals:** `herdr terminal session control`, which streams screen frames as newline-delimited JSON. The host runs a headless xterm (`apps/host/src/herdr/screen-renderer.ts`) over those frames and sends only the rows that changed, as styled lines, which the app draws natively.
+- **Conversations:** not from herdr's screen at all. The host finds the transcript file the agent's harness writes (from the path herdr's integration reports, or the newest session for the pane's folder), follows it as it grows, and turns each harness's records into one list of messages and tool calls (`apps/host/src/conversation/`). Full-screen agents have no scrollback, so this is what makes their history scrollable.
 
 ## License
 

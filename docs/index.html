@@ -488,6 +488,7 @@ footer .links a:hover { color: var(--ink); }
         <li><code>esc ↵ tab ↑ ↓ ^C</code><span>Quick keys along the bottom, for when buttons aren't enough.</span></li>
         <li><code><svg class="kb" viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="18" height="12" rx="2"/><path d="M4.5 4.5h1M8 4.5h1M11.5 4.5h1M15 4.5h.5M4.5 7.5h1M8 7.5h1M11.5 7.5h1M15 7.5h.5M6 10.5h8" stroke-linecap="round"/></svg></code><span>Type straight into the pane, like you're at the keyboard.</span></li>
         <li><code>tabs</code><span>Hop between herdr tabs. Open a shell, or start an agent in a project or a fresh git worktree.</span></li>
+        <li><code>chat</code><span>Or read it as a conversation, from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app, even when the agent is full-screen.</span></li>
       </ul>
     </div>
     <div class="phone-slot order-first fade">
@@ -1194,19 +1195,19 @@ whenVisible(shell, async (v) => {
     await sleep(380); caret.remove();
   };
   const out = (html) => { const s = document.createElement("span"); s.innerHTML = html; shell.append(s); };
-  const until = new Date(Date.now() + 10 * 60000);
-  const hhmm = `${String(until.getHours()).padStart(2, "0")}:${String(until.getMinutes()).padStart(2, "0")}`;
   out('<span class="p">$</span> '); await type("herdr plugin install zenodea/shepherd");
   out('\n<span class="k">  build: npm ci --workspace @shepherd/host\n  added 61 packages in 2s</span>\n  Installed shepherd 0.1.0\n'); await sleep(400);
   out('<span class="p">$</span> '); await type("herdr plugin action invoke shepherd.pair");
   await sleep(500);
   // The action opens a herdr pane over the terminal.
-  shell.textContent = ""; $("#shellTitle").textContent = "herdr · Pair a phone";
-  out("\n  Scan with the Shepherd app (Host → Scan QR code) to pair a phone:\n");
+  shell.textContent = ""; $("#shellTitle").textContent = "herdr · Shepherd";
+  out('  <b>Shepherd</b>  <span style="color:var(--done)">● running</span><span class="k"> · studio-mac</span>\n\n');
+  out('<span class="k">   o</span> Overview  <span style="background:var(--ink);color:#070D17"> Pair </span><span class="k">  d</span> Phones<span class="k">  l</span> Log\n');
+  out('<span class="k">  ──────────────────────────────────────</span>\n');
+  out("  Scan with the Shepherd app (Host → Scan QR code).\n  One-time code, valid for 9:59.\n");
   out(fakeQR());
   for (let r = 0; r < 25; r++) { $$(`.qr [data-r="${r}"]`, shell).forEach((x) => (x.style.opacity = 1)); await sleep(reduced ? 0 : 40); }
-  out(`  One-time code, valid until ${hhmm}. For another: herdr plugin action invoke shepherd.pair\n\n`);
-  out('<span class="k">  Host:      </span>studio-mac\n<span class="k">  LAN:       </span>ws://192.168.1.20:7420/connect\n<span class="k">  Tailscale: </span>ws://100.101.102.103:7420/connect\n');
+  out('<span class="k">  Or enter it by hand: p_7Hq…</span>\n');
   const c = document.createElement("span"); c.className = "caret"; shell.append(c);
 }, .3);
 

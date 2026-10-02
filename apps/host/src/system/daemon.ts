@@ -5,6 +5,8 @@ import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readStoredConfig, setDisabled } from "./config.ts";
+import { Service, serviceSpec } from "./service.ts";
 
 export type RunningHost = { pid: number; socketPath: string; startedAt: string };
 
@@ -78,4 +80,38 @@ export async function stopRunningHost(configPath: string, timeoutMs = 5000): Pro
     await new Promise((r) => setTimeout(r, 100));
   }
   return true;
+}
+
+/**
+ * Restart the host however it runs: the launchd/systemd service if installed,
+ * otherwise in the background, following the herdr session the old one did.
+ */
+export async function restartHost(configPath: string, service = new Service()): Promise<string> {
+  // Starting it by hand turns Shepherd back on.
+  if (isTurnedOff(configPath)) setDisabled(configPath, false);
+  if (service.restart()) return "Restarted the background service.";
+  const running = readRunningHost(configPath);
+  await stopRunningHost(configPath);
+  const env = running ? { ...process.env, HERDR_SOCKET_PATH: running.socketPath } : process.env;
+  const { logFile } = serviceSpec();
+  return `${running ? "Restarted" : "Started"} the host (pid ${startDetached(logFile, env)}). Logs: ${logFile}`;
+}
+
+export function isTurnedOff(configPath: string): boolean {
+  return readStoredConfig(configPath)?.disabled === true;
+}
+
+/** Stop the host and keep it stopped: the herdr plugin won't start it until it's turned on. */
+export async function turnOff(configPath: string, service = new Service()): Promise<string> {
+  if (service.status().installed) throw new Error("The background service runs the host. Remove it first: service uninstall");
+  setDisabled(configPath, true);
+  return (await stopRunningHost(configPath)) ? "Shepherd is off. Phones can't connect until you turn it on." : "Shepherd is off.";
+}
+
+/** Allow the host to run again and start it. */
+export async function turnOn(configPath: string, service = new Service()): Promise<string> {
+  setDisabled(configPath, false);
+  const running = readRunningHost(configPath);
+  if (running || service.status().installed) return "Shepherd is on.";
+  return `Shepherd is on (pid ${startDetached(serviceSpec().logFile)}).`;
 }
