@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Shepherd</title>
-<meta name="description" content="An Android app for herdr. See which agents need you, read their terminal, and answer from your phone.">
+<meta name="description" content="A mobile app for herdr. See which agents need you, read their terminal, and answer from your phone.">
 <meta name="theme-color" content="#0B1422">
 <meta property="og:title" content="Shepherd">
-<meta property="og:description" content="See which herdr agents need you, read their terminal, and answer from your Android phone.">
+<meta property="og:description" content="See which herdr agents need you, read their terminal, and answer from your phone.">
 <meta property="og:image" content="screenshots/agents.png">
 <link rel="icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -435,7 +435,7 @@ footer .links a:hover { color: var(--ink); }
   <canvas id="flock" aria-hidden="true"></canvas>
   <div class="wrap">
     <div>
-      <p class="eyebrow fade in"><span class="dot"></span>An Android app for <a href="https://herdr.dev">herdr</a></p>
+      <p class="eyebrow fade in"><span class="dot"></span>A mobile app for <a href="https://herdr.dev">herdr</a></p>
       <h1 id="h1" aria-live="polite">
         <span class="swap" id="h1text"><span class="line"><span class="who" id="who">claude</span> has been</span><span class="line">waiting on you</span><span class="line">for <span class="clock" id="clock">11:42</span></span></span>
       </h1>
@@ -610,17 +610,18 @@ footer .links a:hover { color: var(--ink); }
       <p class="kicker">// setup</p>
       <h2 class="rv">Three steps, then it's just your phone.</h2>
       <ol class="steps fade">
-        <li><div><b>Start the host</b>A small Node service that talks to herdr's local socket and only lets in phones you've paired.
-          <div class="cmd"><code>git clone https://github.com/zenodea/shepherd.git &amp;&amp; cd shepherd &amp;&amp; npm install &amp;&amp; npm run host</code><button data-copy>copy</button></div></div></li>
-        <li><div><b>Get the app</b>Build the APK in the cloud with a free Expo account, then open the link it prints on your phone.
-          <div class="cmd"><code>npm run build:apk -w @shepherd/mobile</code><button data-copy>copy</button></div></div></li>
-        <li><div><b>Scan the code</b>The pairing code works once and expires after ten minutes, so a photo of it is useless afterwards. Your phone gets its own token.</div></li>
+        <li><div><b>Install the herdr plugin</b>It runs a small host in the background whenever herdr does. The host talks to herdr's local socket and only lets in phones you've paired.
+          <div class="cmd"><code>herdr plugin install zenodea/shepherd</code><button data-copy>copy</button></div></div></li>
+        <li><div><b>Get the app</b>Build it in the cloud with a free Expo account, then open the link it prints on your phone.
+          <div class="cmd"><code>git clone https://github.com/zenodea/shepherd.git &amp;&amp; cd shepherd &amp;&amp; npm install &amp;&amp; npm run build:apk -w @shepherd/mobile</code><button data-copy>copy</button></div></div></li>
+        <li><div><b>Scan the code</b>herdr opens a pane with a pairing code. It works once and expires after ten minutes, so a photo of it is useless afterwards. Your phone gets its own token.
+          <div class="cmd"><code>herdr plugin action invoke shepherd.pair</code><button data-copy>copy</button></div></div></li>
       </ol>
-      <p class="reqs fade">You'll need <a href="https://herdr.dev">herdr</a> 0.9 or newer, Node 22.18 or newer, and an Android phone. Want to look around first? <code>npm run app:demo</code> runs the app against a pretend computer full of pretend agents. Full instructions are in the <a href="https://github.com/zenodea/shepherd#quick-start">README</a>.</p>
+      <p class="reqs fade">You'll need <a href="https://herdr.dev">herdr</a> 0.9 or newer, Node 22.18 or newer, and a phone. Want to look around first? <code>npm run app:demo</code> runs the app against a pretend computer full of pretend agents. Full instructions are in the <a href="https://github.com/zenodea/shepherd#quick-start">README</a>.</p>
     </div>
     <div class="fade" style="--d:150ms">
       <div class="shell">
-        <div class="bar"><i></i><i></i><i></i><span>~/shepherd</span></div>
+        <div class="bar"><i></i><i></i><i></i><span id="shellTitle">~</span></div>
         <pre id="shell"></pre>
       </div>
     </div>
@@ -1195,16 +1196,16 @@ whenVisible(shell, async (v) => {
   const out = (html) => { const s = document.createElement("span"); s.innerHTML = html; shell.append(s); };
   const until = new Date(Date.now() + 10 * 60000);
   const hhmm = `${String(until.getHours()).padStart(2, "0")}:${String(until.getMinutes()).padStart(2, "0")}`;
-  out('<span class="p">$</span> '); await type("git clone https://github.com/zenodea/shepherd.git && cd shepherd");
-  out("\n"); await sleep(300);
-  out('<span class="p">$</span> '); await type("npm install");
-  out('\n<span class="k">added 604 packages in 9s</span>\n'); await sleep(400);
-  out('<span class="p">$</span> '); await type("npm run host");
+  out('<span class="p">$</span> '); await type("herdr plugin install zenodea/shepherd");
+  out('\n<span class="k">  build: npm ci --workspace @shepherd/host\n  added 61 packages in 2s</span>\n  Installed shepherd 0.1.0\n'); await sleep(400);
+  out('<span class="p">$</span> '); await type("herdr plugin action invoke shepherd.pair");
   await sleep(500);
-  out("\n\n  Scan with the Shepherd app (Host → Scan QR code) to pair a phone:\n");
+  // The action opens a herdr pane over the terminal.
+  shell.textContent = ""; $("#shellTitle").textContent = "herdr · Pair a phone";
+  out("\n  Scan with the Shepherd app (Host → Scan QR code) to pair a phone:\n");
   out(fakeQR());
   for (let r = 0; r < 25; r++) { $$(`.qr [data-r="${r}"]`, shell).forEach((x) => (x.style.opacity = 1)); await sleep(reduced ? 0 : 40); }
-  out(`  One-time code, valid until ${hhmm}. For another: npm run host -- pair\n\n`);
+  out(`  One-time code, valid until ${hhmm}. For another: herdr plugin action invoke shepherd.pair\n\n`);
   out('<span class="k">  Host:      </span>studio-mac\n<span class="k">  LAN:       </span>ws://192.168.1.20:7420/connect\n<span class="k">  Tailscale: </span>ws://100.101.102.103:7420/connect\n');
   const c = document.createElement("span"); c.className = "caret"; shell.append(c);
 }, .3);

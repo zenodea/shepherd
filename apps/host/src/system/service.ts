@@ -167,6 +167,18 @@ export class Service {
     return false;
   }
 
+  /** Restart the installed service; false if it isn't installed. */
+  restart(): boolean {
+    if (!this.status().installed) return false;
+    if (process.platform === "darwin") {
+      const { domain } = launchdPaths(this.home, this.label);
+      this.exec("launchctl", ["kickstart", "-k", `${domain}/${this.label}`]);
+    } else {
+      this.exec("systemctl", ["--user", "restart", SYSTEMD_UNIT]);
+    }
+    return true;
+  }
+
   status(): ServiceStatus {
     const logFile = serviceSpec(process.env, this.home).logFile;
     if (process.platform === "darwin") {

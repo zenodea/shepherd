@@ -133,7 +133,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HostConfig {
     configPath,
     port,
     bind: envVar(env, "BIND") || "0.0.0.0",
-    herdrBin: env.HERDR_BIN || "herdr",
+    // HERDR_BIN_PATH is the running herdr binary, set by herdr for plugin commands.
+    herdrBin: env.HERDR_BIN || env.HERDR_BIN_PATH || "herdr",
     socketPath: defaultSocketPath(env),
   };
+}
+
+/**
+ * How to run a host command, for hints in the output. Installed as a herdr
+ * plugin there's no repo checkout to run `npm run host` in.
+ */
+export function hostCommand(args: string, env: NodeJS.ProcessEnv = process.env): string {
+  if (!env.HERDR_PLUGIN_ROOT) return `npm run host -- ${args}`;
+  if (args === "pair") return `herdr plugin action invoke ${env.HERDR_PLUGIN_ID ?? "shepherd"}.pair`;
+  return `node ${join(env.HERDR_PLUGIN_ROOT, "apps", "host", "src", "cli.ts")} ${args}`;
 }

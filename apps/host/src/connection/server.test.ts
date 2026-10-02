@@ -119,11 +119,13 @@ describe("local server", () => {
     const c = await connect(server.port, null);
     clients.push(c);
     await until(() => c.hostKey() !== null);
-    await new Promise((r) => setTimeout(r, 20));
+    // The tracker lists agents at start and once more after subscribing to their status.
+    await until(() => herdr.requests.filter((r) => r.method === "agent.list").length === 2);
+    const before = herdr.requests.length;
     c.send({ type: "call", id: "1", method: "agent.list", params: {} });
     await until(() => c.closeCode() !== null);
     expect(c.closeCode()).toBe(CLOSE_CODES.unauthorized);
-    expect(herdr.requests.filter((r) => r.method === "agent.list")).toHaveLength(1); // only the tracker's
+    expect(herdr.requests.slice(before)).toEqual([]);
   });
 
   it("pairs a phone with a one-time code and issues it a token", async () => {

@@ -19,6 +19,7 @@ import type { ActivityLog } from "../herdr/activity-log.ts";
 import { LaunchError, type Launcher } from "../herdr/launcher.ts";
 import { ScreenRenderer } from "../herdr/screen-renderer.ts";
 import type { TerminalStream } from "../herdr/terminal-stream.ts";
+import { hostCommand } from "../system/config.ts";
 
 export const MAX_STREAMS_PER_SESSION = 8;
 /** Used when herdr can't report a pane's size. */
@@ -121,7 +122,7 @@ export class AppSession {
     const result = this.deps.devices.authenticate(token, deviceName);
     if (!result.ok) {
       if (result.reason === "expired") {
-        this.reject("expired", "This pairing QR code has expired or was already used. Run `npm run host -- pair` for a new one.", CLOSE_CODES.pairingExpired);
+        this.reject("expired", `This pairing QR code has expired or was already used. Run \`${hostCommand("pair")}\` for a new one.`, CLOSE_CODES.pairingExpired);
       } else {
         this.reject("invalid", "This device isn't paired with the host.", CLOSE_CODES.unauthorized);
       }

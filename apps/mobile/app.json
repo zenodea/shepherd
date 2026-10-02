@@ -6,7 +6,7 @@
       "android",
       "ios"
     ],
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -27,7 +27,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      ["expo-local-authentication", { "faceIDPermission": "Shepherd uses Face ID to lock the app." }],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Shepherd uses Face ID to lock the app."
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -62,6 +67,13 @@
     "experiments": {
       "typedRoutes": true
     },
-    "backgroundColor": "#0A0A0A"
+    "backgroundColor": "#0A0A0A",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5e1b3bd4-8d7f-4c7e-b5d2-08ca0da37cab"
+      }
+    },
+    "owner": "zenodea"
   }
 }

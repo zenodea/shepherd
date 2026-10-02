@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultConfigPath, envVar } from "./config.ts";
+import { defaultConfigPath, envVar, hostCommand } from "./config.ts";
 
 describe("config location", () => {
   const dirs: string[] = [];
@@ -31,5 +31,14 @@ describe("config location", () => {
     expect(envVar({ SHEPHERD_PORT: "1", SHEPERD_PORT: "2" }, "PORT")).toBe("1");
     expect(envVar({ SHEPERD_PORT: "2" }, "PORT")).toBe("2");
     expect(defaultConfigPath({ SHEPERD_CONFIG: "/x/host.json" })).toBe("/x/host.json");
+  });
+});
+
+describe("hostCommand", () => {
+  it("points at npm in a checkout, and at herdr or the plugin's cli when installed as a plugin", () => {
+    expect(hostCommand("pair", {})).toBe("npm run host -- pair");
+    const plugin = { HERDR_PLUGIN_ID: "shepherd", HERDR_PLUGIN_ROOT: "/plugins/shepherd" };
+    expect(hostCommand("pair", plugin)).toBe("herdr plugin action invoke shepherd.pair");
+    expect(hostCommand("devices revoke <id>", plugin)).toBe(`node ${join("/plugins/shepherd", "apps", "host", "src", "cli.ts")} devices revoke <id>`);
   });
 });

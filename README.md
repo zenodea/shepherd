@@ -4,7 +4,7 @@
 
 <p align="center"><a href="https://github.com/zenodea/shepherd/actions/workflows/ci.yml"><img src="https://github.com/zenodea/shepherd/actions/workflows/ci.yml/badge.svg" alt="CI" /></a></p>
 
-<p align="center">Check on and steer your <a href="https://herdr.dev">herdr</a> agents from your Android phone: see which agents need input, read their output, answer prompts, and send new instructions.</p>
+<p align="center">Check on and steer your <a href="https://herdr.dev">herdr</a> agents from your phone: see which agents need input, read their output, answer prompts, and send new instructions.</p>
 
 <p align="center">
   <img src="docs/screenshots/agents.png" width="19%" alt="Agent list, with the agent that needs input first" />
@@ -14,8 +14,8 @@
   <img src="docs/screenshots/settings.png" width="19%" alt="Settings with paired computers and app lock" />
 </p>
 
-- **host**: a small Node service on your computer. It talks to herdr's local socket and only lets in phones you've paired.
-- **app**: the Android app (Expo / React Native).
+- **host**: a small Node service on your computer, installed as a herdr plugin. It talks to herdr's local socket and only lets in phones you've paired.
+- **app**: the mobile app (Expo / React Native).
 - **relay** (optional): a Cloudflare Worker you deploy yourself, so your phone can reach your computer from anywhere.
 
 ## Quick start
@@ -24,30 +24,31 @@
 
 - [herdr](https://herdr.dev) 0.9 or newer, running (just run `herdr`)
 - [Node.js](https://nodejs.org) 22.18 or newer
-- An Android phone
+- A phone
 
-### 2. Install
-
-```bash
-git clone https://github.com/zenodea/shepherd.git
-cd shepherd
-npm install
-```
-
-### 3. Start the host on your computer
+### 2. Install the herdr plugin
 
 ```bash
-npm run host
+herdr plugin install zenodea/shepherd
+herdr plugin action invoke shepherd.restart   # start it now; afterwards it starts with herdr
 ```
 
-It prints a **pairing QR code**, followed by the addresses it can be reached on:
+herdr shows what the plugin runs before installing it, then installs the host's dependencies. From then on the host starts in the background whenever herdr does, and stops about a minute after herdr exits.
+
+### 3. Show the pairing QR code
+
+```bash
+herdr plugin action invoke shepherd.pair
+```
+
+This opens a pane in herdr with a **pairing QR code**, followed by the addresses the host can be reached on. The pane closes by itself once your phone has paired.
 
 ```
   Scan with the Shepherd app (Host → Scan QR code) to pair a phone:
 
   ▄▄▄▄▄▄▄ ▄▄▄▄▄ ▄   ▄▄▄▄ …
 
-  One-time code, valid until 14:52. For another: npm run host -- pair
+  One-time code, valid until 14:52. For another: herdr plugin action invoke shepherd.pair
 
   Host:      my-laptop (ENUEyLClAden)
   LAN:       ws://192.168.1.20:7420/connect
@@ -55,11 +56,33 @@ It prints a **pairing QR code**, followed by the addresses it can be reached on:
   Code:      p_…   (for manual entry)
 ```
 
-The QR code holds the host's name, every address above, and a **one-time pairing code**. The code works once and expires after 10 minutes. When your phone scans it, the host gives that phone its own token, so a photo of the QR code is useless afterwards. Run `npm run host -- pair` whenever you need a new code.
+The QR code holds the host's name, every address above, and a **one-time pairing code**. The code works once and expires after 10 minutes. When your phone scans it, the host gives that phone its own token, so a photo of the QR code is useless afterwards. Open the pane again whenever you need a new code.
+
+To open it with a key, add this to herdr's `config.toml` (then `herdr server reload-config`):
+
+```toml
+[[keys.command]]
+key = "prefix+alt+p"
+type = "plugin_action"
+command = "shepherd.pair"
+description = "pair a phone"
+```
+
+The plugin has two more actions: `shepherd.status` shows whether the host is running, its addresses, paired phones and its recent log, and `shepherd.restart` restarts it.
+
+**Without the plugin:** run the host from a clone of this repo with `npm run host` (after `npm install`). It prints the same QR code in your terminal.
 
 ### 4. Get the app on your phone
 
-Pick one of the three options below.
+The app is built from this repo:
+
+```bash
+git clone https://github.com/zenodea/shepherd.git
+cd shepherd
+npm install
+```
+
+Then pick one of the three options below.
 
 **Option A: Build an APK in the cloud (easiest, free Expo account)**
 
@@ -83,7 +106,7 @@ This APK is signed with the debug key, which is fine for personal use but not fo
 
 **Option C: Try it without building (development)**
 
-Install **Expo Go** from the Play Store, run `npm run app:prod` (or `npm run app` while developing), and scan the QR code **from inside the Expo Go app**. The app is Android-first and doesn't run in a web browser.
+Install **Expo Go** from the Play Store, run `npm run app:prod` (or `npm run app` while developing), and scan the QR code **from inside the Expo Go app**. The app doesn't run in a web browser.
 
 If Expo Go can't load the project, your phone probably can't reach your computer at the `exp://…:8081` address Metro prints. This happens on guest, office and university Wi-Fi. If both devices are on Tailscale, use your computer's Tailscale IP instead:
 
@@ -115,7 +138,7 @@ Notifications go through [ntfy](https://ntfy.sh), a free, open-source push servi
 
 ```bash
 npm run host -- notify on       # or: notify on https://your-ntfy-server
-npm run host                    # restart to apply
+herdr plugin action invoke shepherd.restart   # apply (or restart `npm run host`)
 ```
 
 Install **ntfy** on your phone, scan the QR code `notify on` prints (or tap **Host → Get notifications** in Shepherd), then run `npm run host -- notify test`.
@@ -124,7 +147,9 @@ When an agent asks a question, the notification shows it with up to three answer
 
 ## Keep the host running in the background
 
-Once you've paired a phone, you don't need a terminal open:
+With the plugin, the host already runs in the background while herdr does. If it ever stops, `herdr plugin action invoke shepherd.restart` starts it again.
+
+If you'd rather have the host supervised by your system (started at login and restarted if it stops, herdr or not), or you don't use the plugin, install it as a service. The plugin leaves the host to the service while one is installed.
 
 ```bash
 npm run host -- service install   # starts now, at every login, and restarts if it stops
@@ -166,7 +191,7 @@ npm run deploy                       # prints https://shepherd-relay.<you>.worke
 cd ../..
 
 npm run host -- relay https://shepherd-relay.<you>.workers.dev <relay host token>
-npm run host
+herdr plugin action invoke shepherd.restart   # apply (or restart `npm run host`)
 ```
 
 Phones that are already paired learn the relay address the next time they connect, on Wi-Fi or Tailscale. After that they use it automatically whenever your computer isn't reachable directly. New QR codes include it too.
@@ -178,6 +203,8 @@ How it works:
 - To decide who may connect at all, the relay checks a hash of each phone's token against the list the host registered. That hash is useless for logging in to the host.
 
 ## Host commands
+
+Run these from your clone of the repo. They share `~/.config/shepherd` with the plugin's host, so after changing a setting, apply it with `herdr plugin action invoke shepherd.restart`.
 
 ```bash
 npm run host                      # run
@@ -191,6 +218,8 @@ npm run host -- notify on [url]   # push notifications via ntfy
 npm run host -- notify test       # send a test notification
 npm run host -- notify off        # stop notifications
 npm run host -- notify actions on|off  # answer buttons on notifications (default on)
+npm run host -- status            # is the host running, addresses, devices, recent log
+npm run host -- restart | stop    # restart or stop a host running in the background
 ```
 
 | Variable | Default | |
@@ -220,6 +249,7 @@ npm run demo:web -w @shepherd/mobile   # the demo in a browser, handy for design
 ```
 
 ```
+herdr-plugin.toml     the herdr plugin: installs the host, starts it with herdr, pairing and status panes
 apps/
   host/src/
     cli.ts            entry point and commands
@@ -227,7 +257,7 @@ apps/
     connection/       WebSocket server, encrypted session, relay tunnel
     pairing/          paired devices, pairing codes, QR output
     notifications/    ntfy notifier and answer buttons
-    system/           config file, launchd/systemd service
+    system/           config file, launchd/systemd service, background host for the plugin
     testing/          fake herdr and test clients
   mobile/src/
     app/              screens (Expo Router)

@@ -1,0 +1,45 @@
+# Shepherd as a herdr plugin: herdr installs the host, starts it in the
+# background when the herdr server starts, and shows pairing and status
+# in a pane. See "Install as a herdr plugin" in the README.
+id = "shepherd"
+name = "Shepherd"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Check on and steer your agents from your phone"
+platforms = ["linux", "macos"]
+
+# Only the host's dependencies, not the mobile app's.
+[[build]]
+command = ["npm", "ci", "--workspace", "@shepherd/host", "--omit=dev", "--no-audit", "--no-fund"]
+
+# Exits straight away: starts the host in the background unless it's already
+# running (or the launchd/systemd service runs it). The host stops when herdr does.
+[[startup]]
+command = ["node", "apps/host/src/cli.ts", "ensure"]
+
+[[actions]]
+id = "pair"
+title = "Shepherd: pair a phone"
+command = ["sh", "-c", "exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint pair --focus"]
+
+[[actions]]
+id = "status"
+title = "Shepherd: status"
+command = ["sh", "-c", "exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint status --focus"]
+
+[[actions]]
+id = "restart"
+title = "Shepherd: restart the host"
+command = ["node", "apps/host/src/cli.ts", "restart"]
+
+[[panes]]
+id = "pair"
+title = "Pair a phone"
+placement = "overlay"
+command = ["node", "apps/host/src/cli.ts", "pair", "--wait"]
+
+[[panes]]
+id = "status"
+title = "Shepherd"
+placement = "overlay"
+command = ["node", "apps/host/src/cli.ts", "status", "--wait"]

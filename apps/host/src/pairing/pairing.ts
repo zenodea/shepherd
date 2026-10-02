@@ -1,7 +1,7 @@
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
 import { encodePairingLink, toHex, type PairingInfo } from "@shepherd/protocol";
-import { hostKeyPair, type HostConfig } from "../system/config.ts";
+import { hostCommand, hostKeyPair, type HostConfig } from "../system/config.ts";
 import type { DeviceRegistry } from "./devices.ts";
 import { appRelayUrl } from "../connection/relay-tunnel.ts";
 
@@ -63,7 +63,7 @@ export async function printPairing(config: HostConfig, devices: DeviceRegistry, 
   console.log("\n  Scan with the Shepherd app (Host → Scan QR code) to pair a phone:\n");
   const qr = await renderQr(encodePairingLink(pairingInfo(config, port, code)));
   console.log(qr.trimEnd().replace(/^/gm, "  ") + "\n");
-  console.log(`  One-time code, valid until ${expiresAt.toLocaleTimeString()}. For another: npm run host -- pair\n`);
+  console.log(`  One-time code, valid until ${expiresAt.toLocaleTimeString()}. For another: ${hostCommand("pair")}\n`);
   printAddresses(config, port);
   console.log(`  Code:      ${code}   (for manual entry)`);
   console.log("");
@@ -72,7 +72,7 @@ export async function printPairing(config: HostConfig, devices: DeviceRegistry, 
 export function printDevices(devices: DeviceRegistry): void {
   const list = devices.list();
   if (list.length === 0) {
-    console.log("  No paired devices. Pair one with: npm run host -- pair");
+    console.log(`  No paired devices. Pair one with: ${hostCommand("pair")}`);
     return;
   }
   console.log("  Paired devices:");
@@ -80,7 +80,7 @@ export function printDevices(devices: DeviceRegistry): void {
     const seen = d.lastSeenAt ? `last seen ${new Date(d.lastSeenAt).toLocaleString()}` : "never connected";
     console.log(`    ${d.id.padEnd(8)} ${d.name}  (${seen})`);
   }
-  console.log("  Remove one with: npm run host -- devices revoke <id>");
+  console.log(`  Remove one with: ${hostCommand("devices revoke <id>")}`);
 }
 
 export function printHostInfo(config: HostConfig, devices: DeviceRegistry, port = config.port): void {

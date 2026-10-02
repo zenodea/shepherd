@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { extractPrompt, toHex, type PaneReadResult, type TerminalMode } from "@shepherd/protocol";
 import { AgentTracker } from "./herdr/agent-tracker.ts";
-import { generateSecret, hostKeyPair, loadConfig, loadOrCreateStoredConfig, saveStoredConfig, type HostConfig } from "./system/config.ts";
+import { generateSecret, hostCommand, hostKeyPair, loadConfig, loadOrCreateStoredConfig, saveStoredConfig, type HostConfig } from "./system/config.ts";
 import { DeviceRegistry } from "./pairing/devices.ts";
 import { HerdrClient } from "./herdr/herdr-client.ts";
 import { ActivityLog } from "./herdr/activity-log.ts";
@@ -13,7 +14,8 @@ import { hostAddresses, printDevices, printHostInfo, printPairing, renderQr } fr
 import { RelayTunnel, appRelayUrl } from "./connection/relay-tunnel.ts";
 import { startLocalServer } from "./connection/server.ts";
 import type { SessionDeps } from "./connection/session.ts";
-import { Service } from "./system/service.ts";
+import { Service, serviceSpec } from "./system/service.ts";
+import { clearPidFile, readRunningHost, startDetached, stopRunningHost, writePidFile } from "./system/daemon.ts";
 import { TerminalStream } from "./herdr/terminal-stream.ts";
 
 const USAGE = `shepherd-host — bridge your herdr agents to the shepherd app
@@ -31,6 +33,12 @@ Usage (from the repo root):
   npm run host -- notify off               Stop notifications
   npm run host -- service install          Run in the background (launchd / systemd)
   npm run host -- service uninstall|status|logs
+  npm run host -- status                   Is the host running, addresses, devices, recent log
+
+As a herdr plugin (herdr-plugin.toml) the host runs in the background while herdr does:
+  npm run host -- ensure                   Start it in the background unless it's already running
+  npm run host -- restart | stop           Restart or stop it
+  npm run host -- pair --wait              Wait for a key (or a phone to pair) before exiting
 
 Environment:
   SHEPHERD_PORT    Port for direct connections (default 7420)
@@ -41,6 +49,8 @@ Environment:
 `;
 
 const HERDR_WAIT_MS = 5000;
+/** With --follow-herdr, exit once herdr has been unreachable this long. */
+const HERDR_GONE_MS = 60_000;
 
 /** Wait for herdr to come up (e.g. the host started at login before herdr). */
 async function waitForHerdr(herdr: HerdrClient, socketPath: string): Promise<string> {
@@ -59,7 +69,12 @@ async function waitForHerdr(herdr: HerdrClient, socketPath: string): Promise<str
   }
 }
 
-async function serve(config: HostConfig): Promise<void> {
+async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<void> {
+  const running = readRunningHost(config.configPath);
+  if (running) {
+    console.error(`A host is already running (pid ${running.pid}), perhaps started by the herdr plugin. Stop it with: ${hostCommand("stop")}`);
+    process.exit(1);
+  }
   const herdr = new HerdrClient(config.socketPath);
   const herdrVersion = await waitForHerdr(herdr, config.socketPath);
 
@@ -94,10 +109,11 @@ async function serve(config: HostConfig): Promise<void> {
     throw err;
   });
   deps.host.addresses = hostAddresses(config, server.port).map((a) => a.url);
+  writePidFile(config.configPath, config.socketPath);
   console.log(`shepherd-host connected to herdr ${herdrVersion}, tracking ${tracker.list().length} agent(s).`);
   // A QR code is only useful to a person at a terminal, not in a service log.
   if (process.stdout.isTTY) await printPairing(config, devices, server.port);
-  else console.log("Pair a phone with: npm run host -- pair");
+  else console.log(`Pair a phone with: ${hostCommand("pair")}`);
   printDevices(devices);
   console.log("");
 
@@ -147,7 +163,26 @@ async function serve(config: HostConfig): Promise<void> {
     tunnel.start();
   }
 
+  // Started by the herdr plugin: live as long as herdr does. A brief gap (a
+  // live handoff to a new herdr server) is fine; the tracker reconnects.
+  let herdrWatch: NodeJS.Timeout | undefined;
+  if (followHerdr) {
+    let lastSeen = Date.now();
+    herdrWatch = setInterval(() => {
+      herdr.request("ping", {}, { timeoutMs: 5000 }).then(
+        () => (lastSeen = Date.now()),
+        () => {
+          if (Date.now() - lastSeen < HERDR_GONE_MS) return;
+          console.log(`herdr has been unreachable for ${HERDR_GONE_MS / 1000}s; stopping.`);
+          void shutdown();
+        },
+      );
+    }, 10_000);
+  }
+
   const shutdown = async () => {
+    clearInterval(herdrWatch);
+    clearPidFile(config.configPath);
     tunnel?.stop();
     actions?.stop();
     devices.unwatch();
@@ -236,7 +271,7 @@ async function serviceCommand(action: string | undefined): Promise<void> {
       const status = service.status();
       console.log(`Status: ${status.detail}. Logs: ${status.logFile}`);
       console.log("It starts at login and restarts if it stops. If a host is still running in a terminal, stop it (Ctrl-C).");
-      console.log("Pair a phone with: npm run host -- pair");
+      console.log(`Pair a phone with: ${hostCommand("pair")}`);
       if (process.platform === "linux") {
         console.log("To keep it running when you're logged out: loginctl enable-linger $USER");
       }
@@ -262,19 +297,126 @@ async function serviceCommand(action: string | undefined): Promise<void> {
   }
 }
 
+/** The herdr plugin's startup hook: start the host in the background unless something already runs it. */
+async function ensureCommand(): Promise<void> {
+  const config = loadConfig();
+  if (new Service().status().installed) {
+    console.log("The background service runs the host; nothing to start.");
+    return;
+  }
+  const running = readRunningHost(config.configPath);
+  if (running) {
+    console.log(`The host is already running (pid ${running.pid}, herdr at ${running.socketPath}).`);
+    return;
+  }
+  const { logFile } = serviceSpec();
+  console.log(`Started the host (pid ${startDetached(logFile)}). Logs: ${logFile}`);
+}
+
+async function restartCommand(): Promise<void> {
+  const config = loadConfig();
+  if (new Service().restart()) {
+    console.log("Restarted the background service.");
+    return;
+  }
+  const running = readRunningHost(config.configPath);
+  await stopRunningHost(config.configPath);
+  // Stay on the herdr session the stopped host was following.
+  const env = running ? { ...process.env, HERDR_SOCKET_PATH: running.socketPath } : process.env;
+  const { logFile } = serviceSpec();
+  console.log(`${running ? "Restarted" : "Started"} the host (pid ${startDetached(logFile, env)}). Logs: ${logFile}`);
+}
+
+async function stopCommand(): Promise<void> {
+  const config = loadConfig();
+  if (new Service().status().installed) {
+    console.error(`The background service runs the host. Remove it with: ${hostCommand("service uninstall")}`);
+    process.exit(1);
+  }
+  console.log((await stopRunningHost(config.configPath)) ? "Stopped the host." : "The host isn't running.");
+}
+
+function statusCommand(): void {
+  const config = loadConfig();
+  const running = readRunningHost(config.configPath);
+  const service = new Service().status();
+  console.log("");
+  if (running) {
+    console.log(`  Running since ${new Date(running.startedAt).toLocaleString()} (pid ${running.pid})`);
+    console.log(`  herdr:     ${running.socketPath}`);
+  } else {
+    console.log(`  Not running. Start it with: ${hostCommand(service.installed ? "service install" : "restart")}`);
+  }
+  if (service.installed) console.log(`  Service:   ${service.detail}`);
+  printHostInfo(config, new DeviceRegistry(config.configPath));
+  if (existsSync(service.logFile)) {
+    const lines = readFileSync(service.logFile, "utf8").trimEnd().split("\n").slice(-12);
+    console.log(`  Recent log (${service.logFile}):`);
+    for (const line of lines) console.log(`    ${line}`);
+    console.log("");
+  }
+}
+
+/** For herdr plugin panes, which close when the command exits. */
+function waitToClose(prompt = "Press any key to close."): Promise<void> {
+  if (!process.stdin.isTTY) return Promise.resolve();
+  console.log(`  ${prompt}`);
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  return new Promise((resolve) =>
+    process.stdin.once("data", () => {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      resolve();
+    }),
+  );
+}
+
+async function pairCommand(wait: boolean): Promise<void> {
+  const config = loadConfig();
+  const devices = new DeviceRegistry(config.configPath);
+  if (wait && !readRunningHost(config.configPath)) {
+    console.log(`\n  The host isn't running, so a phone can't pair yet. Start it with: ${hostCommand("restart")}`);
+  }
+  await printPairing(config, devices);
+  if (!wait) return;
+  // Close by itself once the phone has paired.
+  const before = new Set(devices.list().map((d) => d.id));
+  const paired = new Promise<string>((resolve) => {
+    devices.on("changed", () => {
+      const added = devices.list().find((d) => !before.has(d.id));
+      if (added) resolve(added.name);
+    });
+    devices.watch(500);
+  });
+  const name = await Promise.race([paired, waitToClose("Waiting for your phone. Press any key to close.").then(() => null)]);
+  if (name) {
+    console.log(`\n  Paired ${name}.`);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  process.exit(0);
+}
+
 async function main(argv: string[]): Promise<void> {
   const [command = "serve"] = argv;
   switch (command) {
     case "serve":
-      return serve(loadConfig());
+      return serve(loadConfig(), { followHerdr: argv.includes("--follow-herdr") });
+    case "ensure":
+      return ensureCommand();
+    case "restart":
+      return restartCommand();
+    case "stop":
+      return stopCommand();
+    case "status":
+      statusCommand();
+      return argv.includes("--wait") ? waitToClose() : undefined;
     case "info": {
       const config = loadConfig();
       return printHostInfo(config, new DeviceRegistry(config.configPath));
     }
-    case "pair": {
-      const config = loadConfig();
-      return printPairing(config, new DeviceRegistry(config.configPath));
-    }
+    case "pair":
+      return pairCommand(argv.includes("--wait"));
     case "devices": {
       const config = loadConfig();
       const devices = new DeviceRegistry(config.configPath);
