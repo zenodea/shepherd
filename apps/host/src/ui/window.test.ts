@@ -133,7 +133,7 @@ describe("connection switches", () => {
   it("shows each way in as a switch, and what it's at", () => {
     const text = plain(render(view(), data({ routes: { lan: true, tailscale: false, relay: true } }), 100, 40));
     expect(text).toMatch(/LAN\s+━━━● on\s+\[1\]\s+ws:\/\/192\.168\.1\.20:7420\/connect/);
-    expect(text).toMatch(/Tailscale\s+●━━━ off\s+\[2\]\s+off/);
+    expect(text).toMatch(/Tailscale\s+●━━━ off\s+\[2\]\s+not used/);
     expect(text).toMatch(/Relay\s+━━━● on\s+\[3\]/);
   });
 

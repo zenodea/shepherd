@@ -7,11 +7,12 @@
 <p align="center">Check on and steer your <a href="https://herdr.dev">herdr</a> agents from your phone: see which agents need input, read their output, answer prompts, and send new instructions.</p>
 
 <p align="center">
-  <img src="docs/screenshots/agents.png" width="19%" alt="Agent list, with the agent that needs input first" />
-  <img src="docs/screenshots/terminal.png" width="19%" alt="An agent's live terminal with answer chips, tabs and quick keys" />
-  <img src="docs/screenshots/activity.png" width="19%" alt="Activity feed of what agents did" />
-  <img src="docs/screenshots/new.png" width="19%" alt="Starting an agent, a shell or a worktree" />
-  <img src="docs/screenshots/settings.png" width="19%" alt="Settings with paired computers and app lock" />
+  <img src="docs/screenshots/agents.png" width="16%" alt="Agent list, with the agent that needs input first and when each was last done" />
+  <img src="docs/screenshots/chat.png" width="16%" alt="An agent's conversation with an image it read, a formatted table and a checklist" />
+  <img src="docs/screenshots/terminal.png" width="16%" alt="An agent's live terminal with answer chips, tabs and quick keys" />
+  <img src="docs/screenshots/activity.png" width="16%" alt="Activity feed of what agents did" />
+  <img src="docs/screenshots/new.png" width="16%" alt="Starting an agent, a shell or a worktree, picked from dropdowns" />
+  <img src="docs/screenshots/settings.png" width="16%" alt="Settings with paired computers, theme, images and app lock" />
 </p>
 
 - **host**: a small Node service on your computer, installed as a herdr plugin. It talks to herdr's local socket and only lets in phones you've paired.
@@ -50,13 +51,13 @@ The QR code holds the host's name, every address it can be reached on, and a **o
 ### The Shepherd window
 
 <p align="center">
-  <img src="docs/screenshots/herdr-overview.png" width="49%" alt="The Shepherd window's Overview: Shepherd on with its switch, herdr version, agents, connected phones and the addresses it's reachable on" />
+  <img src="docs/screenshots/herdr-overview.png" width="49%" alt="The Shepherd window's Overview: Shepherd on with its switch, herdr version, agents, connected phones, and switches for connecting over LAN, Tailscale and the relay" />
   <img src="docs/screenshots/herdr-phones.png" width="49%" alt="The Shepherd window's Phones screen: a connected phone first, then the others with when they were last seen" />
 </p>
 
 The window has four screens; switch with the letter keys or Tab:
 
-- **Overview (`o`):** whether Shepherd is on and for how long, the herdr session, your agents, how many phones are connected, the addresses it's reachable on and the relay. `s` turns Shepherd on or off.
+- **Overview (`o`):** whether Shepherd is on and for how long, the herdr session, your agents and how many phones are connected. `s` turns Shepherd on or off. Under **Phones connect over**, `1`, `2` and `3` switch LAN, Tailscale and the relay on or off (see [Security model](#security-model)).
 - **Pair (`p`):** the QR code, with a countdown.
 - **Phones (`d`):** every paired phone, connected ones first with how they're connected (direct or through the relay). Select one and press `x` to revoke it.
 - **Log (`l`):** the host's recent log.
@@ -137,7 +138,7 @@ The app tries every address in the QR code at once and uses whichever answers fi
 
 ## What you can do
 
-- **See every agent at a glance.** Agents that need input come first, with their question and one button per answer.
+- **See every agent at a glance.** Agents that need input come first, with their question and one button per answer. Under each agent, "Last done: 12m ago" says when it last finished a turn.
 - **Send images.** The image button next to the message box sends a photo or screenshot to the agent: it's saved on your computer (in a temporary folder, cleared after a week) and its path goes into your message, for the agent to open.
 - **Read the conversation.** Agents open on their conversation: your messages, their replies and each tool call (tap one to see its output), read from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app however the agent draws its screen, and older messages load as you scroll up. The arrows on the right jump between your own messages, runs of tool calls fold into one line ("12 tool calls · Read ×6, Edit ×4"), and the header shows how full the agent's context is (a percentage for Codex, which records its window; tokens for Claude and pi).
 - **Formatted replies.** Tables, lists, checklists, quotes, headings and code come out formatted, and links open in your browser. Wide tables scroll sideways.
@@ -148,6 +149,7 @@ The app tries every address in the QR code at once and uses whichever answers fi
 - **Watch the live terminal.** Tap the terminal icon to switch. The agent is fitted to your screen as native text. Scroll up for the history, pinch to resize, search, long-press to copy, tap links.
 - **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal. Answers you write yourself ("Type something.", "No, and tell Claude what to do") open a text box. While an agent works, the send button turns into **Stop**. Unsent text is kept per agent until you send it.
 - **Home-screen widget.** Long-press your home screen → Widgets → Shepherd: which agents need you, at a glance. Tap an agent to open it. When one needs you, the widget shows its question with its first two answers as buttons; a tap answers it, if it's still asking the same thing. It stays current while notifications are on (they keep Shepherd connected); otherwise it shows how things were when the app last ran.
+- **Themes.** Twelve colour themes, each with a dark and a light version: Default, Catppuccin, Tokyo Night, Gruvbox, Everforest, Rosé Pine, Zenbones, Night Owl, Dracula, Nord, Kanagawa and GitHub. Pick one in **Settings → Appearance**; it follows your phone's dark mode unless you choose one.
 - **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project or a fresh git worktree.
 - **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
 - **See what happened.** The activity feed shows what your agents did while you were away, and how long they waited for you.

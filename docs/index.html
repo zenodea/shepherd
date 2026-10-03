@@ -183,7 +183,8 @@ h1.entering .swap { opacity: 0; transform: translateY(.3em); filter: blur(6px); 
 @keyframes ripple { to { transform: scale(4); opacity: 0; } }
 .row { display: flex; align-items: center; gap: 11px; padding: 9px 0; }
 .card .row { padding: 0; }
-.mark { width: 30px; height: 30px; border-radius: 50%; background: var(--p-raised); display: grid; place-items: center; font-weight: 700; font-size: 15px; flex: none; }
+.mark { width: 30px; height: 30px; border-radius: 50%; background: var(--p-raised); display: grid; place-items: center; flex: none; }
+.mark svg { width: 17px; height: 17px; }
 .row .t { flex: 1; min-width: 0; }
 .row .t b { display: block; font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .t span { font-size: 12.5px; color: var(--p-muted); }
@@ -260,7 +261,8 @@ h2 .dim { color: var(--subtle); }
 .tabs { margin-bottom: 6px; }
 .tab { flex: none; border-radius: 999px; padding: 5px 10px; font-size: 11.5px; color: var(--p-muted); display: inline-flex; align-items: center; gap: 5px; }
 .tab.on { background: var(--p-surface); border: 1px solid var(--p-border); color: var(--p-text); font-weight: 600; }
-.tab .m { color: var(--claude); }
+.tab .m { display: inline-grid; place-items: center; }
+.tab .m svg { width: 11px; height: 11px; }
 .tab .o { width: 6px; height: 6px; border-radius: 50%; background: var(--blocked); transition: background .3s; }
 .kb { width: 1.5em; height: 1.05em; vertical-align: -.15em; }
 .qk { display: flex; align-items: center; justify-content: space-between; background: var(--p-surface); border-radius: 10px; padding: 6px 8px; font-family: var(--mono); font-size: 11px; color: var(--p-text); margin-bottom: 7px; }
@@ -383,6 +385,10 @@ h2 .dim { color: var(--subtle); }
 
 /* ---------- screenshot fan ---------- */
 .fan-sec { padding-bottom: clamp(60px, 8vw, 110px); }
+.routes-pick { display: grid; grid-template-columns: minmax(0, 1.25fr) 1fr; gap: 28px; align-items: center; margin-top: 34px; }
+.routes-pick img { width: 100%; border-radius: 14px; box-shadow: 0 30px 60px -30px rgba(0,0,0,.8); }
+.routes-pick p { color: var(--muted); font-size: 16px; line-height: 1.55; margin: 0; }
+.routes-pick b { color: var(--ink); }
 .fan-sec .head { text-align: center; max-width: 720px; margin: 0 auto; }
 .fan-sec .head .body { margin: 0 auto; }
 .fan { position: relative; height: 560px; margin-top: 56px; }
@@ -393,7 +399,8 @@ h2 .dim { color: var(--subtle); }
 }
 .feats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 30px; border-top: 1px solid var(--line); }
 .feats div { padding: 22px 22px 0 0; color: var(--muted); font-size: 15.5px; }
-.feats div + div { padding-left: 22px; border-left: 1px solid var(--line); }
+.feats div { padding-bottom: 22px; }
+.feats div:not(:nth-child(4n+1)) { padding-left: 22px; border-left: 1px solid var(--line); }
 .feats b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 4px; font-size: 16px; }
 
 /* ---------- install ---------- */
@@ -437,8 +444,10 @@ footer .links a:hover { color: var(--ink); }
   h1 { min-height: 0; }
   .order-first { order: -1; }
   .routes-top { grid-template-columns: 1fr; }
+  .routes-pick { grid-template-columns: 1fr; }
   .feats { grid-template-columns: 1fr 1fr; }
-  .feats div:nth-child(3) { border-left: 0; padding-left: 0; }
+  .feats div:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .feats div:nth-child(even) { padding-left: 22px; border-left: 1px solid var(--line); }
   .fan { height: auto; margin-top: 40px; display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 16px 20px; margin-inline: -16px; scrollbar-width: none; }
   .fan img { position: static; margin: 0; width: 220px; flex: none; scroll-snap-align: center; transform: none !important; }
   .shell pre { min-height: 480px; font-size: 12px; }
@@ -475,8 +484,8 @@ footer .links a:hover { color: var(--ink); }
   <div class="wrap">
     <a class="brand" href="#top"><img src="icon.png" alt="">Shepherd</a>
     <nav>
-      <a href="#terminal">The app</a>
-      <a href="#reach">Away from home</a>
+      <a href="#terminal">App</a>
+      <a href="#reach">Connecting</a>
       <a href="#install">Setup</a>
       <a class="gh" href="https://github.com/zenodea/shepherd"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
     </nav>
@@ -492,10 +501,10 @@ footer .links a:hover { color: var(--ink); }
       <h1 id="h1" aria-live="polite">
         <span class="swap" id="h1text"><span class="line"><span class="who" id="who">claude</span> has been</span><span class="line">waiting on you</span><span class="line">for <span class="clock" id="clock">11:42</span></span></span>
       </h1>
-      <p class="lede">Shepherd puts your herdr agents on your phone. <strong>See which ones are stuck, read what they wrote, and tap the answer.</strong> Your computer keeps working; you don't have to sit at it.</p>
+      <p class="lede">See which of your herdr agents need you, read what they did, and answer from your phone.</p>
       <div class="cta">
         <a class="btn primary" href="#install">Set it up <span class="arrow">→</span></a>
-        <a class="btn" href="https://github.com/zenodea/shepherd">Read the code</a>
+        <a class="btn" href="https://github.com/zenodea/shepherd">GitHub</a>
       </div>
       <p class="works">Works with
         <span><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>Claude Code</span>
@@ -524,23 +533,23 @@ footer .links a:hover { color: var(--ink); }
       </div>
     </div>
   </div>
-  <div class="hint" id="hint">move your cursor through the field · click the orange one</div>
+  <div class="hint" id="hint">click the orange sheep</div>
 </section>
 
 <!-- ============ TERMINAL ============ -->
 <section class="block" id="terminal">
   <div class="wrap split">
     <div>
-      <p class="kicker">// two ways to read it</p>
-      <h2 class="rv">Read it like a chat. <span class="dim">Or as the actual terminal.</span></h2>
+      <p class="kicker">// reading</p>
+      <h2 class="rv">Chat or terminal.</h2>
       <div class="body fade">
-        <p>Agents open on their <strong>conversation</strong>: your messages, their replies, and every tool call as one tidy line you can tap open, each edit with its own diff. While it works, a line says what it's doing right now; once it has changed files, a pill under its name sums them up. It comes from the transcript Claude Code, Codex or pi writes, so it scrolls like a chat app, even when the agent is full-screen.</p>
-        <p>Flip to the <strong>terminal</strong> for everything else. The host runs a headless xterm next to herdr and sends only the rows that changed, drawn as real text fitted to your screen: pinch to resize, search, long-press to copy, tap links. Either way, when the agent asks something, the answers turn into buttons.</p>
+        <p>The chat view reads the agent's own transcript (Claude Code, Codex or pi): messages, tool calls, diffs, images and subagents.</p>
+        <p>The terminal view is the live pane. Questions show up as buttons in both.</p>
       </div>
       <ul class="keys fade" style="--d:120ms">
-        <li><code>esc ↵ tab ↑ ↓ ^C</code><span>Quick keys along the bottom, for when buttons aren't enough.</span></li>
-        <li><code><svg class="kb" viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="18" height="12" rx="2"/><path d="M4.5 4.5h1M8 4.5h1M11.5 4.5h1M15 4.5h.5M4.5 7.5h1M8 7.5h1M11.5 7.5h1M15 7.5h.5M6 10.5h8" stroke-linecap="round"/></svg></code><span>Type straight into the pane, like you're at the keyboard.</span></li>
-        <li><code>tabs</code><span>Hop between herdr tabs. Open a shell, or start an agent in a project or a fresh git worktree.</span></li>
+        <li><code>esc ↵ tab ↑ ↓ ^C</code><span>Quick keys.</span></li>
+        <li><code><svg class="kb" viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="18" height="12" rx="2"/><path d="M4.5 4.5h1M8 4.5h1M11.5 4.5h1M15 4.5h.5M4.5 7.5h1M8 7.5h1M11.5 7.5h1M15 7.5h.5M6 10.5h8" stroke-linecap="round"/></svg></code><span>Type into the pane.</span></li>
+        <li><code>tabs</code><span>Switch tabs, open a shell, or start an agent in a new worktree.</span></li>
       </ul>
     </div>
     <div class="phone-slot with-switch order-first fade">
@@ -563,7 +572,7 @@ footer .links a:hover { color: var(--ink); }
           <div class="chatv" id="chatv" aria-live="off"></div>
           <div class="tdock">
             <div class="chips" id="tchips"><span class="chip">Yes</span><span class="chip">Yes, allow all edits during this session</span><span class="chip">No, and tell Claude</span></div>
-            <div class="tabs"><span class="tab on"><span class="m">✻</span>Fix flaky login test <span class="o" id="ttabdot"></span></span><span class="tab">▭ dev server</span><span class="tab"><span class="m">✻</span>Refactor billing</span></div>
+            <div class="tabs"><span class="tab on"><span class="m"><svg viewBox="0 0 24 24" fill="#D97757" aria-hidden="true"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg></span>Fix flaky login test <span class="o" id="ttabdot"></span></span><span class="tab">▭ dev server</span><span class="tab"><span class="m"><svg viewBox="0 0 24 24" fill="#D97757" aria-hidden="true"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg></span>Refactor billing</span></div>
             <div class="qk"><span class="kbkey"><svg class="kb" viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="18" height="12" rx="2"/><path d="M4.5 4.5h1M8 4.5h1M11.5 4.5h1M15 4.5h.5M4.5 7.5h1M8 7.5h1M11.5 7.5h1M15 7.5h.5M6 10.5h8" stroke-linecap="round"/></svg></span><span>esc</span><span>↵</span><span>tab</span><span>⇧tab</span><span>↑</span><span>↓</span><span>←</span><span>→</span><span>^C</span></div>
             <div class="msg"><span>Message claude…</span><span class="mbtn" id="mbtn" aria-hidden="true"></span></div>
           </div>
@@ -578,9 +587,9 @@ footer .links a:hover { color: var(--ink); }
   <div class="wrap">
     <div class="routes-top">
       <div>
-        <p class="kicker">// away from home</p>
-        <h2 class="rv">It tries every road at once.</h2>
-        <div class="body fade"><p>The pairing QR code carries every address your computer has. The app dials all of them together, keeps whichever answers first, and switches when you change networks. You never pick one.</p></div>
+        <p class="kicker">// connecting</p>
+        <h2 class="rv">Home, Tailscale or relay.</h2>
+        <div class="body fade"><p>The app tries every address your computer has and uses whichever answers first.</p></div>
       </div>
       <div class="seg fade" id="seg" role="tablist">
         <button class="on" data-s="home">At home</button>
@@ -612,7 +621,11 @@ footer .links a:hover { color: var(--ink); }
       <div class="cbox"><h4>what the relay sees</h4><div class="stream"><span id="cstream"></span></div></div>
       <div class="cbox"><h4>what your phone sees</h4><div class="plain" id="plain">&nbsp;</div></div>
     </div>
-    <p class="sec-note fade">End-to-end encrypted on every route, relay included: a Noise-style handshake with your computer's key pinned from the QR code, then ChaCha20-Poly1305. The relay is a Cloudflare Worker you deploy to your own account, and the free plan is enough. Tailscale needs no setup at all; the host finds its address on its own.</p>
+    <div class="routes-pick fade">
+      <img src="screenshots/herdr-overview.png" alt="The Shepherd window in herdr: switches for connecting over LAN, Tailscale and the relay, with LAN off" loading="lazy">
+      <p>Turn any of them off in the Shepherd window in herdr. With only Tailscale on, nothing is reachable from other networks.</p>
+    </div>
+    <p class="sec-note fade">End-to-end encrypted on every route, relay included (Noise handshake, ChaCha20-Poly1305). The relay is a Cloudflare Worker on your own account.</p>
   </div>
 </section>
 
@@ -632,10 +645,10 @@ footer .links a:hover { color: var(--ink); }
     </div>
     <div>
       <p class="kicker">// notifications</p>
-      <h2 class="rv">Or answer without opening it.</h2>
+      <h2 class="rv">Answer from the notification.</h2>
       <div class="body fade">
-        <p>When an agent asks a question, your phone buzzes with the question and up to three of its answers as buttons. You get one when it finishes, too. Switch them on in the app's Settings.</p>
-        <p>Shepherd stays connected to your computer in the background and sends them itself, over the same end-to-end encrypted connection. <strong>No Firebase, no Google account, no push service in between.</strong> A button only answers if the agent is still asking that question.</p>
+        <p>You get a notification when an agent asks something or finishes, with its answers as buttons. It comes from your computer over the same encrypted connection. No Firebase, no push service.</p>
+        <p>On the lock screen it asks for your fingerprint first. The home-screen widget can answer too.</p>
       </div>
     </div>
   </div>
@@ -645,21 +658,25 @@ footer .links a:hover { color: var(--ink); }
 <section class="block fan-sec" id="app">
   <div class="wrap">
     <div class="head">
-      <p class="kicker">// the rest of it</p>
-      <h2 class="rv">Five screens, give or take.</h2>
+      <h2 class="rv">The app.</h2>
     </div>
     <div class="fan" id="fan">
       <img src="screenshots/activity.png" alt="Activity feed of what agents did" loading="lazy">
-      <img src="screenshots/new.png" alt="Starting an agent, a shell or a worktree" loading="lazy">
-      <img src="screenshots/agents.png" alt="Agent list, with the agent that needs input first" loading="lazy">
+      <img src="screenshots/new.png" alt="Starting an agent, a shell or a worktree, picked from dropdowns" loading="lazy">
+      <img src="screenshots/agents.png" alt="Agent list, with the agent that needs input first and when each was last done" loading="lazy">
+      <img src="screenshots/chat.png" alt="An agent's conversation with an image it read, a formatted table and a checklist" loading="lazy">
       <img src="screenshots/terminal.png" alt="An agent's live terminal with answer chips, tabs and quick keys" loading="lazy">
-      <img src="screenshots/settings.png" alt="Settings with paired computers and app lock" loading="lazy">
+      <img src="screenshots/settings.png" alt="Settings with paired computers, theme, images and app lock" loading="lazy">
     </div>
     <div class="feats fade">
-      <div><b>Activity feed</b>What your agents did while you were away, and how long each one waited for you.</div>
-      <div><b>Several computers</b>Pair as many as you like and switch from the top of the agent list.</div>
-      <div><b>Manage agents</b>Long-press one to rename it, rename its workspace, or close it.</div>
-      <div><b>App lock</b>Ask for your fingerprint before Shepherd opens.</div>
+      <div><b>Activity</b>What happened while you were away.</div>
+      <div><b>Several computers</b>Pair more than one and switch.</div>
+      <div><b>Subagents</b>Follow each one's work.</div>
+      <div><b>Images</b>See what the agent read, or send your own.</div>
+      <div><b>Widget</b>Answer from the home screen.</div>
+      <div><b>App lock</b>Fingerprint to open.</div>
+      <div><b>Themes</b>Twelve, each in dark and light.</div>
+      <div><b>Manage agents</b>Rename or close them.</div>
     </div>
   </div>
 </section>
@@ -668,17 +685,16 @@ footer .links a:hover { color: var(--ink); }
 <section class="block install" id="install">
   <div class="wrap split">
     <div>
-      <p class="kicker">// setup</p>
-      <h2 class="rv">Three steps, then it's just your phone.</h2>
+      <h2 class="rv">Setup.</h2>
       <ol class="steps fade">
-        <li><div><b>Install the herdr plugin</b>It runs a small host in the background whenever herdr does. The host talks to herdr's local socket and only lets in phones you've paired.
+        <li><div><b>Install the herdr plugin</b>It starts a small host whenever herdr runs.
           <div class="cmd"><code>herdr plugin install zenodea/shepherd</code><button data-copy>copy</button></div></div></li>
-        <li><div><b>Get the app</b>Download the APK from the <a href="https://github.com/zenodea/shepherd/releases/latest">latest release</a> on your phone and install it. Or build it yourself; the <a href="https://github.com/zenodea/shepherd#4-get-the-app-on-your-phone">README</a> has the steps.
+        <li><div><b>Get the app</b>Install the APK from the <a href="https://github.com/zenodea/shepherd/releases/latest">latest release</a>, or build it yourself (see the <a href="https://github.com/zenodea/shepherd#4-get-the-app-on-your-phone">README</a>).
           <div class="cmd"><code>github.com/zenodea/shepherd/releases/latest</code><button data-copy>copy</button></div></div></li>
-        <li><div><b>Scan the code</b>herdr opens a pane with a pairing code. It works once and expires after ten minutes, so a photo of it is useless afterwards. Your phone gets its own token.
+        <li><div><b>Pair your phone</b>Scan the code. It works once and expires after ten minutes.
           <div class="cmd"><code>herdr plugin action invoke shepherd.pair</code><button data-copy>copy</button></div></div></li>
       </ol>
-      <p class="reqs fade">You'll need <a href="https://herdr.dev">herdr</a> 0.9 or newer, Node 22.18 or newer, and a phone. Want to look around first? <code>npm run app:demo</code> runs the app against a pretend computer full of pretend agents. Full instructions are in the <a href="https://github.com/zenodea/shepherd#quick-start">README</a>.</p>
+      <p class="reqs fade">Needs <a href="https://herdr.dev">herdr</a> 0.9+, Node 22.18+ and a phone. To try the app without a computer: <code>npm run app:demo</code>. Details in the <a href="https://github.com/zenodea/shepherd#quick-start">README</a>.</p>
     </div>
     <div class="fade" style="--d:150ms">
       <div class="shell">
@@ -691,7 +707,7 @@ footer .links a:hover { color: var(--ink); }
 
 <footer id="end">
   <div class="wrap">
-    <p class="big rv">Go outside.<br><span class="hl">They'll text.</span></p>
+    
     <div class="links">
       <a href="https://github.com/zenodea/shepherd">GitHub</a>
       <a href="https://github.com/zenodea/shepherd#security-model">Security model</a>
@@ -766,7 +782,13 @@ const whenVisible = (el, cb, threshold = .35) => {
 };
 
 /* ---------- the hero demo: agents, headline, clock ---------- */
-const MARKS = { claude: ["✻", "#D97757"], codex: ["◎", "#E5E5E5"], gemini: ["✦", "#8AB4F8"] };
+const BRAND = { claude: "#D97757", codex: "#E5E5E5", gemini: "#8E75B2" };
+/* The agents' own logos, the same ones the app draws. */
+const LOGOS = {
+  claude: `<svg viewBox="0 0 24 24" fill="#D97757" aria-hidden="true"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>`,
+  codex: `<svg viewBox="0 0 24 24" fill="#E5E5E5" aria-hidden="true"><path d="M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z" fill-rule="evenodd"/></svg>`,
+  gemini: `<svg viewBox="0 0 24 24" fill="#8E75B2" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg>`,
+};
 const agents = [
   { id: "a1", agent: "claude", title: "Fix flaky login test", ws: "api", status: "blocked" },
   { id: "a2", agent: "claude", title: "Refactor billing module", ws: "api", status: "done" },
@@ -784,9 +806,9 @@ const alist = $("#alist"), clock = $("#clock"), h1 = $("#h1"), h1text = $("#h1te
 const statusLabel = { working: "Working", done: "Done", idle: "Idle", blocked: "Needs input" };
 
 function rowHTML(a, inCard) {
-  const [g, c] = MARKS[a.agent];
+  const logo = LOGOS[a.agent];
   const sub = inCard ? `${a.agent} · ${a.ws}` : `<span class="st-${a.status}">${statusLabel[a.status]}</span> · ${a.agent}`;
-  return `<div class="row" data-key="${a.id}"><span class="mark" style="color:${c}">${g}</span><span class="t"><b>${a.title}</b><span>${sub}</span></span><span class="ind ${a.status}"></span></div>`;
+  return `<div class="row" data-key="${a.id}"><span class="mark">${logo}</span><span class="t"><b>${a.title}</b><span>${sub}</span></span><span class="ind ${a.status}"></span></div>`;
 }
 function renderList() {
   const before = new Map($$("[data-key]", alist).map((el) => [el.dataset.key, el.getBoundingClientRect().top]));
@@ -824,7 +846,7 @@ function setHeadline(html, color) {
     requestAnimationFrame(() => requestAnimationFrame(() => h1.classList.remove("entering")));
   }, 320);
 }
-const waitingHTML = (a, t) => `<span class="line"><span class="who" style="color:${MARKS[a.agent][1]}">${a.agent}</span> has been</span><span class="line">waiting on you</span><span class="line">for <span class="clock" id="clock">${fmt(t)}</span></span>`;
+const waitingHTML = (a, t) => `<span class="line"><span class="who" style="color:${BRAND[a.agent]}">${a.agent}</span> has been</span><span class="line">waiting on you</span><span class="line">for <span class="clock" id="clock">${fmt(t)}</span></span>`;
 
 function block(id) {
   const a = agents.find((x) => x.id === id);
@@ -849,7 +871,7 @@ async function answer(i = 0, btn) {
   await sleep(420);
   a.status = "working";
   renderList();
-  setHeadline(`<span class="line">Answered.</span><span class="line"><span class="who" style="color:${MARKS[a.agent][1]}">${a.agent}</span> is back</span><span class="line">to work.</span>`);
+  setHeadline(`<span class="line">Answered.</span><span class="line"><span class="who" style="color:${BRAND[a.agent]}">${a.agent}</span> is back</span><span class="line">to work.</span>`);
   $("#hint").style.opacity = 0;
   await sleep(3800);
   a.status = "done";
@@ -1295,10 +1317,11 @@ function fanFrame() {
     const r = fan.getBoundingClientRect();
     const p = Math.max(0, Math.min(1, (innerHeight - r.top) / (innerHeight * .85)));
     const e = 1 - Math.pow(1 - p, 3);
-    const spread = Math.min(235, (fan.offsetWidth - 250) / 4);
+    const mid = (cards.length - 1) / 2;
+    const spread = Math.min(235, (fan.offsetWidth - 250) / (cards.length - 1));
     cards.forEach((c, i) => {
-      const k = i - 2, a = Math.abs(k);
-      c.style.zIndex = 10 - a;
+      const k = i - mid, a = Math.abs(k);
+      c.style.zIndex = String(Math.round(20 - a * 2));
       c.style.transform = `translateX(${k * spread * e}px) translateY(${a * a * 9 * e + (1 - e) * 40}px) rotate(${k * 4.5 * e + (1 - e) * (k * 1.5)}deg) scale(${1 - a * .03 * e})`;
     });
   }
@@ -1331,7 +1354,7 @@ whenVisible(shell, async (v) => {
   };
   const out = (html) => { const s = document.createElement("span"); s.innerHTML = html; shell.append(s); };
   out('<span class="p">$</span> '); await type("herdr plugin install zenodea/shepherd");
-  out('\n<span class="k">  build: npm ci --workspace @shepherd/host\n  added 61 packages in 2s</span>\n  Installed shepherd 0.2.0\n'); await sleep(400);
+  out('\n<span class="k">  build: npm ci --workspace @shepherd/host\n  added 61 packages in 2s</span>\n  Installed shepherd 0.3.0\n'); await sleep(400);
   out('<span class="p">$</span> '); await type("herdr plugin action invoke shepherd.pair");
   await sleep(500);
   // The action opens a herdr pane over the terminal.

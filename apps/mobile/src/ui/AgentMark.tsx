@@ -1,24 +1,24 @@
 import { StyleSheet, Text, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
+import { LOGOS } from "./agent-logos";
 import { colors, themed } from "./theme";
 
-/** A recognisable glyph and colour per agent CLI; anything else gets its initial. */
-const MARKS: Record<string, { glyph: string; color: string }> = {
-  claude: { glyph: "✻", color: "#D97757" },
-  codex: { glyph: "◎", color: "#E5E5E5" },
-  gemini: { glyph: "✦", color: "#8AB4F8" },
-  opencode: { glyph: "▣", color: "#E5E5E5" },
-  cursor: { glyph: "◆", color: "#E5E5E5" },
-  copilot: { glyph: "◉", color: "#A78BFA" },
-  amp: { glyph: "⚡", color: "#F5B544" },
-  pi: { glyph: "π", color: "#E5E5E5" },
-};
-
+/** The agent's own logo in a circle; an agent without one gets its initial. */
 export function AgentMark({ agent, size = 28 }: { agent: string | null | undefined; size?: number }) {
   const key = (agent ?? "").toLowerCase();
-  const mark = MARKS[key] ?? { glyph: (key[0] ?? "?").toUpperCase(), color: colors.muted };
+  const logo = LOGOS[key];
+  const mark = size * 0.56;
   return (
-    <View style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Text style={{ color: mark.color, fontSize: size * 0.52, fontWeight: "700", lineHeight: size * 0.66 }}>{mark.glyph}</Text>
+    <View style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]} accessibilityLabel={agent ?? undefined}>
+      {logo ? (
+        <Svg width={mark} height={mark} viewBox={logo.viewBox}>
+          {logo.paths.map((p, i) => (
+            <Path key={i} d={p.d} fill={p.fill ?? logo.color ?? colors.text} fillRule={p.evenOdd ? "evenodd" : "nonzero"} />
+          ))}
+        </Svg>
+      ) : (
+        <Text style={{ color: colors.muted, fontSize: size * 0.48, fontWeight: "700" }}>{(key[0] ?? "?").toUpperCase()}</Text>
+      )}
     </View>
   );
 }

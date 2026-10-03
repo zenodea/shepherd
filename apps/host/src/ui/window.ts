@@ -107,7 +107,7 @@ function overview(data: WindowData, now: number): string[] {
   for (const [route, key] of [["lan", "1"], ["tailscale", "2"], ["relay", "3"]] as const) {
     const on = data.routes[route];
     const urls = data.addresses.filter((a) => a.label === ROUTE_LABELS[route]).map((a) => a.url);
-    const detail = route === "relay" ? relayText(data) : !on ? style.dim("off") : urls[0] ?? style.dim(`no ${ROUTE_LABELS[route]} address`);
+    const detail = route === "relay" ? relayText(data) : !on ? style.dim("not used") : urls[0] ?? style.dim(`no ${ROUTE_LABELS[route]} address`);
     lines.push(switchRow(ROUTE_LABELS[route], slider(on && (route !== "relay" || data.relayConfigured)), key, detail));
     if (route !== "relay") for (const url of urls.slice(1)) lines.push(`  ${label("")}${" ".repeat(16)}${url}`);
   }
@@ -116,7 +116,7 @@ function overview(data: WindowData, now: number): string[] {
 
 function relayText(data: WindowData): string {
   if (!data.relayConfigured) return style.dim("not set up");
-  if (!data.routes.relay) return style.dim("off");
+  if (!data.routes.relay) return style.dim("not used");
   const relay = data.status?.relay;
   if (!data.running) return style.dim("configured");
   if (!relay) return style.dim("starting");

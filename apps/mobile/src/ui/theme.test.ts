@@ -51,3 +51,18 @@ describe("themes", () => {
     }
   });
 });
+
+describe("theme palettes", () => {
+  it("give every theme a complete dark and light palette", () => {
+    const hex = /^#[0-9A-F]{6}$/i;
+    for (const theme of THEMES) {
+      for (const palette of [theme.dark, theme.light]) {
+        expect(palette.ansi, theme.id).toHaveLength(16);
+        for (const value of [...Object.values(palette).filter((v) => typeof v === "string"), ...Object.values(palette.status), ...palette.ansi]) {
+          expect(value, `${theme.id}: ${value}`).toMatch(hex);
+        }
+      }
+    }
+    expect(new Set(THEMES.map((t) => t.id)).size).toBe(THEMES.length);
+  });
+});
