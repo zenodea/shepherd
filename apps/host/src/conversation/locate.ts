@@ -1,9 +1,11 @@
 // Which transcript file belongs to an agent's pane. herdr reports the path for
-// some harnesses (its pi integration); otherwise it's the newest session the
+// some harnesses (its pi integration). For Claude Code, the running process in
+// the pane says which session it's on. Otherwise it's the newest session the
 // harness wrote for the pane's working directory.
-import { closeSync, existsSync, openSync, readSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { AgentInfo } from "@shepherd/protocol";
 import { claudeProjectDir } from "./claude.ts";
 import { piSessionDir } from "./pi.ts";
@@ -94,7 +96,81 @@ function recentDayDirs(root: string, days: number, now = new Date()): string[] {
 
 const CODEX_DAYS = 7;
 
-export function locateTranscript(agent: AgentInfo, harness: Harness, roots: Roots = defaultRoots()): string | null {
+/** A running Claude Code, from the file it keeps in ~/.claude/sessions/<pid>.json. */
+export type ClaudeProcess = { pid: number; sessionId: string; cwd: string; startedAt: number };
+
+/** How to find running agents and their panes; replaced in tests. */
+export type Processes = {
+  /** Running Claude Codes. */
+  claude(roots: Roots): ClaudeProcess[];
+  /** The herdr pane a process runs in (its HERDR_PANE_ID), or null. */
+  paneOf(pid: number): string | null;
+};
+
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM: it exists, it just isn't ours.
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+/** A process's HERDR_PANE_ID: /proc on Linux, `ps eww` on macOS. */
+function readPaneOf(pid: number): string | null {
+  try {
+    const env =
+      process.platform === "linux"
+        ? readFileSync(`/proc/${pid}/environ`, "utf8").replace(/\0/g, " ")
+        : execFileSync("ps", ["eww", "-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
+    return /(?:^|\s)HERDR_PANE_ID=(\S+)/.exec(env)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Pane ids by process (and when it started, as pids get reused): a process doesn't change pane. */
+const panes = new Map<string, string | null>();
+
+export const systemProcesses: Processes = {
+  claude(roots) {
+    const dir = join(dirname(roots.claude), "sessions");
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return [];
+    }
+    const found: ClaudeProcess[] = [];
+    for (const name of names) {
+      if (!/^\d+\.json$/.test(name)) continue;
+      try {
+        const j = JSON.parse(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
+        const { pid, sessionId, cwd, startedAt } = j;
+        if (typeof pid === "number" && typeof sessionId === "string" && typeof cwd === "string" && isAlive(pid)) {
+          found.push({ pid, sessionId, cwd, startedAt: typeof startedAt === "number" ? startedAt : 0 });
+        }
+      } catch {
+        // being rewritten, or not one of these
+      }
+    }
+    return found;
+  },
+  paneOf(pid) {
+    const key = String(pid);
+    if (!panes.has(key)) {
+      if (panes.size > 500) panes.clear();
+      panes.set(key, readPaneOf(pid));
+    }
+    return panes.get(key)!;
+  },
+};
+
+/** The transcript of a Claude session, by the folder it started in. */
+const claudeTranscript = (roots: Roots, p: ClaudeProcess) => join(roots.claude, claudeProjectDir(p.cwd), `${p.sessionId}.jsonl`);
+
+export function locateTranscript(agent: AgentInfo, harness: Harness, roots: Roots = defaultRoots(), processes: Processes = systemProcesses): string | null {
   const session = agent.agent_session;
   if (session?.kind === "path") {
     const path = expandHome(session.value);
@@ -107,7 +183,19 @@ export function locateTranscript(agent: AgentInfo, harness: Harness, roots: Root
       for (const cwd of cwds) {
         const dir = join(roots.claude, claudeProjectDir(cwd));
         if (session?.kind === "id" && existsSync(join(dir, `${session.value}.jsonl`))) return join(dir, `${session.value}.jsonl`);
-        const newest = jsonlFiles(dir)[0];
+      }
+      // The Claude running in this pane says which session it's on (it changes with /clear and /resume).
+      const running = processes.claude(roots);
+      const mine = running.filter((p) => processes.paneOf(p.pid) === agent.pane_id).sort((a, b) => b.startedAt - a.startedAt)[0];
+      if (mine) {
+        const path = claudeTranscript(roots, mine);
+        // A brand-new session has no transcript until its first message: nothing yet, rather than another session's.
+        return existsSync(path) ? path : null;
+      }
+      // Otherwise the newest session in the folder, leaving out those another running Claude is on.
+      const taken = new Set(running.map((p) => claudeTranscript(roots, p)));
+      for (const cwd of cwds) {
+        const newest = jsonlFiles(join(roots.claude, claudeProjectDir(cwd))).find((f) => !taken.has(f.path));
         if (newest) return newest.path;
       }
       return null;

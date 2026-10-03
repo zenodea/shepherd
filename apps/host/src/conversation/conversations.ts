@@ -6,7 +6,7 @@ import { claudeParser } from "./claude.ts";
 import { CodexQueue, codexThreadId } from "./codex-queue.ts";
 import { codexParser } from "./codex.ts";
 import type { Parser } from "./entries.ts";
-import { defaultRoots, harnessOf, locateTranscript, type Harness, type Roots } from "./locate.ts";
+import { defaultRoots, harnessOf, locateTranscript, systemProcesses, type Harness, type Processes, type Roots } from "./locate.ts";
 import { piParser } from "./pi.ts";
 import { TranscriptReader } from "./reader.ts";
 
@@ -28,8 +28,11 @@ export class Conversations {
   private imageCache = new Map<string, FoundImage>();
   private readonly codexQueue: CodexQueue;
 
-  constructor(roots: Roots = defaultRoots()) {
+  private readonly processes: Processes;
+
+  constructor(roots: Roots = defaultRoots(), processes: Processes = systemProcesses) {
     this.roots = roots;
+    this.processes = processes;
     // Next to Codex's sessions folder.
     this.codexQueue = new CodexQueue(join(dirname(roots.codex), "queue_1.sqlite"));
   }
@@ -137,7 +140,7 @@ export class Conversations {
     const key = `${agent.pane_id} ${harness}`;
     const cached = this.located.get(key);
     if (cached && Date.now() - cached.at < LOCATE_EVERY_MS) return cached.path;
-    const path = locateTranscript(agent, harness, this.roots);
+    const path = locateTranscript(agent, harness, this.roots, this.processes);
     this.located.set(key, { at: Date.now(), path });
     return path;
   }

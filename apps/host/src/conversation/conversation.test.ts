@@ -346,3 +346,34 @@ describe("image list", () => {
     expect(conversations.images(null)).toMatchObject({ available: false });
   });
 });
+
+describe("which Claude session a pane is on", () => {
+  it("follows the Claude running in each pane, not the newest file in the folder", async () => {
+    const { locateTranscript } = await import("./locate.ts");
+    const r: Roots = { claude: join(tempDir(), "claude"), codex: join(tempDir(), "codex", "sessions"), pi: join(tempDir(), "pi") };
+    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    mkdirSync(dir, { recursive: true });
+    const write = (id: string, mtime: number) => {
+      writeFileSync(join(dir, `${id}.jsonl`), `${JSON.stringify({ type: "user", message: { content: id } })}\n`);
+      utimesSync(join(dir, `${id}.jsonl`), mtime, mtime);
+    };
+    write("older", 1000);
+    write("newest", 2000);
+    write("abandoned", 1500);
+    const running = [
+      { pid: 11, sessionId: "older", cwd: "/work/app", startedAt: 1 },
+      { pid: 22, sessionId: "newest", cwd: "/work/app", startedAt: 2 },
+      { pid: 33, sessionId: "fresh", cwd: "/work/app", startedAt: 3 },
+    ];
+    const panes: Record<number, string> = { 11: "w1:p1", 22: "w1:p2", 33: "w1:p4" };
+    const processes = { claude: () => running, paneOf: (pid: number) => panes[pid] ?? null };
+    const at = (pane: string) => locateTranscript(fakeAgent(pane, "idle", { agent: "claude", cwd: "/work/app" }), "claude", r, processes);
+
+    expect(at("w1:p1")).toBe(join(dir, "older.jsonl"));
+    expect(at("w1:p2")).toBe(join(dir, "newest.jsonl"));
+    // A session with no messages yet: nothing to show, not someone else's conversation.
+    expect(at("w1:p4")).toBeNull();
+    // No Claude running in the pane (it exited): the newest file no running Claude is on.
+    expect(at("w1:p3")).toBe(join(dir, "abandoned.jsonl"));
+  });
+});
