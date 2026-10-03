@@ -12,6 +12,7 @@ import { RELOCK_AFTER_MS, useAppLock } from "../security/app-lock";
 import { IconButton } from "../ui/IconButton";
 import { ListGroup, ListRow } from "../ui/ListRow";
 import { Divider, Screen } from "../ui/Screen";
+import { Select } from "../ui/Select";
 import { Toggle } from "../ui/Toggle";
 import { THEMES, colors, radii, space, type, themed, type Palette, type ThemeMode } from "../ui/theme";
 
@@ -110,21 +111,12 @@ export default function SettingsScreen() {
             })}
           </View>
           <ListGroup>
-            {THEMES.map((t, i) => {
-              const active = theme.theme === t.id;
-              return (
-                <View key={t.id}>
-                  {i > 0 ? <Divider inset={56} /> : null}
-                  <ListRow
-                    icon={<Swatch palette={theme.dark ? t.dark : t.light} />}
-                    title={t.name}
-                    chevron={false}
-                    trailing={active ? <Check size={18} color={colors.text} /> : null}
-                    onPress={() => theme.setTheme(t.id)}
-                  />
-                </View>
-              );
-            })}
+            <Select
+              title="Theme"
+              value={theme.theme}
+              onChange={theme.setTheme}
+              options={THEMES.map((t) => ({ value: t.id, label: t.name, icon: <Swatch palette={theme.dark ? t.dark : t.light} /> }))}
+            />
           </ListGroup>
         </View>
 

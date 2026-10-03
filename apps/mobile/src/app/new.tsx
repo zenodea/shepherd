@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Check, ChevronLeft, Folder, GitBranch, SquareTerminal } from "lucide-react-native";
+import { ChevronLeft, Folder, GitBranch, SquareTerminal } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { ListGroup, ListRow } from "../ui/ListRow";
 import { Divider, Screen } from "../ui/Screen";
+import { Select } from "../ui/Select";
 import { colors, fonts, space, type, themed } from "../ui/theme";
 import { Toggle } from "../ui/Toggle";
 
@@ -96,55 +97,48 @@ export default function NewAgentScreen() {
             <View>
               <Text style={styles.groupLabel}>Open</Text>
               <ListGroup>
-                {[TERMINAL_KIND, ...data.kinds].map((k, i) => (
-                  <View key={k}>
-                    {i > 0 ? <Divider inset={56} /> : null}
-                    <ListRow
-                      icon={
-                        k === TERMINAL_KIND ? (
-                          <View style={styles.terminalIcon}>
-                            <SquareTerminal size={15} color={colors.muted} />
-                          </View>
-                        ) : (
-                          <AgentMark agent={k} size={26} />
-                        )
-                      }
-                      title={k === TERMINAL_KIND ? "Terminal" : k}
-                      detail={k === TERMINAL_KIND ? "A plain shell" : undefined}
-                      chevron={false}
-                      trailing={k === kind ? <Check size={18} color={colors.text} /> : null}
-                      onPress={() => setKind(k)}
-                    />
-                  </View>
-                ))}
+                <Select
+                  title="Open"
+                  value={kind}
+                  onChange={setKind}
+                  options={[TERMINAL_KIND, ...data.kinds].map((k) => ({
+                    value: k,
+                    label: k === TERMINAL_KIND ? "Terminal" : k,
+                    detail: k === TERMINAL_KIND ? "A plain shell" : null,
+                    icon:
+                      k === TERMINAL_KIND ? (
+                        <View style={styles.terminalIcon}>
+                          <SquareTerminal size={15} color={colors.muted} />
+                        </View>
+                      ) : (
+                        <AgentMark agent={k} size={26} />
+                      ),
+                  }))}
+                />
               </ListGroup>
             </View>
 
             <View>
               <Text style={styles.groupLabel}>Project</Text>
               <ListGroup>
-                {data.projects.map((p, i) => (
-                  <View key={p.workspaceId}>
-                    {i > 0 ? <Divider inset={56} /> : null}
-                    <ListRow
-                      icon={<Folder size={19} color={colors.muted} />}
-                      title={p.label}
-                      detail={shortPath(p.cwd) ?? p.workspaceId}
-                      chevron={false}
-                      trailing={p.workspaceId === workspaceId ? <Check size={18} color={colors.text} /> : null}
-                      onPress={() => setWorkspaceId(p.workspaceId)}
-                    />
-                  </View>
-                ))}
+                <Select
+                  title="Project"
+                  value={workspaceId}
+                  onChange={setWorkspaceId}
+                  options={data.projects.map((p) => ({
+                    value: p.workspaceId,
+                    label: p.label,
+                    detail: shortPath(p.cwd) ?? p.workspaceId,
+                    icon: <Folder size={19} color={colors.muted} />,
+                  }))}
+                />
                 <Divider />
                 <ListRow
                   icon={<GitBranch size={19} color={colors.muted} />}
                   title="New git worktree"
                   detail={`A separate checkout${selectedProject?.repoName ? ` of ${selectedProject.repoName}` : ""}, so agents don't collide`}
                   chevron={false}
-                  trailing={
-                    <Toggle value={newWorktree} onValueChange={setNewWorktree} />
-                  }
+                  trailing={<Toggle value={newWorktree} onValueChange={setNewWorktree} />}
                 />
               </ListGroup>
             </View>
