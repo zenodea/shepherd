@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ChevronLeft,
   Ellipsis,
+  Images,
   Keyboard as KeyboardIcon,
   MessageSquareText,
   Search,
@@ -117,6 +118,7 @@ export default function TerminalScreen() {
   const agentsForPrompt = useMemo(() => (agent ? [agent] : []), [agent]);
   const prompt = useBlockedPrompts(client, agentsForPrompt)[paneId ?? ""];
   const online = state.status === "online";
+  const imagesShown = useImagesShown();
   const actions = useAgentActions(client, {
     extra: [
       {
@@ -125,6 +127,17 @@ export default function TerminalScreen() {
         detail: "Or pinch the terminal",
         onPress: () => setTextSizeSheet(true),
       },
+      // With "Show images" on: every image in the conversation on one page.
+      ...(imagesShown && agent
+        ? [
+            {
+              icon: <Images size={19} color={colors.text} />,
+              title: "Images",
+              detail: "Every image in this conversation",
+              onPress: () => router.push({ pathname: "/images/[paneId]", params: { paneId: paneId! } }),
+            },
+          ]
+        : []),
     ],
     // Go to another tab in the workspace if there is one, else back to the list.
     onClosed: (closed) => {
@@ -221,7 +234,6 @@ export default function TerminalScreen() {
 
   const live = useRef<LiveTerminalHandle>(null);
   const conversationView = useRef<ConversationHandle>(null);
-  const imagesShown = useImagesShown();
   const images = useMemo(
     () => ({ client, paneId, session: conversation.session, auto: imagesShown }),
     [client, paneId, conversation.session, imagesShown],

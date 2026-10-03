@@ -260,6 +260,8 @@ function derive(p: Palette, dark: boolean) {
     terminal: p.terminal,
     terminalText: p.terminalText,
     link: alpha(p.terminalText, 0.45),
+    /** Links in the chat: the theme's bright blue. */
+    linkText: p.ansi[12] ?? p.brand,
     match: alpha(p.brand, dark ? 0.35 : 0.28),
     backdrop: dark ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.3)",
     dark,

@@ -1,5 +1,5 @@
 import { ArrowDown, ChevronDown, ChevronRight, ChevronUp, Clock } from "lucide-react-native";
-import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, FlatList, Platform, ScrollView, StyleSheet, Text, View, type ViewToken } from "react-native";
 import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import { PressableScale } from "../ui/Pressable";
@@ -7,58 +7,8 @@ import { Counts } from "./Counts";
 import { ConversationImages } from "./ConversationImage";
 import { DiffView } from "./DiffView";
 import { colors, fonts, space, statusColors, themed } from "../ui/theme";
-import { conversationRows, countUserMessages, groupActivity, markdownBlocks, queuedRows, rowImages, userMessageIndex, type Row } from "./conversation-rows";
-
-/** Inline `code`, **bold** and # headings in a line of prose. */
-function Inline({ text }: { text: string }) {
-  const lines = text.split("\n");
-  return (
-    <Text style={styles.prose} selectable>
-      {lines.map((line, li) => {
-        const heading = /^#{1,6}\s+(.*)$/.exec(line);
-        const content = heading ? heading[1]! : line;
-        const parts = content.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).filter(Boolean);
-        return (
-          <Text key={li} style={heading ? styles.heading : undefined}>
-            {li > 0 ? "\n" : ""}
-            {parts.map((part, pi) =>
-              part.startsWith("`") && part.endsWith("`") && part.length > 1 ? (
-                <Text key={pi} style={styles.inlineCode}>
-                  {part.slice(1, -1)}
-                </Text>
-              ) : part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
-                <Text key={pi} style={styles.bold}>
-                  {part.slice(2, -2)}
-                </Text>
-              ) : (
-                part
-              ),
-            )}
-          </Text>
-        );
-      })}
-    </Text>
-  );
-}
-
-function Markdown({ text }: { text: string }) {
-  const blocks = useMemo(() => markdownBlocks(text), [text]);
-  return (
-    <View style={styles.markdown}>
-      {blocks.map((b, i) =>
-        b.code ? (
-          <ScrollView key={i} horizontal style={styles.codeBlock} contentContainerStyle={styles.codeBlockInner}>
-            <Text style={styles.code} selectable>
-              {b.text}
-            </Text>
-          </ScrollView>
-        ) : (
-          <Inline key={i} text={b.text} />
-        ),
-      )}
-    </View>
-  );
-}
+import { conversationRows, countUserMessages, groupActivity, queuedRows, rowImages, userMessageIndex, type Row } from "./conversation-rows";
+import { Markdown } from "./Markdown";
 
 /**
  * Called with how much a row grew or shrank when you opened or closed it. The
@@ -67,25 +17,53 @@ function Markdown({ text }: { text: string }) {
  */
 const GrowContext = createContext<((delta: number) => void) | null>(null);
 
+/** A view's height straight from the committed layout (new architecture and web), or null where that isn't available. */
+function heightNow(view: View | null): number | null {
+  const rect = (view as unknown as { getBoundingClientRect?: () => { height: number } } | null)?.getBoundingClientRect?.();
+  return rect && rect.height > 0 ? rect.height : null;
+}
+
 function Expandable({ title, children, defaultOpen = false }: { title: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const grow = useContext(GrowContext);
+  const box = useRef<View>(null);
   const height = useRef(0);
-  const toggled = useRef(false);
+  /** Height before a tap, until the list has been scrolled to make up for the change. */
+  const before = useRef<number | null>(null);
+  /** The fallback: correct once the new height is reported (a frame late, so it shows). */
+  const lateFix = useRef(false);
+
+  // Right after the opened (or closed) row is committed, before it's drawn: read its new
+  // height and scroll by the difference. The scroll reaches Android in the same batch as
+  // the change (view commands run first), so the frame where the title jumps is never shown.
+  useLayoutEffect(() => {
+    const was = before.current;
+    if (was === null) return;
+    before.current = null;
+    const now = heightNow(box.current);
+    if (now === null) lateFix.current = true;
+    else if (now !== was) grow?.(now - was);
+  }, [open, grow]);
+
   return (
     <View
+      ref={box}
       onLayout={(e) => {
         const h = e.nativeEvent.layout.height;
-        if (toggled.current && height.current && h !== height.current) grow?.(h - height.current);
-        toggled.current = false;
+        if (lateFix.current && height.current && h !== height.current) grow?.(h - height.current);
+        lateFix.current = false;
         height.current = h;
       }}
     >
       <PressableScale
         onPress={() => {
-          toggled.current = true;
+          before.current = heightNow(box.current) ?? height.current;
           setOpen((o) => !o);
-        }} style={styles.expandHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        }}
+        style={styles.expandHead}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+      >
         <View style={{ transform: [{ rotate: open ? "90deg" : "0deg" }] }}>
           <ChevronRight size={14} color={colors.subtle} />
         </View>
@@ -453,16 +431,6 @@ const styles = themed(() =>
     },
     userText: { fontSize: 15, lineHeight: 21, color: colors.text },
     assistant: { paddingRight: space.sm },
-    markdown: { gap: space.sm },
-    prose: { fontSize: 15, lineHeight: 22, color: colors.text },
-    heading: { fontWeight: "700" },
-    bold: { fontWeight: "700" },
-    inlineCode: {
-      fontFamily: fonts.mono,
-      fontSize: 13.5,
-      color: colors.text,
-      backgroundColor: colors.raised,
-    },
     codeBlock: {
       backgroundColor: colors.terminal,
       borderRadius: 10,

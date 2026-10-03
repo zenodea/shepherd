@@ -43,6 +43,8 @@ declare class ShepherdBackgroundModule extends NativeModule<Events> {
   cancel(id: number): Promise<void>;
   /** Redraw the home-screen widget from this summary (JSON of a WidgetSummary). */
   updateWidget(json: string): Promise<void>;
+  /** Saves an image (base64) into Pictures/Shepherd; resolves to its content URI. Android 10+. */
+  saveImage(base64: string, mime: string, name: string): Promise<string>;
   notificationsEnabled(): boolean;
   isIgnoringBatteryOptimizations(): boolean;
   requestIgnoreBatteryOptimizations(): Promise<void>;

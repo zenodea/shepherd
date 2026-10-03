@@ -1,6 +1,6 @@
 // `shepherd.conversation`: an agent's conversation, read from its transcript.
 import { basename, dirname, join } from "node:path";
-import type { AgentInfo, ConversationParams, ConversationResult, ImageParams, ImageResult, QueuedMessage } from "@shepherd/protocol";
+import type { AgentInfo, ConversationParams, ConversationResult, ImageParams, ImageResult, ImagesResult, QueuedMessage } from "@shepherd/protocol";
 import { imagesIn, readRecordAt, type FoundImage } from "./images.ts";
 import { claudeParser } from "./claude.ts";
 import { CodexQueue, codexThreadId } from "./codex-queue.ts";
@@ -25,7 +25,7 @@ export class Conversations {
   private located = new Map<string, { at: number; path: string | null }>();
   private readers = new Map<string, TranscriptReader>();
   /** The last few images asked for, so the chunks of one don't each re-read the file. */
-  private images = new Map<string, FoundImage>();
+  private imageCache = new Map<string, FoundImage>();
   private readonly codexQueue: CodexQueue;
 
   constructor(roots: Roots = defaultRoots()) {
@@ -39,26 +39,9 @@ export class Conversations {
     const harness = harnessOf(agent);
     if (!harness) return { available: false, reason: `Conversations aren't available for ${agent.agent ?? "this agent"} yet.` };
 
-    const path = this.locate(agent, harness);
-    if (!path) return { available: false, reason: "No conversation found for this agent yet." };
-
-    let reader = this.readers.get(path);
-    if (!reader) {
-      reader = new TranscriptReader(path, PARSERS[harness]);
-      this.readers.set(path, reader);
-      if (this.readers.size > MAX_READERS) this.readers.delete(this.readers.keys().next().value!);
-    } else {
-      // Most recently used last.
-      this.readers.delete(path);
-      this.readers.set(path, reader);
-    }
-    try {
-      reader.refresh();
-    } catch {
-      this.readers.delete(path);
-      this.located.delete(`${agent.pane_id} ${harness}`);
-      return { available: false, reason: "Couldn't read this agent's conversation." };
-    }
+    const opened = this.open(agent, harness);
+    if ("reason" in opened) return { available: false, reason: opened.reason };
+    const { path, reader } = opened;
 
     const limit = Math.min(MAX_LIMIT, Math.max(1, params.limit ?? DEFAULT_LIMIT));
     const page = reader.page({ after: params.after, before: params.before, limit });
@@ -79,6 +62,41 @@ export class Conversations {
    * only, so it has none here yet (TODO: a small pi extension could write it
    * into pi's session file).
    */
+  /** The agent's transcript, read up to date. */
+  private open(agent: AgentInfo, harness: Harness): { path: string; reader: TranscriptReader } | { reason: string } {
+    const path = this.locate(agent, harness);
+    if (!path) return { reason: "No conversation found for this agent yet." };
+
+    let reader = this.readers.get(path);
+    if (!reader) {
+      reader = new TranscriptReader(path, PARSERS[harness]);
+      this.readers.set(path, reader);
+      if (this.readers.size > MAX_READERS) this.readers.delete(this.readers.keys().next().value!);
+    } else {
+      // Most recently used last.
+      this.readers.delete(path);
+      this.readers.set(path, reader);
+    }
+    try {
+      reader.refresh();
+    } catch {
+      this.readers.delete(path);
+      this.located.delete(`${agent.pane_id} ${harness}`);
+      return { reason: "Couldn't read this agent's conversation." };
+    }
+    return { path, reader };
+  }
+
+  /** Every image in the agent's conversation, grouped under your messages. */
+  images(agent: AgentInfo | null): ImagesResult {
+    if (!agent) return { available: false, reason: "This tab isn't an agent." };
+    const harness = harnessOf(agent);
+    if (!harness) return { available: false, reason: `Conversations aren't available for ${agent.agent ?? "this agent"} yet.` };
+    const opened = this.open(agent, harness);
+    if ("reason" in opened) return { available: false, reason: opened.reason };
+    return { available: true, session: basename(opened.path, ".jsonl"), groups: opened.reader.imageGroups() };
+  }
+
   /** One image from the agent's transcript, in chunks of base64. */
   image(agent: AgentInfo | null, params: ImageParams): ImageResult {
     if (!agent) return { available: false, reason: "This tab isn't an agent." };
@@ -86,7 +104,7 @@ export class Conversations {
     const path = harness ? this.locate(agent, harness) : null;
     if (!path) return { available: false, reason: "No conversation found for this agent." };
     const key = `${path}#${params.id}`;
-    let image = this.images.get(key);
+    let image = this.imageCache.get(key);
     if (!image) {
       const [offset, index] = params.id.split(":").map(Number) as [number, number];
       try {
@@ -95,8 +113,8 @@ export class Conversations {
         image = undefined;
       }
       if (!image) return { available: false, reason: "That image isn't in the conversation any more." };
-      this.images.set(key, image);
-      if (this.images.size > 4) this.images.delete(this.images.keys().next().value!);
+      this.imageCache.set(key, image);
+      if (this.imageCache.size > 4) this.imageCache.delete(this.imageCache.keys().next().value!);
     }
     const from = params.from ?? 0;
     return { available: true, mime: image.mime, total: image.data.length, from, data: image.data.slice(from, from + IMAGE_CHUNK) };

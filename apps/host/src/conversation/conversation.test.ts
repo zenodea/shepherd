@@ -321,3 +321,28 @@ describe("claude messages taken in mid-turn", () => {
     expect(parse(attachment({ kind: "peer" }, "a subagent's report"))).toEqual([]);
   });
 });
+
+describe("image list", () => {
+  it("groups every image under the message of yours it came after, newest first", () => {
+    const r: Roots = { claude: join(tempDir(), "claude"), codex: join(tempDir(), "codex", "sessions"), pi: join(tempDir(), "pi") };
+    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    mkdirSync(dir, { recursive: true });
+    const img = (data: string) => ({ type: "image", source: { type: "base64", media_type: "image/png", data } });
+    const lines = [
+      { type: "user", message: { content: [img("AAAA"), { type: "text", text: "what's wrong here?" }] } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [img("BBBB")] }] } },
+      { type: "user", message: { content: "no images after this one" } },
+      { type: "user", message: { content: "now check the page" } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t2", content: [img("CCCC"), img("DDDD")] }] } },
+    ];
+    writeFileSync(join(dir, "s.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    const conversations = new Conversations(r);
+    const result = conversations.images(fakeAgent("w1:p1", "working", { agent: "claude", cwd: "/work/app" }));
+    if (!result.available) throw new Error(result.reason);
+    expect(result.groups.map((g) => [g.message, g.images.length])).toEqual([
+      ["now check the page", 2],
+      ["what's wrong here?", 2],
+    ]);
+    expect(conversations.images(null)).toMatchObject({ available: false });
+  });
+});

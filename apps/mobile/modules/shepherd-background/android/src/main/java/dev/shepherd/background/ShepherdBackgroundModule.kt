@@ -132,6 +132,11 @@ class ShepherdBackgroundModule : Module() {
       NotificationManagerCompat.from(context).cancel(id)
     }
 
+    // An image from a conversation into the phone's Pictures/Shepherd (see ImageSaver).
+    AsyncFunction("saveImage") { base64: String, mime: String, name: String ->
+      ImageSaver.save(context, base64, mime, name)
+    }
+
     // The home-screen widget's content: JSON from the app (see ShepherdWidget).
     AsyncFunction("updateWidget") { json: String ->
       ShepherdWidget.update(context, json)

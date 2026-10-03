@@ -93,6 +93,7 @@ export const HOST_METHODS = [
   "shepherd.changes",
   "shepherd.file_diff",
   "shepherd.image",
+  "shepherd.images",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
@@ -252,6 +253,11 @@ export type ChangesResult =
 /** One image's data, base64, in chunks: ask again `from` where the last one ended until `total`. */
 export type ImageParams = { paneId: string; id: string; from?: number };
 export type ImageResult = { available: false; reason: string } | { available: true; mime: string; total: number; from: number; data: string };
+
+/** Every image in a conversation, grouped under the message of yours they followed (null: before any), newest group first. */
+export type ImageGroup = { message: string | null; at?: string; images: ImageRef[] };
+export type ImagesParams = { paneId: string };
+export type ImagesResult = { available: false; reason: string } | { available: true; session: string; groups: ImageGroup[] };
 
 export type FileDiffParams = { paneId: string; path: string; mode: ChangesMode };
 export type FileDiffResult = { available: false; reason: string } | { available: true; diff: FileDiff };

@@ -117,35 +117,6 @@ export function conversationRows(entries: ConversationEntry[]): Row[] {
   return rows;
 }
 
-type Block = { code: false; text: string } | { code: true; text: string; lang: string };
-
-/** Split markdown into prose and fenced code blocks. */
-export function markdownBlocks(text: string): Block[] {
-  const blocks: Block[] = [];
-  let prose: string[] = [];
-  let code: { lang: string; lines: string[] } | null = null;
-  const flushProse = () => {
-    const joined = prose.join("\n").trim();
-    if (joined) blocks.push({ code: false, text: joined });
-    prose = [];
-  };
-  for (const line of text.split("\n")) {
-    const fence = /^\s*```(.*)$/.exec(line);
-    if (code) {
-      if (fence && !fence[1]!.trim()) {
-        blocks.push({ code: true, lang: code.lang, text: code.lines.join("\n") });
-        code = null;
-      } else code.lines.push(line);
-    } else if (fence) {
-      flushProse();
-      code = { lang: fence[1]!.trim(), lines: [] };
-    } else prose.push(line);
-  }
-  if (code) blocks.push({ code: true, lang: code.lang, text: code.lines.join("\n") });
-  flushProse();
-  return blocks;
-}
-
 /** "62% context" when the agent records its window (Codex), else how many tokens: "125k context". */
 export function contextLabel(context: ContextUsage | null): { text: string; high: boolean } | null {
   if (!context || context.used <= 0) return null;

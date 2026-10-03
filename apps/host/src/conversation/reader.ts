@@ -2,7 +2,7 @@
 // lines each time. Transcripts can reach hundreds of MB, so a big file is read
 // from its last few MB.
 import { closeSync, openSync, readSync, statSync } from "node:fs";
-import type { ContextUsage, ConversationEntry, QueuedMessage } from "@shepherd/protocol";
+import type { ContextUsage, ConversationEntry, ImageGroup, QueuedMessage } from "@shepherd/protocol";
 import type { Draft, Parser } from "./entries.ts";
 import { imageRefs, imagesIn } from "./images.ts";
 
@@ -13,6 +13,8 @@ const DATA_IMAGE_MARK = Buffer.from("data:image/");
 /** How much of a file to read when first opening it, or after a big jump. */
 export const TAIL_BYTES = 8 * 1024 * 1024;
 const MAX_ENTRIES = 5000;
+/** How much of your message heads its group of images. */
+const MESSAGE_PREVIEW = 200;
 const CHUNK = 1024 * 1024;
 const NEWLINE = 0x0a;
 
@@ -90,6 +92,22 @@ export class TranscriptReader {
   /** The agent's message queue, when its transcript records one. */
   queued(): QueuedMessage[] | null {
     return this.parse.queued?.() ?? null;
+  }
+
+  /** Every image, grouped under the message of yours they came after (a message's own images included), newest group first. */
+  imageGroups(): ImageGroup[] {
+    const groups: ImageGroup[] = [];
+    let current: ImageGroup = { message: null, images: [] };
+    for (const entry of this.entries) {
+      if (entry.kind === "user") {
+        if (current.images.length) groups.push(current);
+        const text = entry.text.replace(/\[image\]\s*/g, "").trim();
+        current = { message: text ? text.slice(0, MESSAGE_PREVIEW) : null, ...(entry.at ? { at: entry.at } : {}), images: [] };
+      }
+      if (entry.images) current.images.push(...entry.images);
+    }
+    if (current.images.length) groups.push(current);
+    return groups.reverse();
   }
 
   page({ after, before, limit }: { after?: number; before?: number; limit: number }): Page {

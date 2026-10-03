@@ -236,6 +236,11 @@ export class AppSession {
       const cwd = folder(parsed.paneId);
       return cwd ? changes(cwd, parsed.mode) : Promise.resolve(noFolder);
     }
+    if (method === "shepherd.images") {
+      if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.images needs a paneId"));
+      if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
+      return Promise.resolve(this.deps.conversations.images(this.deps.tracker.get(params.paneId) ?? null));
+    }
     if (method === "shepherd.image") {
       const parsed = imageParams(params, isPaneId);
       if (!parsed) return Promise.reject(new LaunchError("invalid_params", "shepherd.image needs a paneId and an image id"));

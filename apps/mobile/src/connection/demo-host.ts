@@ -11,6 +11,7 @@ import type {
   FileDiff,
   FileDiffResult,
   ImageResult,
+  ImagesResult,
   ProjectsResult,
   QueuedMessage,
   StatusChange,
@@ -130,7 +131,28 @@ const LONG_CONVERSATION: ConversationEntry[] = (() => {
   }
   out.push({ id: id++, kind: "tool", callId: "shot", name: "Read", summary: "screenshots/billing.png" });
   out.push({ id: id++, kind: "tool_result", callId: "shot", ok: true, output: "[image]", images: [{ id: "1:0", mime: "image/png", bytes: DEMO_IMAGE.length * 0.75 }] });
-  out.push({ id: id++, kind: "assistant", text: "The billing page renders the same as before." });
+  out.push({
+    id: id++,
+    kind: "assistant",
+    text: [
+      "The billing page renders the same as before. **Summary** of the move:",
+      "",
+      "| Module | Files | Lines | Status |",
+      "|:-------|------:|------:|:------:|",
+      "| `billing/invoices` | 14 | +412 −388 | ✅ moved |",
+      "| `billing/tax` | 9 | +201 −197 | ✅ moved |",
+      "| `billing/legacy_export` | 3 | +0 −120 | ~~kept~~ removed |",
+      "",
+      "Next steps:",
+      "1. Run the full suite on CI",
+      "2. Ask _finance_ to check the [invoice preview](https://example.com/preview)",
+      "   - especially VAT rounding",
+      "- [x] Types compile",
+      "- [ ] Remove the old `billing.ts` shim",
+      "",
+      "> The old import paths still work through the shim, so nothing breaks today.",
+    ].join("\n"),
+  });
   return out;
 })();
 
@@ -308,6 +330,18 @@ export class DemoHost implements HostConnection {
       case "pane.send_keys":
       case "pane.send_input":
         return { type: "ok" } as T;
+      case "shepherd.images": {
+        if (params.paneId !== "w1:p3") return { available: true, session: "demo", groups: [] } satisfies ImagesResult as T;
+        const ref = { id: "1:0", mime: "image/png", bytes: DEMO_IMAGE.length * 0.75 };
+        return {
+          available: true,
+          session: "demo-long",
+          groups: [
+            { message: "Step 8: move the next part of billing into its own module.", images: [ref, { ...ref, id: "2:0" }, { ...ref, id: "3:0" }, { ...ref, id: "4:0" }] },
+            { message: "Step 3: move the tax code.", images: [{ ...ref, id: "5:0" }] },
+          ],
+        } satisfies ImagesResult as T;
+      }
       case "shepherd.image": {
         const from = typeof params.from === "number" ? params.from : 0;
         return { available: true, mime: "image/png", total: DEMO_IMAGE.length, from, data: DEMO_IMAGE.slice(from, from + 4096) } satisfies ImageResult as T;
