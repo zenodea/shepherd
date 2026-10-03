@@ -78,8 +78,12 @@ export class AppSession {
   private releasePresence: (() => void) | null = null;
   private readonly transport: SessionTransport;
   private readonly deps: SessionDeps;
-  private readonly onAgents = (agents: AgentInfo[]) => this.send({ type: "agents", agents });
-  private readonly onStatus = (change: StatusChange) => this.send(change);
+  private readonly onAgents = (agents: AgentInfo[]) => this.send({ type: "agents", agents: this.withLastDone(agents) });
+  private readonly onStatus = (change: StatusChange) => {
+    this.send(change);
+    // The list went out just before this change was logged: send it again with the new "last done".
+    if (change.previous === "working" && (change.status === "done" || change.status === "idle")) this.onAgents(this.deps.tracker.list());
+  };
   private readonly onDevicesChanged = () => {
     if (this.device && !this.deps.devices.get(this.device.id)) {
       this.reject("revoked", "This device was removed on the host. Scan a new pairing QR code.", CLOSE_CODES.revoked);
@@ -151,8 +155,14 @@ export class AppSession {
       host: this.deps.host,
       device: { id: result.device.id, name: result.device.name },
       credentials: result.issuedToken ? { token: result.issuedToken } : undefined,
-      agents: this.deps.tracker.list(),
+      agents: this.withLastDone(this.deps.tracker.list()),
     });
+  }
+
+  /** Each agent with when it last finished, from the activity log. */
+  private withLastDone(agents: AgentInfo[]): AgentInfo[] {
+    const log = this.deps.activity;
+    return log ? agents.map((a) => ({ ...a, last_done_at: log.lastFinished(a.pane_id) })) : agents;
   }
 
   private reject(code: "invalid" | "expired" | "revoked", message: string, closeCode: number): void {

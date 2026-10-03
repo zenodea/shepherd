@@ -1,9 +1,10 @@
 import { Redirect, useRouter } from "expo-router";
 import { Activity, Check, ChevronDown, Info, Laptop, Plus, QrCode, Settings } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { AgentInfo, BlockedPrompt } from "@shepherd/protocol";
 import { useAgentActions } from "../agents/AgentActions";
+import { agoLabel } from "../agents/activity";
 import { agentName, agentTitle, projectOf } from "../agents/agents";
 import { PromptCard } from "../agents/PromptCard";
 import { useActivity } from "../agents/use-activity";
@@ -20,6 +21,8 @@ import { StatusIndicator } from "../ui/StatusIndicator";
 import { colors, radii, space, statusColors, statusLabels, statusRank, type, themed } from "../ui/theme";
 
 export default function AgentsScreen() {
+  // For "Last done: 12m ago" on each agent.
+  const now = useNow(30_000);
   const router = useRouter();
   const { settings, hosts, client, switchTo } = useConnection();
   const state = useHostState();
@@ -133,6 +136,7 @@ export default function AgentsScreen() {
               <AgentRow
                 key={agent.pane_id}
                 agent={agent}
+                now={now}
                 onPress={() => open(agent)}
                 onLongPress={() => actions.show(agent.pane_id, agent.workspace_id, agent)}
               />
@@ -200,7 +204,17 @@ function summary(total: number, working: number, blocked: number): string {
   return parts.join(" · ");
 }
 
-function AgentRow({ agent, onPress, onLongPress }: { agent: AgentInfo; onPress: () => void; onLongPress: () => void }) {
+/** The time now, updated every `ms`, for labels like "12m ago". */
+function useNow(ms: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(timer);
+  }, [ms]);
+  return now;
+}
+
+function AgentRow({ agent, now, onPress, onLongPress }: { agent: AgentInfo; now: number; onPress: () => void; onLongPress: () => void }) {
   const title = agentTitle(agent) ?? agentName(agent);
   return (
     <PressableScale
@@ -222,6 +236,11 @@ function AgentRow({ agent, onPress, onLongPress }: { agent: AgentInfo; onPress: 
           </Text>
           {`  ·  ${agentName(agent)}`}
         </Text>
+        {agent.last_done_at ? (
+          <Text style={styles.lastDone} numberOfLines={1}>
+            Last done: {agoLabel(agent.last_done_at, now)}
+          </Text>
+        ) : null}
       </View>
       <View style={styles.statusSlot}>
         <StatusIndicator status={agent.agent_status} />
@@ -311,6 +330,7 @@ const styles = themed(() => StyleSheet.create({
   titleBlock: { paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.sm, gap: 4 },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: 11 },
   statusSlot: { width: 24, alignItems: "center" },
+  lastDone: { fontSize: 12, color: colors.subtle },
   card: { backgroundColor: colors.surface, borderRadius: 16, padding: 14, gap: space.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.hairline },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: space.md },
   empty: { alignItems: "center", gap: 6, paddingHorizontal: space.xl, paddingTop: 80 },

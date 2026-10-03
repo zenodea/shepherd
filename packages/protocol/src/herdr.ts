@@ -23,6 +23,8 @@ export type AgentInfo = {
   state_change_seq?: number;
   /** Reported by herdr's agent integrations: the agent's session, as an id or its transcript file. */
   agent_session?: { agent: string; kind: "id" | "path"; source: string; value: string } | null;
+  /** Added by Shepherd's host, not herdr: when it last finished a turn (unix ms), from the activity log. */
+  last_done_at?: number | null;
 };
 
 export type WorkspaceInfo = {

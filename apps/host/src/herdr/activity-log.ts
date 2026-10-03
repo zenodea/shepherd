@@ -49,6 +49,21 @@ export class ActivityLog {
     return { entries: older.slice(-max).reverse() };
   }
 
+  /**
+   * When the agent in this pane last finished a turn (went from working to done,
+   * or straight to idle if you were watching it), or null. Only since the pane
+   * last started: herdr can reuse a pane id for a new agent.
+   */
+  lastFinished(paneId: string): number | null {
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const e = this.entries[i]!;
+      if (e.paneId !== paneId) continue;
+      if (e.event === "started" || e.event === "closed") return null;
+      if (e.previous === "working" && (e.event === "done" || e.event === "idle")) return e.at;
+    }
+    return null;
+  }
+
   flush(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;

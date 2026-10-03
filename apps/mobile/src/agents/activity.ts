@@ -65,6 +65,17 @@ export function dayLabel(at: number, now = Date.now()): string {
   return new Date(at).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 }
 
+/** "just now", "12m ago", "3h ago", "yesterday", "Mon, 3 Oct": how long ago an agent last finished. */
+export function agoLabel(at: number, now = Date.now()): string {
+  const ago = now - at;
+  if (ago < 60_000) return "just now";
+  if (ago < 60 * 60_000) return `${Math.floor(ago / 60_000)}m ago`;
+  const day = dayLabel(at, now);
+  if (day === "Today") return `${Math.floor(ago / (60 * 60_000))}h ago`;
+  if (day === "Yesterday") return "yesterday";
+  return new Date(at).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
 export function timeLabel(at: number, now = Date.now()): string {
   const ago = now - at;
   if (ago < 60_000) return "now";

@@ -33,6 +33,31 @@ describe("ActivityLog", () => {
     expect(entries[0]!.at).toBeGreaterThan(entries[2]!.at);
   });
 
+  it("knows when each agent last finished, and forgets it when the pane is reused", () => {
+    let now = 1000;
+    const log = new ActivityLog({ now: () => now++ });
+    const t = tracker();
+    t.apply([fakeAgent("w1:p1", "working"), fakeAgent("w1:p2", "idle")]);
+    log.attach(t);
+    expect(log.lastFinished("w1:p1")).toBeNull();
+
+    t.apply([fakeAgent("w1:p1", "done"), fakeAgent("w1:p2", "idle")]);
+    const finished = log.lastFinished("w1:p1");
+    expect(finished).not.toBeNull();
+    // Looking at it (done → idle) isn't finishing again; working → idle (watched as it finished) is.
+    t.apply([fakeAgent("w1:p1", "idle"), fakeAgent("w1:p2", "idle")]);
+    expect(log.lastFinished("w1:p1")).toBe(finished);
+    t.apply([fakeAgent("w1:p1", "working"), fakeAgent("w1:p2", "idle")]);
+    t.apply([fakeAgent("w1:p1", "idle"), fakeAgent("w1:p2", "idle")]);
+    expect(log.lastFinished("w1:p1")).toBeGreaterThan(finished!);
+    expect(log.lastFinished("w1:p2")).toBeNull();
+
+    // The pane closes and herdr reuses its id for a new agent.
+    t.apply([fakeAgent("w1:p2", "idle")]);
+    t.apply([fakeAgent("w1:p1", "idle"), fakeAgent("w1:p2", "idle")]);
+    expect(log.lastFinished("w1:p1")).toBeNull();
+  });
+
   it("does not report agents that were already running as started", () => {
     const log = new ActivityLog();
     const t = tracker();

@@ -52,3 +52,14 @@ describe("activity", () => {
     expect(awaySummary([today], today.id)).toBeNull();
   });
 });
+
+describe("agoLabel", () => {
+  it("says how long ago, in a few words", async () => {
+    const { agoLabel } = await import("./activity");
+    const now = new Date(2026, 9, 3, 15, 0).getTime();
+    expect(agoLabel(now - 20_000, now)).toBe("just now");
+    expect(agoLabel(now - 12 * 60_000, now)).toBe("12m ago");
+    expect(agoLabel(now - 3 * 3600_000, now)).toBe("3h ago");
+    expect(agoLabel(new Date(2026, 9, 2, 22, 0).getTime(), now)).toBe("yesterday");
+  });
+});
