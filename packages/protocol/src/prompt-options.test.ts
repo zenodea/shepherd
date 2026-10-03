@@ -21,7 +21,7 @@ describe("extractPrompt", () => {
       options: [
         { key: "1", label: "Yes", selected: true },
         { key: "shift+tab", label: "Yes, allow all edits during this session", selected: false },
-        { key: "esc", label: "No, and tell Claude what to do differently", selected: false, input: true },
+        { key: "esc", label: "Tell what to do differently", selected: false, input: true },
       ],
     });
   });

@@ -108,7 +108,11 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     host: { name: config.name, herdrVersion },
     openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) =>
       new TerminalStream({ herdrBin: config.herdrBin, socketPath: config.socketPath, paneId, mode, cols, rows }),
-    launcher: new Launcher({ herdr, onError: (err) => console.error(`[launch] ${err.message}`) }),
+    launcher: new Launcher({
+      herdr,
+      onError: (err) => console.error(`[launch] ${err.message}`),
+      recentCwds: () => activity.page({ limit: 200 }).entries.flatMap((e) => (e.cwd ? [e.cwd] : [])),
+    }),
     activity,
     conversations: new Conversations(),
     uploads: new Uploads(),

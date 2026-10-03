@@ -1,7 +1,8 @@
 import { accessSync, constants } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { delimiter, join } from "node:path";
-import { TERMINAL_KIND, type Project, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@shepherd/protocol";
+import { basename, delimiter, join } from "node:path";
+import { TERMINAL_KIND, type FoldersResult, type Project, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@shepherd/protocol";
+import { FolderError, Folders } from "./folders.ts";
 import { HerdrRequestError, type HerdrClient } from "./herdr-client.ts";
 
 /** Shown first in the app; everything else herdr supports follows alphabetically. */
@@ -49,16 +50,20 @@ export function sortKinds(kinds: string[]): string[] {
 }
 
 /**
- * Starts new agents on behalf of the app, only ever as a supported agent kind
- * in the directory of an existing herdr workspace.
+ * Starts new agents on behalf of the app, only ever as a supported agent kind,
+ * in an existing herdr workspace or a new one for a folder in your home folder.
  */
 export class Launcher {
   private readonly herdr: HerdrClient;
   private readonly installed: (name: string) => boolean;
   private readonly onError: (err: Error) => void;
+  private readonly folders: Folders;
+  private readonly recentCwds: () => string[];
 
-  constructor(opts: { herdr: HerdrClient; installed?: (name: string) => boolean; onError?: (err: Error) => void }) {
+  constructor(opts: { herdr: HerdrClient; installed?: (name: string) => boolean; onError?: (err: Error) => void; folders?: Folders; recentCwds?: () => string[] }) {
     this.herdr = opts.herdr;
+    this.folders = opts.folders ?? new Folders();
+    this.recentCwds = opts.recentCwds ?? (() => []);
     this.installed = opts.installed ?? ((name) => isOnPath(name));
     this.onError = opts.onError ?? (() => {});
   }
@@ -74,28 +79,32 @@ export class Launcher {
     return { kinds, projects };
   }
 
+  /** Folders to start an agent in: one folder's subfolders, and suggestions on the first screen. */
+  async listFolders(path: string | undefined): Promise<FoldersResult> {
+    if (path !== undefined && typeof path !== "string") throw new LaunchError("invalid_params", "path must be a string");
+    const snapshot = await this.snapshot().catch(() => null);
+    const open = (snapshot?.panes ?? []).map((p) => p.cwd).filter((c): c is string => typeof c === "string");
+    try {
+      return this.folders.list(path, [...this.recentCwds(), ...open]);
+    } catch (err) {
+      if (err instanceof FolderError) throw new LaunchError("invalid_folder", err.message);
+      throw err;
+    }
+  }
+
   async start(params: StartAgentParams): Promise<StartAgentResult> {
-    const { kind, workspaceId, newWorktree = false, prompt } = params;
-    if (typeof kind !== "string" || typeof workspaceId !== "string") throw new LaunchError("invalid_params", "kind and workspaceId are required");
+    const { kind, folder, newWorktree = false, prompt } = params;
+    if (typeof kind !== "string" || (typeof params.workspaceId !== "string" && typeof folder !== "string")) {
+      throw new LaunchError("invalid_params", "kind and a workspaceId or folder are required");
+    }
+    if (folder !== undefined && newWorktree) throw new LaunchError("invalid_params", "A new worktree needs an existing workspace");
     if (prompt !== undefined && (typeof prompt !== "string" || prompt.length > MAX_PROMPT_LENGTH)) {
       throw new LaunchError("invalid_params", "prompt must be a string");
     }
     const terminal = kind === TERMINAL_KIND;
     if (!terminal && !(await this.kinds()).includes(kind)) throw new LaunchError("unknown_kind", `${kind} is not installed on this computer`);
 
-    const snapshot = await this.snapshot();
-    if (!snapshot.workspaces.some((ws) => ws.workspace_id === workspaceId)) {
-      throw new LaunchError("unknown_workspace", "That workspace no longer exists");
-    }
-
-    const created = newWorktree
-      ? await this.herdr.request<CreatedPane>("worktree.create", { workspace_id: workspaceId, focus: false })
-      : await this.herdr.request<CreatedPane & { tab: { tab_id: string } }>("tab.create", {
-          workspace_id: workspaceId,
-          cwd: workspaceCwd(snapshot, workspaceId),
-          label: terminal ? null : kind,
-          focus: false,
-        });
+    const created = typeof folder === "string" ? await this.inNewWorkspace(folder) : await this.inWorkspace(params.workspaceId!, newWorktree, terminal ? null : kind);
     const pane = created.root_pane;
 
     if (terminal) {
@@ -118,13 +127,36 @@ export class Launcher {
       if (err instanceof HerdrRequestError && err.code === "agent_not_ready") {
         ready = false;
       } else {
-        if (!newWorktree) await this.herdr.request("tab.close", { tab_id: pane.tab_id }).catch(() => {});
+        if (folder !== undefined) await this.herdr.request("workspace.close", { workspace_id: pane.workspace_id }).catch(() => {});
+        else if (!newWorktree) await this.herdr.request("tab.close", { tab_id: pane.tab_id }).catch(() => {});
         throw err;
       }
     }
 
     if (prompt?.trim()) void this.sendWhenReady(pane.pane_id, prompt, ready);
     return { paneId: pane.pane_id, workspaceId: pane.workspace_id, ready };
+  }
+
+  /** A new herdr workspace for a folder in your home folder, named after it. */
+  private async inNewWorkspace(folder: string): Promise<CreatedPane> {
+    let cwd: string;
+    try {
+      cwd = this.folders.resolve(folder);
+    } catch (err) {
+      throw new LaunchError("invalid_folder", (err as Error).message);
+    }
+    return this.herdr.request<CreatedPane>("workspace.create", { cwd, label: basename(cwd), focus: false });
+  }
+
+  /** A new tab, or a new git worktree, in an existing workspace. */
+  private async inWorkspace(workspaceId: string, newWorktree: boolean, label: string | null): Promise<CreatedPane> {
+    const snapshot = await this.snapshot();
+    if (!snapshot.workspaces.some((ws) => ws.workspace_id === workspaceId)) {
+      throw new LaunchError("unknown_workspace", "That workspace no longer exists");
+    }
+    return newWorktree
+      ? this.herdr.request<CreatedPane>("worktree.create", { workspace_id: workspaceId, focus: false })
+      : this.herdr.request<CreatedPane>("tab.create", { workspace_id: workspaceId, cwd: workspaceCwd(snapshot, workspaceId), label, focus: false });
   }
 
   private async sendWhenReady(paneId: string, prompt: string, ready: boolean): Promise<void> {

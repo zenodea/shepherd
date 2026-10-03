@@ -194,7 +194,8 @@ describe("finding transcripts", () => {
     expect(conversations.get(agent("claude"), { paneId: "w1:p1" })).toMatchObject({ available: true, agent: "claude", session: "s1", first: 0, last: 0 });
     expect(conversations.get(null, { paneId: "w1:p1" })).toMatchObject({ available: false });
     expect(conversations.get(agent("aider"), { paneId: "w1:p1" })).toMatchObject({ available: false, reason: expect.stringContaining("aider") });
-    expect(conversations.get(agent("pi"), { paneId: "w1:p1" })).toMatchObject({ available: false });
+    // A fresh session that hasn't written anything yet: empty, so the app still offers the chat view.
+    expect(conversations.get(agent("pi"), { paneId: "w1:p1" })).toMatchObject({ available: true, session: "", entries: [] });
   });
 
   it("validates the app's parameters", () => {

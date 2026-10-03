@@ -42,6 +42,11 @@ export class Conversations {
 
   get(agent: AgentInfo | null, params: ConversationParams): ConversationResult {
     const session = this.session(agent);
+    // A supported agent that hasn't written anything yet (a fresh session): an empty conversation, not none.
+    if ("reason" in session && agent && !params.subagent) {
+      const vendor = vendorFor(this.vendors, agent);
+      if (vendor) return { available: true, agent: vendor.id, session: "", entries: [], first: 0, last: -1 };
+    }
     if ("reason" in session) return session;
     const { vendor, transcript } = session;
     const sources = this.subagentSources(session);

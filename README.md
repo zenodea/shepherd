@@ -150,7 +150,7 @@ The app tries every address in the QR code at once and uses whichever answers fi
 - **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal. Answers you write yourself ("Type something.", "No, and tell Claude what to do") open a text box. While an agent works, the send button turns into **Stop**. Unsent text is kept per agent until you send it.
 - **Home-screen widget.** Long-press your home screen → Widgets → Shepherd: which agents need you, at a glance. Tap an agent to open it. When one needs you, the widget shows its question with its first two answers as buttons; a tap answers it, if it's still asking the same thing. It stays current while notifications are on (they keep Shepherd connected); otherwise it shows how things were when the app last ran.
 - **Themes.** Twelve colour themes, each with a dark and a light version: Default, Catppuccin, Tokyo Night, Gruvbox, Everforest, Rosé Pine, Zenbones, Night Owl, Dracula, Nord, Kanagawa and GitHub. Pick one in **Settings → Appearance**; it follows your phone's dark mode unless you choose one.
-- **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project or a fresh git worktree.
+- **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project, a fresh git worktree, or any folder in your home folder (pick from recent folders and git repos, browse, or type a path; it gets its own herdr workspace).
 - **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
 - **See what happened.** The activity feed shows what your agents did while you were away, and how long they waited for you.
 - **Several computers.** Pair with as many as you like and switch from the top of the agent list.
@@ -255,6 +255,7 @@ npm run host -- ui                # the Shepherd window (status, pairing, phones
 
 ## Security model
 
+- **Folders:** to start an agent in a new folder, the app can list folder names inside your home folder (never files, never hidden folders, nothing outside it). A paired phone could already run commands, so this adds no new access.
 - **Ways in:** choose which of LAN, Tailscale and the relay phones may use, in the Shepherd window (keys 1–3) or with `connections`. With only Tailscale, the host listens on its Tailscale address alone, so nothing is open on other networks; connections arriving on a way that's off are dropped. The relay off means the host never connects to it. Shepherd won't let you turn off the last way in.
 - **Pairing:** each phone gets its own random token (the host stores only a hash). Pairing codes work once and expire after 10 minutes. `devices revoke` cuts a phone off immediately.
 - **End-to-end encryption** on every connection, including through the relay: a Noise NK-style handshake with the host's X25519 key pinned from the QR code, then ChaCha20-Poly1305. The relay only ever sees ciphertext. Built on the audited [@noble](https://paulmillr.com/noble/) libraries (`packages/protocol/src/secure.ts`).

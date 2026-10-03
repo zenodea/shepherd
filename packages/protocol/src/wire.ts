@@ -96,6 +96,7 @@ export const HOST_METHODS = [
   "shepherd.images",
   "shepherd.subagents",
   "shepherd.upload",
+  "shepherd.folders",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
@@ -106,6 +107,18 @@ export type Project = {
   cwd: string | null;
   /** Set when the workspace is a git worktree herdr manages. */
   repoName: string | null;
+};
+
+export type Folder = { name: string; path: string; /** A git repository. */ repo: boolean };
+
+/** `path`: a folder to list (default: your home folder). Without one, suggestions come too. */
+export type FoldersParams = { path?: string };
+export type FoldersResult = {
+  path: string;
+  /** null at your home folder: browsing doesn't go above it. */
+  parent: string | null;
+  folders: Folder[];
+  suggestions?: { recent: Folder[]; repos: Folder[] };
 };
 
 export type ProjectsResult = {
@@ -120,7 +133,9 @@ export const TERMINAL_KIND = "terminal";
 export type StartAgentParams = {
   /** An agent kind from `shepherd.projects`, or "terminal" for a plain shell. */
   kind: string;
-  workspaceId: string;
+  /** Where: an existing herdr workspace, or a folder for a new workspace (one of the two). */
+  workspaceId?: string;
+  folder?: string;
   /** Start in a new git worktree of the project instead of a new tab. */
   newWorktree?: boolean;
   /** Sent once the agent is ready for input; for a terminal, a command to run. */

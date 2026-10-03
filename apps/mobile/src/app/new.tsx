@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Folder, GitBranch, SquareTerminal } from "lucide-react-native";
+import { ChevronLeft, Folder, FolderPlus, FolderSearch, GitBranch, SquareTerminal } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TERMINAL_KIND, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@shepherd/protocol";
 import { shortPath } from "../agents/agents";
+import { FolderPicker } from "../agents/FolderPicker";
 import { useConnection, useHostState } from "../connection/connection";
 import { HostCallError } from "../connection/host-client";
 import { AgentMark } from "../ui/AgentMark";
@@ -15,6 +16,8 @@ import { Divider, Screen } from "../ui/Screen";
 import { Select } from "../ui/Select";
 import { colors, fonts, space, type, themed } from "../ui/theme";
 import { Toggle } from "../ui/Toggle";
+
+const ANOTHER_FOLDER = "__another_folder__";
 
 /** agent.start waits up to a minute for the agent to be ready. */
 const START_TIMEOUT_MS = 90_000;
@@ -30,6 +33,9 @@ export default function NewAgentScreen() {
   const [kind, setKind] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [newWorktree, setNewWorktree] = useState(false);
+  // A folder that isn't a herdr workspace yet: the agent starts in a new workspace there.
+  const [folder, setFolder] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [starting, setStarting] = useState(false);
 
@@ -60,10 +66,11 @@ export default function NewAgentScreen() {
   }, [client, status, workspace, kindParam]);
 
   const start = async () => {
-    if (!client || !kind || !workspaceId) return;
+    if (!client || !kind || !(folder ?? workspaceId)) return;
     setStarting(true);
     try {
-      const params: StartAgentParams = { kind, workspaceId, newWorktree, prompt: prompt.trim() || undefined };
+      const where = folder ? { folder } : { workspaceId: workspaceId!, newWorktree };
+      const params: StartAgentParams = { kind, ...where, prompt: prompt.trim() || undefined };
       const result = await client.call<StartAgentResult>("shepherd.start_agent", params, { timeoutMs: START_TIMEOUT_MS });
       router.replace({ pathname: "/agent/[paneId]", params: { paneId: result.paneId } });
       if (!result.ready && kind !== TERMINAL_KIND) {
@@ -123,23 +130,38 @@ export default function NewAgentScreen() {
               <ListGroup>
                 <Select
                   title="Project"
-                  value={workspaceId}
-                  onChange={setWorkspaceId}
-                  options={data.projects.map((p) => ({
-                    value: p.workspaceId,
-                    label: p.label,
-                    detail: shortPath(p.cwd) ?? p.workspaceId,
-                    icon: <Folder size={19} color={colors.muted} />,
-                  }))}
+                  value={folder ? `folder:${folder}` : workspaceId}
+                  onChange={(value) => {
+                    if (value === ANOTHER_FOLDER) return setPicking(true);
+                    if (value.startsWith("folder:")) return;
+                    setFolder(null);
+                    setWorkspaceId(value);
+                  }}
+                  options={[
+                    ...data.projects.map((p) => ({
+                      value: p.workspaceId,
+                      label: p.label,
+                      detail: shortPath(p.cwd) ?? p.workspaceId,
+                      icon: <Folder size={19} color={colors.muted} />,
+                    })),
+                    ...(folder
+                      ? [{ value: `folder:${folder}`, label: folder.split("/").pop() ?? folder, detail: `${shortPath(folder)} · new workspace`, icon: <FolderPlus size={19} color={colors.muted} /> }]
+                      : []),
+                    { value: ANOTHER_FOLDER, label: "Another folder…", detail: "Start in any folder on your computer", icon: <FolderSearch size={19} color={colors.muted} /> },
+                  ]}
                 />
-                <Divider />
-                <ListRow
-                  icon={<GitBranch size={19} color={colors.muted} />}
-                  title="New git worktree"
-                  detail={`A separate checkout${selectedProject?.repoName ? ` of ${selectedProject.repoName}` : ""}, so agents don't collide`}
-                  chevron={false}
-                  trailing={<Toggle value={newWorktree} onValueChange={setNewWorktree} />}
-                />
+                {folder ? null : (
+                  <>
+                    <Divider />
+                    <ListRow
+                      icon={<GitBranch size={19} color={colors.muted} />}
+                      title="New git worktree"
+                      detail={`A separate checkout${selectedProject?.repoName ? ` of ${selectedProject.repoName}` : ""}, so agents don't collide`}
+                      chevron={false}
+                      trailing={<Toggle value={newWorktree} onValueChange={setNewWorktree} />}
+                    />
+                  </>
+                )}
               </ListGroup>
             </View>
 
@@ -162,12 +184,13 @@ export default function NewAgentScreen() {
             <Button
               title={kind === TERMINAL_KIND ? "Open terminal" : starting ? `Starting ${kind}…` : `Start ${kind ?? "agent"}`}
               loading={starting}
-              disabled={!kind || !workspaceId}
+              disabled={!kind || !(folder ?? workspaceId)}
               onPress={start}
             />
           </View>
         </KeyboardAvoidingView>
       )}
+      <FolderPicker client={client} visible={picking} onClose={() => setPicking(false)} onPick={setFolder} />
     </Screen>
   );
 }

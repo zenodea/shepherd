@@ -220,7 +220,7 @@ describe("local server", () => {
     c.send({ type: "call", id: "b", method: "shepherd.conversation", params: { paneId: "w1:p1", after: "0; rm" } });
     c.send({ type: "call", id: "c", method: "shepherd.conversation", params: { paneId: "w9:p9" } });
     await until(() => ["a", "b", "c"].every((id) => find(c, "result", (m) => m.id === id) || find(c, "error", (m) => m.id === id)));
-    expect(find(c, "result", (m) => m.id === "a")?.result).toEqual({ available: false, reason: "No conversation found for this agent yet." });
+    expect(find(c, "result", (m) => m.id === "a")?.result).toEqual({ available: true, agent: "claude", session: "", entries: [], first: 0, last: -1 });
     expect(find(c, "error", (m) => m.id === "b")?.error.code).toBe("invalid_params");
     expect(find(c, "result", (m) => m.id === "c")?.result).toEqual({ available: false, reason: "This tab isn't an agent." });
   });

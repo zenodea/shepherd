@@ -45,6 +45,10 @@ function clean(line: string): string {
   return line.replace(BORDER, "").trimEnd();
 }
 
+/** "No, and tell Claude what to do differently" (and Codex's, and the others'): one short label for all of them. */
+const TELL_INSTEAD = /^no,? and tell \S+ what to do(?: differently)?\b.*$/i;
+const relabel = (label: string) => (TELL_INSTEAD.test(label) ? "Tell what to do differently" : label);
+
 function truncate(label: string): string {
   return label.length > MAX_LABEL ? `${label.slice(0, MAX_LABEL - 1)}…` : label;
 }
@@ -58,7 +62,7 @@ function parseOption(line: string): PromptOption | null {
   const label = hint ? rawLabel!.slice(0, hint.index) : rawLabel!;
   return {
     key: hint ? hint[1]!.toLowerCase() : digit!,
-    label: truncate(label.trim()),
+    label: truncate(relabel(label.trim())),
     selected: SELECTED_MARKER.test(line.trim()),
     ...(TEXT_OPTION.test(label.trim()) ? { input: true } : {}),
   };

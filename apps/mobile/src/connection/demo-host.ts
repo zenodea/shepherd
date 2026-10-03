@@ -10,6 +10,7 @@ import type {
   ConversationResult,
   FileDiff,
   FileDiffResult,
+  FoldersResult,
   ImageResult,
   ImagesResult,
   Subagent,
@@ -363,6 +364,28 @@ export class DemoHost implements HostConnection {
       case "shepherd.image": {
         const from = typeof params.from === "number" ? params.from : 0;
         return { available: true, mime: "image/png", total: DEMO_IMAGE.length, from, data: DEMO_IMAGE.slice(from, from + 4096) } satisfies ImageResult as T;
+      }
+      case "shepherd.folders": {
+        const home = "/Users/demo";
+        const path = typeof params.path === "string" ? params.path.replace(/^~/, home) : home;
+        const f = (name: string, repo = false) => ({ name, path: `${path}/${name}`, repo });
+        const listing: Record<string, ReturnType<typeof f>[]> = {
+          [home]: [f("Desktop"), f("Documents"), f("code"), f("notes")],
+          [`${home}/code`]: [f("api", true), f("cli", true), f("docs", true), f("web", true)],
+        };
+        return {
+          path,
+          parent: path === home ? null : path.split("/").slice(0, -1).join("/"),
+          folders: listing[path] ?? [],
+          ...(params.path
+            ? {}
+            : {
+                suggestions: {
+                  recent: [{ name: "api", path: `${home}/code/api`, repo: true }, { name: "web", path: `${home}/code/web`, repo: true }],
+                  repos: [{ name: "cli", path: `${home}/code/cli`, repo: true }, { name: "docs", path: `${home}/code/docs`, repo: true }],
+                },
+              }),
+        } satisfies FoldersResult as T;
       }
       case "shepherd.subagents":
         return (params.paneId === "w1:p3" ? { available: true, subagents: DEMO_SUBAGENTS } : { available: true, subagents: [] }) satisfies SubagentsResult as T;
