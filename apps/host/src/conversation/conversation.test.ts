@@ -192,3 +192,52 @@ describe("finding transcripts", () => {
     expect(conversationParams({ paneId: "w1:p1", limit: 1.5 }, isPane)).toBeNull();
   });
 });
+
+describe("agents' message queues", () => {
+  it("replays Claude's queue: enqueue, dequeue from the front, remove what it took mid-turn", () => {
+    const parse = claudeParser();
+    const q = (operation: string, content?: string) => parse({ type: "queue-operation", operation, timestamp: at, ...(content ? { content } : {}) });
+    q("enqueue", "<task-notification>internal</task-notification>");
+    q("enqueue", "also update the docs");
+    q("enqueue", "and run the tests");
+    expect(parse.queued!().map((m) => m.text)).toEqual(["also update the docs", "and run the tests"]);
+    // The hidden one is first in line, so a dequeue takes it, not "also update the docs".
+    q("dequeue");
+    expect(parse.queued!().map((m) => m.text)).toEqual(["also update the docs", "and run the tests"]);
+    q("remove", "and run the tests");
+    expect(parse.queued!()).toEqual([{ text: "also update the docs", at }]);
+  });
+
+  it("reads Codex's queue database by thread, whatever shape the message has", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const { CodexQueue, codexThreadId, queuedText } = await import("./codex-queue.ts");
+    const path = join(tempDir(), "queue_1.sqlite");
+    const db = new DatabaseSync(path);
+    db.exec(`CREATE TABLE queued_items (id TEXT PRIMARY KEY NOT NULL, thread_id TEXT NOT NULL, payload_json TEXT NOT NULL,
+      queue_order INTEGER NOT NULL, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL)`);
+    const insert = db.prepare("INSERT INTO queued_items VALUES (?, ?, ?, ?, ?, ?)");
+    const thread = "019a2b3c-4d5e-7f80-9a1b-2c3d4e5f6a7b";
+    insert.run("b", thread, JSON.stringify({ items: [{ type: "text", text: "second" }] }), 2, 1000, 1000);
+    insert.run("a", thread, JSON.stringify({ input: [{ type: "text", text: "first" }, { type: "localImage", path: "/x.png" }] }), 1, 1000, 1000);
+    insert.run("c", "another-thread", JSON.stringify({ text: "not this one" }), 1, 1000, 1000);
+    db.close();
+
+    const queue = new CodexQueue(path);
+    expect(queue.read(thread).map((m) => m.text)).toEqual(["first\n[image]", "second"]);
+    expect(new CodexQueue(join(tempDir(), "missing.sqlite")).read(thread)).toEqual([]);
+    expect(codexThreadId(`/s/2026/10/02/rollout-2026-10-02T12-00-00-${thread}.jsonl`)).toBe(thread);
+    expect(queuedText({ deep: { nested: [{ text: "a" }, { text: "b" }] } })).toBe("a\nb");
+    queue.close();
+  });
+
+  it("shows a queue only while the agent is busy", () => {
+    const r: Roots = { claude: join(tempDir(), "claude"), codex: join(tempDir(), "codex", "sessions"), pi: join(tempDir(), "pi") };
+    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "s.jsonl"), jsonl([{ type: "queue-operation", operation: "enqueue", content: "next: the docs", timestamp: at }]));
+    const conversations = new Conversations(r);
+    const claude = (status: AgentInfo["agent_status"]) => fakeAgent("w1:p1", status, { agent: "claude", cwd: "/work/app" });
+    expect(conversations.get(claude("working"), { paneId: "w1:p1" })).toMatchObject({ queued: [{ text: "next: the docs" }] });
+    expect(conversations.get(claude("idle"), { paneId: "w1:p1" })).toMatchObject({ queued: [] });
+  });
+});

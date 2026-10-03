@@ -1287,7 +1287,7 @@ whenVisible(shell, async (v) => {
   };
   const out = (html) => { const s = document.createElement("span"); s.innerHTML = html; shell.append(s); };
   out('<span class="p">$</span> '); await type("herdr plugin install zenodea/shepherd");
-  out('\n<span class="k">  build: npm ci --workspace @shepherd/host\n  added 61 packages in 2s</span>\n  Installed shepherd 0.1.0\n'); await sleep(400);
+  out('\n<span class="k">  build: npm ci --workspace @shepherd/host\n  added 61 packages in 2s</span>\n  Installed shepherd 0.2.0\n'); await sleep(400);
   out('<span class="p">$</span> '); await type("herdr plugin action invoke shepherd.pair");
   await sleep(500);
   // The action opens a herdr pane over the terminal.

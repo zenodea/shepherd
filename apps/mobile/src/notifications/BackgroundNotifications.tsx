@@ -5,6 +5,7 @@ import Background, { type AnswerEvent } from "../../modules/shepherd-background/
 import { useConnection, useHostState } from "../connection/connection";
 import type { HostConnection, HostState } from "../connection/host-client";
 import { DEMO_ENABLED } from "../connection/demo-host";
+import { useAppLock } from "../security/app-lock";
 import { Cooldown, agentLabel, alertFor, stillOffered, withPrompt } from "./rules";
 import { NOTIFICATIONS_SUPPORTED, useNotificationsEnabled } from "./setting";
 
@@ -67,6 +68,8 @@ export function BackgroundNotifications() {
   const active = NOTIFICATIONS_SUPPORTED && !DEMO_ENABLED && enabled === true && settings !== null;
   const hostId = settings?.id ?? null;
   const hostName = state.host?.name ?? settings?.name ?? "your computer";
+  // With App lock on, answering from a notification asks for the fingerprint too.
+  const requireAuth = useAppLock().enabled === true;
 
   // Run the background service while notifications are on. Android only lets it
   // start while the app is visible, so (re)start it whenever the app comes forward.
@@ -108,9 +111,9 @@ export function BackgroundNotifications() {
   }, [active, client]);
 
   // Latest values for the listeners below, which are set up once per client.
-  const latest = useRef({ hostId, hostName, active });
+  const latest = useRef({ hostId, hostName, active, requireAuth });
   useEffect(() => {
-    latest.current = { hostId, hostName, active };
+    latest.current = { hostId, hostName, active, requireAuth };
   });
 
   // Agents that need you or finished, while you're not looking at the app.
@@ -119,7 +122,7 @@ export function BackgroundNotifications() {
     if (!client || !native) return;
     const cooldown = new Cooldown();
     const onChange = (change: StatusChange) => {
-      const { active, hostId, hostName } = latest.current;
+      const { active, hostId, hostName, requireAuth } = latest.current;
       if (!active) return;
       const id = notificationId(change.paneId);
       // Answered somewhere else: the question is gone, so is its notification.
@@ -139,6 +142,9 @@ export function BackgroundNotifications() {
           paneId: change.paneId,
           answers: content.actions,
           timeoutMs: 0,
+          // Finished: say what's next from the notification.
+          ...(alert.kind === "done" ? { replyHint: `Message ${agentLabel(change.agent, change.paneId)}…` } : {}),
+          requireAuth,
         });
       })().catch(() => {});
     };
@@ -166,6 +172,23 @@ export function BackgroundNotifications() {
             timeoutMs: sent ? CONFIRMATION_MS : 0,
           });
         try {
+          if (event.reply != null) {
+            const text = event.reply.trim();
+            if (!text) return await outcome("Nothing to send.", false);
+            // herdr refuses a message while the agent is asking something: it would become the answer.
+            if (agent?.agent_status === "blocked") return await outcome(`${name} is asking something. Tap to answer it first.`, false);
+            await client.call("agent.prompt", { target: event.paneId, text });
+            return await native.notify({
+              id: event.notificationId,
+              channel: "finished",
+              title: `Sent to ${name}`,
+              body: text,
+              url: agentLink(event.paneId, hostId),
+              paneId: event.paneId,
+              answers: [],
+              timeoutMs: CONFIRMATION_MS,
+            });
+          }
           if (agent?.agent_status !== "blocked") return await outcome("It isn't waiting for an answer any more.", false);
           const prompt = await readPrompt(client, event.paneId);
           if (!stillOffered(prompt, event)) return await outcome("It's asking something else now. Tap to open it.", false);

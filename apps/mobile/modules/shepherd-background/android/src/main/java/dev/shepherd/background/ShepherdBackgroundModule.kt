@@ -38,6 +38,10 @@ class AgentNotification : Record {
   @Field val answers: List<Answer> = emptyList()
   /** Remove it after this long; 0 keeps it. */
   @Field val timeoutMs: Long = 0
+  /** Hint for a Reply box that sends text to the agent; empty for none. */
+  @Field val replyHint: String = ""
+  /** App lock is on: private on the lock screen, fingerprint before answering. */
+  @Field val requireAuth: Boolean = false
 }
 
 /**
@@ -114,6 +118,8 @@ class ShepherdBackgroundModule : Module() {
         notification.paneId,
         notification.answers.map { AnswerButton(it.key, it.label) },
         notification.timeoutMs,
+        notification.replyHint.ifEmpty { null },
+        notification.requireAuth,
       )
     }
 
@@ -144,10 +150,13 @@ class ShepherdBackgroundModule : Module() {
 
     @Volatile private var current: ShepherdBackgroundModule? = null
 
-    /** Hand a pressed answer button to JS. False when the app's JS isn't running. */
-    fun emitAnswer(notificationId: Int, paneId: String, key: String, label: String): Boolean {
+    /** Hand a pressed answer button, or a typed reply, to JS. False when the app's JS isn't running. */
+    fun emitAnswer(notificationId: Int, paneId: String, key: String, label: String, reply: String?): Boolean {
       val module = current ?: return false
-      module.sendEvent("onAnswer", bundleOf("notificationId" to notificationId, "paneId" to paneId, "key" to key, "label" to label))
+      module.sendEvent(
+        "onAnswer",
+        bundleOf("notificationId" to notificationId, "paneId" to paneId, "key" to key, "label" to label, "reply" to reply),
+      )
       return true
     }
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationEntry } from "@shepherd/protocol";
-import { conversationRows, markdownBlocks } from "./conversation-rows";
+import { conversationRows, countUserMessages, markdownBlocks, queuedRows, userMessageIndex, type Row } from "./conversation-rows";
 
 describe("conversationRows", () => {
   it("puts each tool result with its call and keeps results whose call scrolled out of view", () => {
@@ -36,5 +36,35 @@ describe("markdownBlocks with longer code", () => {
       { code: true, lang: "ts", text: "await a();\nexpect(b).toBe(1);" },
       { code: false, text: "Done." },
     ]);
+  });
+});
+
+describe("jumping between your messages", () => {
+  // Inverted like the list: index 0 is the newest.
+  const entries: ConversationEntry[] = [
+    { id: 1, kind: "user", text: "first" },
+    { id: 2, kind: "assistant", text: "a" },
+    { id: 3, kind: "user", text: "second" },
+    { id: 4, kind: "assistant", text: "b" },
+    { id: 5, kind: "assistant", text: "c" },
+    { id: 6, kind: "user", text: "third" },
+    { id: 7, kind: "assistant", text: "d" },
+  ];
+  const rows = conversationRows(entries).reverse();
+  const at = (i: number | null) => (i === null ? null : (rows[i] as Extract<Row, { kind: "message" }>).entry.id);
+
+  it("goes to the nearest of your messages beyond what's on screen", () => {
+    // On screen: entries 7 and 6 (indexes 0–1).
+    expect(at(userMessageIndex(rows, { newest: 0, oldest: 1 }, "older"))).toBe(3);
+    // On screen: entries 2–1 (the oldest two).
+    expect(userMessageIndex(rows, { newest: 5, oldest: 6 }, "older")).toBeNull();
+    expect(at(userMessageIndex(rows, { newest: 5, oldest: 6 }, "newer"))).toBe(3);
+    expect(userMessageIndex(rows, { newest: 0, oldest: 1 }, "newer")).toBeNull();
+    expect(countUserMessages(rows)).toBe(3);
+  });
+
+  it("puts queued messages below the newest message, newest queued at the very bottom", () => {
+    const queued = queuedRows([{ text: "then the docs" }, { text: "then the tests" }]);
+    expect(queued.map((r) => (r.kind === "queued" ? r.message.text : ""))).toEqual(["then the tests", "then the docs"]);
   });
 });

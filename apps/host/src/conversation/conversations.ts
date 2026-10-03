@@ -1,7 +1,8 @@
 // `shepherd.conversation`: an agent's conversation, read from its transcript.
-import { basename } from "node:path";
-import type { AgentInfo, ConversationParams, ConversationResult } from "@shepherd/protocol";
+import { basename, dirname, join } from "node:path";
+import type { AgentInfo, ConversationParams, ConversationResult, QueuedMessage } from "@shepherd/protocol";
 import { claudeParser } from "./claude.ts";
+import { CodexQueue, codexThreadId } from "./codex-queue.ts";
 import { codexParser } from "./codex.ts";
 import type { Parser } from "./entries.ts";
 import { defaultRoots, harnessOf, locateTranscript, type Harness, type Roots } from "./locate.ts";
@@ -20,9 +21,12 @@ export class Conversations {
   private readonly roots: Roots;
   private located = new Map<string, { at: number; path: string | null }>();
   private readers = new Map<string, TranscriptReader>();
+  private readonly codexQueue: CodexQueue;
 
   constructor(roots: Roots = defaultRoots()) {
     this.roots = roots;
+    // Next to Codex's sessions folder.
+    this.codexQueue = new CodexQueue(join(dirname(roots.codex), "queue_1.sqlite"));
   }
 
   get(agent: AgentInfo | null, params: ConversationParams): ConversationResult {
@@ -53,7 +57,25 @@ export class Conversations {
 
     const limit = Math.min(MAX_LIMIT, Math.max(1, params.limit ?? DEFAULT_LIMIT));
     const page = reader.page({ after: params.after, before: params.before, limit });
-    return { available: true, agent: harness, session: basename(path, ".jsonl"), ...page };
+    const queued = this.queued(agent, harness, path, reader);
+    return { available: true, agent: harness, session: basename(path, ".jsonl"), ...page, ...(queued ? { queued } : {}) };
+  }
+
+  /**
+   * The agent's own queue, as it records it. pi keeps its queue in memory
+   * only, so it has none here yet (TODO: a small pi extension could write it
+   * into pi's session file).
+   */
+  private queued(agent: AgentInfo, harness: Harness, path: string, reader: TranscriptReader): QueuedMessage[] | null {
+    let queued: QueuedMessage[] | null = null;
+    if (harness === "claude") queued = reader.queued();
+    else if (harness === "codex") {
+      const thread = codexThreadId(path);
+      queued = thread ? this.codexQueue.read(thread) : [];
+    }
+    // An idle agent has nothing waiting; anything left was abandoned (it exited mid-queue).
+    if (queued && agent.agent_status !== "working" && agent.agent_status !== "blocked") return [];
+    return queued;
   }
 
   private locate(agent: AgentInfo, harness: Harness): string | null {

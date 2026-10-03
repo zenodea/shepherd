@@ -1,4 +1,4 @@
-import type { ConversationEntry } from "@shepherd/protocol";
+import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 
 type Tool = Extract<ConversationEntry, { kind: "tool" }>;
 type ToolResult = Extract<ConversationEntry, { kind: "tool_result" }>;
@@ -11,7 +11,34 @@ export type Row =
       entry: Exclude<ConversationEntry, Tool | ToolResult>;
     }
   | { key: string; kind: "tool"; call: Tool; result: ToolResult | null }
-  | { key: string; kind: "orphan_result"; result: ToolResult };
+  | { key: string; kind: "orphan_result"; result: ToolResult }
+  /** A message waiting in the agent's own queue. */
+  | { key: string; kind: "queued"; message: QueuedMessage };
+
+/** Queued messages as rows, newest first like the rest of the (inverted) list. */
+export function queuedRows(queued: QueuedMessage[]): Row[] {
+  return queued.map((message, i) => ({ key: `q${i}:${message.at ?? ""}:${message.text.slice(0, 24)}`, kind: "queued" as const, message })).reverse();
+}
+
+const isUserMessage = (row: Row) => row.kind === "message" && row.entry.kind === "user";
+
+/**
+ * Where the jump arrows go, in the inverted list (0 is the newest row): the
+ * nearest of your messages older than the oldest row on screen, or newer than
+ * the newest. null when there isn't one (loaded).
+ */
+export function userMessageIndex(rows: Row[], visible: { newest: number; oldest: number }, direction: "older" | "newer"): number | null {
+  if (direction === "older") {
+    for (let i = visible.oldest + 1; i < rows.length; i++) if (isUserMessage(rows[i]!)) return i;
+    return null;
+  }
+  for (let i = visible.newest - 1; i >= 0; i--) if (isUserMessage(rows[i]!)) return i;
+  return null;
+}
+
+export function countUserMessages(rows: Row[]): number {
+  return rows.filter(isUserMessage).length;
+}
 
 export function conversationRows(entries: ConversationEntry[]): Row[] {
   const results = new Map<string, ToolResult>();

@@ -1,12 +1,16 @@
 // Turning transcript records into conversation entries: the pieces every
 // harness's parser shares.
-import type { ConversationEntry } from "@shepherd/protocol";
+import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 
 /** An entry before the reader numbers it. */
 export type Draft = ConversationEntry extends infer E ? (E extends ConversationEntry ? Omit<E, "id"> : never) : never;
 
-/** Reads one transcript line (already JSON-parsed) into entries. Parsers may keep state across lines. */
-export type Parser = (record: Record<string, unknown>) => Draft[];
+/**
+ * Reads one transcript line (already JSON-parsed) into entries. Parsers may
+ * keep state across lines, such as the agent's message queue when its
+ * transcript records one.
+ */
+export type Parser = ((record: Record<string, unknown>) => Draft[]) & { queued?: () => QueuedMessage[] };
 
 const TEXT_LIMIT = 24_000;
 const INPUT_LIMIT = 2_000;

@@ -173,7 +173,15 @@ export type ConversationResult =
       first: number;
       /** Newest id so far. */
       last: number;
+      /**
+       * Messages waiting in the agent's own queue, oldest first, read from what
+       * the agent records (Claude Code's transcript, Codex's queue). Absent for
+       * agents that don't record theirs.
+       */
+      queued?: QueuedMessage[];
     };
+
+export type QueuedMessage = { text: string; at?: string };
 
 export type StartAgentResult = {
   paneId: string;

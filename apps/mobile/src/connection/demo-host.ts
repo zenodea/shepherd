@@ -1,6 +1,16 @@
 // A fake host with realistic agents, for trying the app without a computer
 // running shepherd (EXPO_PUBLIC_DEMO=1) and for design previews.
-import type { ActivityEntry, AgentInfo, AgentStatus, CallMethod, ConversationEntry, ConversationResult, ProjectsResult, StatusChange } from "@shepherd/protocol";
+import type {
+  ActivityEntry,
+  AgentInfo,
+  AgentStatus,
+  CallMethod,
+  ConversationEntry,
+  ConversationResult,
+  ProjectsResult,
+  QueuedMessage,
+  StatusChange,
+} from "@shepherd/protocol";
 import type { ConnectionSettings, HostConnection, HostState, TerminalHandle, TerminalHandlers } from "./host-client";
 import { parseAnsi, toStyledLines } from "../agents/ansi";
 import { HostCallError } from "./host-client";
@@ -53,7 +63,16 @@ const CONVERSATION: ConversationEntry[] = [
     text: "Found it. The test checks the session right after `submit()`, but signing in finishes on the next tick, so it passes or fails depending on timing:\n\n```ts\nawait form.submit();\nexpect(session.state).toBe(\"signed-in\");\n```\n\nI'll wait for the state change instead of assuming it already happened.",
   },
   { id: 7, kind: "tool", callId: "t3", name: "Edit", summary: "src/auth/login.test.ts" },
+  { id: 8, kind: "tool_result", callId: "t3", ok: true, output: "Updated with 2 additions and 1 removal" },
+  { id: 9, kind: "user", text: "Nice. Is the signup test flaky for the same reason?" },
+  { id: 10, kind: "tool", callId: "t4", name: "Grep", summary: "submit() src/auth" },
+  { id: 11, kind: "tool_result", callId: "t4", ok: true, output: "src/auth/signup.test.ts:41\nsrc/auth/login.test.ts:22" },
+  { id: 12, kind: "assistant", text: "Yes: `signup.test.ts` makes the same assumption on line 41. Fixing it the same way." },
+  { id: 13, kind: "tool", callId: "t5", name: "Edit", summary: "src/auth/signup.test.ts" },
 ];
+
+/** Waiting in claude's own queue, as the host reads it from the transcript. */
+const QUEUED: QueuedMessage[] = [{ text: "Then run the whole auth suite 20 times to be sure" }];
 
 const SNAPSHOT = {
   workspaces: [
@@ -229,6 +248,7 @@ export class DemoHost implements HostConnection {
           entries: CONVERSATION.filter((e) => e.id > after),
           first: 0,
           last: CONVERSATION.length - 1,
+          queued: QUEUED,
         } satisfies ConversationResult as T;
       }
       case "shepherd.activity":

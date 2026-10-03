@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.RemoteInput
 
 /** One answer button: the herdr key that picks it, and its label. */
 data class AnswerButton(val key: String, val label: String)
@@ -21,6 +22,8 @@ object Notifications {
   const val CHANNEL_FINISHED = "finished"
   /** The permanent "connected" notification of the background service: silent. */
   const val CHANNEL_CONNECTION = "connection"
+  /** Where a typed reply comes back in the action's intent. */
+  const val REMOTE_INPUT_KEY = "reply"
 
   fun ensureChannels(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -63,6 +66,14 @@ object Notifications {
       .setContentIntent(openIntent(context, "shepherd://", 0))
       .build()
 
+  private fun actionIntent(context: Context, id: Int, paneId: String, url: String, key: String, label: String): Intent =
+    Intent(context, ActionReceiver::class.java)
+      .putExtra(ActionReceiver.EXTRA_NOTIFICATION_ID, id)
+      .putExtra(ActionReceiver.EXTRA_PANE_ID, paneId)
+      .putExtra(ActionReceiver.EXTRA_KEY, key)
+      .putExtra(ActionReceiver.EXTRA_LABEL, label)
+      .putExtra(ActionReceiver.EXTRA_URL, url)
+
   fun show(
     context: Context,
     id: Int,
@@ -73,6 +84,10 @@ object Notifications {
     paneId: String,
     answers: List<AnswerButton>,
     timeoutMs: Long,
+    /** A "Reply" box that sends text to the agent; its hint, e.g. "Message claude…". Null for none. */
+    replyHint: String? = null,
+    /** App lock is on: keep the content private and ask for the fingerprint before an answer is sent. */
+    requireAuth: Boolean = false,
   ) {
     ensureChannels(context)
     val builder = NotificationCompat.Builder(context, channel)
@@ -85,16 +100,36 @@ object Notifications {
       .setPriority(if (channel == CHANNEL_INPUT) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
       .setCategory(if (channel == CHANNEL_INPUT) NotificationCompat.CATEGORY_MESSAGE else NotificationCompat.CATEGORY_STATUS)
     if (timeoutMs > 0) builder.setTimeoutAfter(timeoutMs)
+    // On the lock screen: everything, so it can be answered there, unless App
+    // lock is on; then Android's "sensitive content" setting decides.
+    builder.setVisibility(if (requireAuth) NotificationCompat.VISIBILITY_PRIVATE else NotificationCompat.VISIBILITY_PUBLIC)
     answers.forEachIndexed { index, answer ->
-      val intent = Intent(context, ActionReceiver::class.java)
-        .putExtra(ActionReceiver.EXTRA_NOTIFICATION_ID, id)
-        .putExtra(ActionReceiver.EXTRA_PANE_ID, paneId)
-        .putExtra(ActionReceiver.EXTRA_KEY, answer.key)
-        .putExtra(ActionReceiver.EXTRA_LABEL, answer.label)
-        .putExtra(ActionReceiver.EXTRA_URL, url)
+      val intent = actionIntent(context, id, paneId, url, answer.key, answer.label)
       // A distinct request code per button, so the extras aren't shared between them.
       val pending = PendingIntent.getBroadcast(context, id * 8 + index + 1, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-      builder.addAction(0, answer.label, pending)
+      builder.addAction(
+        NotificationCompat.Action.Builder(0, answer.label, pending)
+          .setAuthenticationRequired(requireAuth)
+          .build(),
+      )
+    }
+    if (replyHint != null) {
+      val input = RemoteInput.Builder(REMOTE_INPUT_KEY).setLabel(replyHint).build()
+      // Android fills the typed text into this intent, so it has to be mutable.
+      val pending = PendingIntent.getBroadcast(
+        context,
+        id * 8 + 7,
+        actionIntent(context, id, paneId, url, "", "Reply"),
+        PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+      )
+      builder.addAction(
+        NotificationCompat.Action.Builder(0, "Reply", pending)
+          .addRemoteInput(input)
+          .setAllowGeneratedReplies(false)
+          .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+          .setAuthenticationRequired(requireAuth)
+          .build(),
+      )
     }
     val manager = NotificationManagerCompat.from(context)
     if (manager.areNotificationsEnabled()) {

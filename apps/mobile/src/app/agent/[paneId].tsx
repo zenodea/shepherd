@@ -14,7 +14,7 @@ import { useBlockedPrompts } from "../../agents/use-blocked-prompts";
 import { useWorkspaceTabs } from "../../agents/use-workspace-tabs";
 import { WorkspaceTabs } from "../../agents/WorkspaceTabs";
 import { useConnection, useHostState } from "../../connection/connection";
-import type { TerminalHandle, TerminalLines } from "../../connection/host-client";
+import { HostCallError, type TerminalHandle, type TerminalLines } from "../../connection/host-client";
 import { loadPref, savePref } from "../../connection/prefs";
 import { useKeyboardInset } from "../../connection/use-keyboard-inset";
 import { KeyboardCapture, type KeyboardCaptureHandle } from "../../terminal/KeyboardCapture";
@@ -356,7 +356,12 @@ export default function TerminalScreen() {
       setDraft("");
       toLive();
     } catch (err) {
-      Alert.alert("Couldn't send", (err as Error).message);
+      // herdr won't type a message into an agent that's waiting for an answer: it would become the answer.
+      if (err instanceof HostCallError && err.code === "agent_blocked" && agent) {
+        Alert.alert(`${agentName(agent)} is waiting for an answer`, "Answer its question first, then send this. Your message is still here.");
+      } else {
+        Alert.alert("Couldn't send", (err as Error).message);
+      }
     } finally {
       setSending(false);
     }
@@ -422,6 +427,7 @@ export default function TerminalScreen() {
           <Conversation
             ref={conversationView}
             entries={conversation.entries}
+            queued={conversation.queued}
             ready={conversation.available === true}
             working={agent?.agent_status === "working"}
             atStart={conversation.atStart}

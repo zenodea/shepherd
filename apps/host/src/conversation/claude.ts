@@ -1,6 +1,7 @@
 // Claude Code: ~/.claude/projects/<cwd with every non-alphanumeric as "-">/<session id>.jsonl
 // One record per line. Assistant messages are split into one record per
 // content block; tool results come back as user records.
+import type { QueuedMessage } from "@shepherd/protocol";
 import { clip, clipOutput, contentText, isRecord, str, toolCall, type Draft, type Parser } from "./entries.ts";
 
 /** Housekeeping Claude Code writes into user messages, not something the person typed. */
@@ -22,9 +23,28 @@ function userText(text: string): string | null {
 }
 
 export function claudeParser(): Parser {
-  return (record) => {
+  // Claude Code records its queue of messages sent while it works: `enqueue`
+  // adds one, `dequeue` starts a turn with the oldest, `remove` drops one it
+  // took in mid-turn. Replaying them gives the queue as Claude has it.
+  // Housekeeping Claude queues for itself stays in the replay (a later
+  // `dequeue` takes it off the front) but isn't shown.
+  const queue: { content: string; shown: QueuedMessage | null }[] = [];
+  const parse = (record: Record<string, unknown>): Draft[] => {
     const at = str(record.timestamp);
     const stamp = at ? { at } : {};
+    if (record.type === "queue-operation") {
+      const content = str(record.content);
+      if (record.operation === "enqueue" && content !== undefined) {
+        const text = userText(content);
+        queue.push({ content, shown: text ? { text: clip(text, 2_000), ...stamp } : null });
+      } else if (record.operation === "dequeue") {
+        queue.shift();
+      } else if (record.operation === "remove" && content !== undefined) {
+        const index = queue.findIndex((q) => q.content === content);
+        if (index !== -1) queue.splice(index, 1);
+      }
+      return [];
+    }
     if (record.isSidechain === true) return [];
 
     if (record.type === "system") {
@@ -81,4 +101,5 @@ export function claudeParser(): Parser {
     }
     return [];
   };
+  return Object.assign(parse, { queued: () => queue.flatMap((q) => (q.shown ? [q.shown] : [])) });
 }

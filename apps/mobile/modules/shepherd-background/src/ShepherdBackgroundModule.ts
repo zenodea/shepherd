@@ -15,9 +15,14 @@ export type AgentNotification = {
   answers: Answer[];
   /** Remove it after this long; 0 keeps it. */
   timeoutMs: number;
+  /** Adds a Reply box that sends text to the agent, with this hint. */
+  replyHint?: string;
+  /** App lock is on: private on the lock screen, and answering asks for the fingerprint. */
+  requireAuth?: boolean;
 };
 
-export type AnswerEvent = { notificationId: number; paneId: string; key: string; label: string };
+/** A pressed answer button, or (with `reply`) text typed into the Reply box. */
+export type AnswerEvent = { notificationId: number; paneId: string; key: string; label: string; reply?: string | null };
 
 type Events = {
   onAnswer: (event: AnswerEvent) => void;

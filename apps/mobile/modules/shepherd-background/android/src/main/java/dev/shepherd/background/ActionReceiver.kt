@@ -3,6 +3,7 @@ package dev.shepherd.background
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import androidx.core.app.RemoteInput
 
 /**
  * An answer button was pressed. The app answers over its open connection;
@@ -15,9 +16,12 @@ class ActionReceiver : BroadcastReceiver() {
     val key = intent.getStringExtra(EXTRA_KEY) ?: return
     val label = intent.getStringExtra(EXTRA_LABEL) ?: key
     val url = intent.getStringExtra(EXTRA_URL) ?: "shepherd://"
-    if (!ShepherdBackgroundModule.emitAnswer(id, paneId, key, label)) {
+    // A typed reply, from the notification's Reply box.
+    val reply = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Notifications.REMOTE_INPUT_KEY)?.toString()
+    if (!ShepherdBackgroundModule.emitAnswer(id, paneId, key, label, reply)) {
       // Android doesn't let a button open the app from here, so ask for a tap instead.
-      Notifications.show(context, id, Notifications.CHANNEL_INPUT, "Open Shepherd to answer", "Shepherd wasn't running, so “$label” wasn't sent.", url, paneId, emptyList(), 0)
+      val what = if (reply != null) "your reply" else "“$label”"
+      Notifications.show(context, id, Notifications.CHANNEL_INPUT, "Open Shepherd to answer", "Shepherd wasn't running, so $what wasn't sent.", url, paneId, emptyList(), 0)
     }
   }
 

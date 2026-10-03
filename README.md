@@ -138,7 +138,8 @@ The app tries every address in the QR code at once and uses whichever answers fi
 ## What you can do
 
 - **See every agent at a glance.** Agents that need input come first, with their question and one button per answer.
-- **Read the conversation.** Agents open on their conversation: your messages, their replies and each tool call (tap one to see its output), read from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app however the agent draws its screen, and older messages load as you scroll up.
+- **Read the conversation.** Agents open on their conversation: your messages, their replies and each tool call (tap one to see its output), read from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app however the agent draws its screen, and older messages load as you scroll up. The arrows on the right jump between your own messages.
+- **See what's queued.** Send while the agent is working and it queues the message itself; Shepherd shows it as a dashed "Queued" bubble until the agent picks it up. That's read from the agent's own records: Claude Code's transcript and Codex's queue, so messages you queue at the computer show up too. pi takes queued messages as well, but doesn't record them anywhere Shepherd can read yet, so they don't show.
 - **Watch the live terminal.** Tap the terminal icon to switch. The agent is fitted to your screen as native text. Scroll up for the history, pinch to resize, search, long-press to copy, tap links.
 - **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal.
 - **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project or a fresh git worktree.
@@ -154,7 +155,9 @@ Turn on **Settings → Notifications** in the app. Shepherd then stays connected
 
 To stay connected, Android requires the app to show a permanent notification while it runs in the background. Shepherd uses it to show how your agents are doing. You can collapse it, or silence its channel in Android's notification settings. Settings also has **Run in the background without limits**, which asks Android not to pause Shepherd when the phone is idle. Without it, notifications can arrive late while the screen is off.
 
-When an agent asks a question, the notification shows it with up to three answers as buttons. A button only answers if the agent is still asking that same question; otherwise it tells you to open Shepherd.
+When an agent asks a question, the notification shows it with up to three answers as buttons. A button only answers if the agent is still asking that same question; otherwise it tells you to open Shepherd. When an agent finishes, the notification has a **Reply** box for what to do next.
+
+You can answer from the lock screen. If yours shows notifications as icons only or hides their content, change that in Android's lock screen settings. With **App lock** on, the question stays private on the lock screen (your Android setting decides) and every answer asks for your fingerprint first.
 
 Notifications come from the computer you're connected to. If you've paired several, switch to the one you want to hear from.
 

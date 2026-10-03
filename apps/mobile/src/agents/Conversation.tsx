@@ -1,10 +1,10 @@
-import { ArrowDown, ChevronRight } from "lucide-react-native";
-import { forwardRef, memo, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { ConversationEntry } from "@shepherd/protocol";
+import { ArrowDown, ChevronDown, ChevronRight, ChevronUp, Clock } from "lucide-react-native";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View, type ViewToken } from "react-native";
+import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import { PressableScale } from "../ui/Pressable";
 import { colors, fonts, space, statusColors, themed } from "../ui/theme";
-import { conversationRows, markdownBlocks, type Row } from "./conversation-rows";
+import { conversationRows, countUserMessages, markdownBlocks, queuedRows, userMessageIndex, type Row } from "./conversation-rows";
 
 /** Inline `code`, **bold** and # headings in a line of prose. */
 function Inline({ text }: { text: string }) {
@@ -105,6 +105,21 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
       </View>
     );
   }
+  if (row.kind === "queued") {
+    return (
+      <View style={styles.userRow}>
+        <View style={[styles.userBubble, styles.queuedBubble]}>
+          <Text style={[styles.userText, styles.queuedText]} selectable>
+            {row.message.text}
+          </Text>
+        </View>
+        <View style={styles.queuedLabel}>
+          <Clock size={11} color={colors.subtle} />
+          <Text style={styles.queuedLabelText}>Queued</Text>
+        </View>
+      </View>
+    );
+  }
   if (row.kind === "orphan_result") {
     return (
       <View style={styles.tool}>
@@ -149,8 +164,13 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
 
 export type ConversationHandle = { scrollToBottom: () => void };
 
+/** A row counts as on screen when a third of it shows. */
+const VIEWABILITY = { itemVisiblePercentThreshold: 30 };
+
 type Props = {
   entries: ConversationEntry[];
+  /** Messages waiting in the agent's own queue. */
+  queued: QueuedMessage[];
   /** null while the first page is loading. */
   ready: boolean;
   working: boolean;
@@ -161,13 +181,46 @@ type Props = {
 
 /** An agent's conversation as native, smoothly scrolling messages, newest at the bottom. */
 export const Conversation = forwardRef<ConversationHandle, Props>(function Conversation(
-  { entries, ready, working, atStart, loadingOlder, onLoadOlder },
+  { entries, queued, ready, working, atStart, loadingOlder, onLoadOlder },
   ref,
 ) {
   const list = useRef<FlatList<Row>>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
-  // Inverted: the newest row is first, at the bottom of the screen.
-  const rows = useMemo(() => conversationRows(entries).reverse(), [entries]);
+  // Inverted: the newest row is first, at the bottom of the screen; queued messages below that.
+  const rows = useMemo(() => [...queuedRows(queued), ...conversationRows(entries).reverse()], [entries, queued]);
+  const userMessages = useMemo(() => countUserMessages(rows), [rows]);
+  const showJumps = userMessages > 1 || scrolledUp;
+
+  // Which rows are on screen, for the jump arrows.
+  const visible = useRef({ newest: 0, oldest: 0 });
+  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken<Row>[] }) => {
+    const indexes = viewableItems.map((v) => v.index).filter((i): i is number => i !== null);
+    if (indexes.length) visible.current = { newest: Math.min(...indexes), oldest: Math.max(...indexes) };
+  }, []);
+
+  const scrollTo = useCallback((index: number) => {
+    // viewPosition 1 is the top of the screen in an inverted list: the message, then what followed it.
+    list.current?.scrollToIndex({ index, animated: true, viewPosition: 1 });
+  }, []);
+  // Going back to a message that isn't loaded yet: load older pages until it is.
+  const seekingOlder = useRef(false);
+  useEffect(() => {
+    if (!seekingOlder.current || loadingOlder) return;
+    const index = userMessageIndex(rows, visible.current, "older");
+    if (index !== null || atStart) seekingOlder.current = false;
+    if (index !== null) scrollTo(index);
+    else if (!atStart) onLoadOlder();
+  }, [loadingOlder, rows, atStart, onLoadOlder, scrollTo]);
+
+  const jump = (direction: "older" | "newer") => {
+    const index = userMessageIndex(rows, visible.current, direction);
+    if (index !== null) scrollTo(index);
+    else if (direction === "newer") list.current?.scrollToOffset({ offset: 0, animated: true });
+    else if (!atStart) {
+      seekingOlder.current = true;
+      onLoadOlder();
+    }
+  };
   useImperativeHandle(
     ref,
     () => ({
@@ -195,8 +248,21 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
         onEndReached={atStart ? undefined : onLoadOlder}
         onEndReachedThreshold={0.6}
         onScroll={(e) => setScrolledUp(e.nativeEvent.contentOffset.y > 240)}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={VIEWABILITY}
+        onScrollToIndexFailed={(info) => {
+          // Rows have different heights: get close, then try again once they've been measured.
+          list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+          setTimeout(() => list.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 1 }), 80);
+        }}
         scrollEventThrottle={100}
-        ListHeaderComponent={working ? <Text style={styles.working}>Working…</Text> : null}
+        ListHeaderComponent={
+          // The newest end of the list: keep it clear of the jump arrows.
+          <View>
+            {working ? <Text style={styles.working}>Working…</Text> : null}
+            {showJumps ? <View style={styles.jumpsSpace} /> : null}
+          </View>
+        }
         ListFooterComponent={
           loadingOlder ? (
             <ActivityIndicator style={styles.older} color={colors.subtle} />
@@ -215,6 +281,17 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
         >
           <ArrowDown size={18} color={colors.text} />
         </PressableScale>
+      ) : null}
+      {showJumps ? (
+        <View style={styles.jumps}>
+          <PressableScale onPress={() => jump("older")} style={styles.jump} accessibilityLabel="Your previous message">
+            {loadingOlder ? <ActivityIndicator size="small" color={colors.muted} /> : <ChevronUp size={18} color={colors.text} />}
+          </PressableScale>
+          <View style={styles.jumpDivider} />
+          <PressableScale onPress={() => jump("newer")} style={styles.jump} accessibilityLabel="Your next message">
+            <ChevronDown size={18} color={colors.text} />
+          </PressableScale>
+        </View>
       ) : null}
     </View>
   );
@@ -311,6 +388,23 @@ const styles = themed(() =>
       paddingVertical: space.xs,
     },
     older: { paddingVertical: space.md },
+    queuedBubble: { backgroundColor: "transparent", borderWidth: 1, borderStyle: "dashed", borderColor: colors.border },
+    queuedText: { color: colors.muted },
+    queuedLabel: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4, marginRight: 4 },
+    queuedLabelText: { fontSize: 11, color: colors.subtle },
+    jumps: {
+      position: "absolute",
+      right: 12,
+      bottom: 12,
+      borderRadius: 20,
+      backgroundColor: colors.floating,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.edge,
+      overflow: "hidden",
+    },
+    jump: { width: 40, height: 38, alignItems: "center", justifyContent: "center" },
+    jumpsSpace: { height: 72 },
+    jumpDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.edge, marginHorizontal: 8 },
     toBottom: {
       position: "absolute",
       bottom: 12,
