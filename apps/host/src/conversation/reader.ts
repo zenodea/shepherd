@@ -110,6 +110,18 @@ export class TranscriptReader {
     return groups.reverse();
   }
 
+  /** How many tool calls so far, and the latest one. */
+  progress(): { toolCalls: number; latest: Extract<ConversationEntry, { kind: "tool" }> | null } {
+    let toolCalls = 0;
+    let latest: Extract<ConversationEntry, { kind: "tool" }> | null = null;
+    for (const entry of this.entries) {
+      if (entry.kind !== "tool") continue;
+      toolCalls++;
+      latest = entry;
+    }
+    return { toolCalls, latest };
+  }
+
   page({ after, before, limit }: { after?: number; before?: number; limit: number }): Page {
     let entries: ConversationEntry[];
     if (after !== undefined) entries = this.entries.filter((e) => e.id > after).slice(0, limit);

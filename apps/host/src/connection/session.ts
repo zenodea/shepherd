@@ -246,6 +246,11 @@ export class AppSession {
       const cwd = folder(parsed.paneId);
       return cwd ? changes(cwd, parsed.mode) : Promise.resolve(noFolder);
     }
+    if (method === "shepherd.subagents") {
+      if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.subagents needs a paneId"));
+      if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
+      return Promise.resolve(this.deps.conversations.subagents(this.deps.tracker.get(params.paneId) ?? null));
+    }
     if (method === "shepherd.images") {
       if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.images needs a paneId"));
       if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });

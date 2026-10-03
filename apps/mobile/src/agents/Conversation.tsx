@@ -5,6 +5,7 @@ import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import { PressableScale } from "../ui/Pressable";
 import { Counts } from "./Counts";
 import { ConversationImages } from "./ConversationImage";
+import { SubagentCard, SubagentsContext } from "./SubagentCard";
 import { DiffView } from "./DiffView";
 import { colors, fonts, space, statusColors, themed } from "../ui/theme";
 import { conversationRows, countUserMessages, groupActivity, queuedRows, rowImages, userMessageIndex, type Row } from "./conversation-rows";
@@ -85,6 +86,14 @@ function Output({ text }: { text: string }) {
 }
 
 const RowView = memo(function RowView({ row }: { row: Row }) {
+  const subagents = useContext(SubagentsContext);
+  if (row.kind === "tool" && row.call.subagent && subagents?.byId.has(row.call.subagent)) {
+    return (
+      <View style={styles.subagent}>
+        <SubagentCard id={row.call.subagent} />
+      </View>
+    );
+  }
   if (row.kind === "tool") {
     const { call, result } = row;
     const dot = !result ? statusColors.working : result.ok ? statusColors.done : colors.danger;
@@ -446,6 +455,7 @@ const styles = themed(() =>
       color: colors.terminalText,
     },
     tool: { marginVertical: -2 },
+    subagent: { marginVertical: 2 },
     expandHead: {
       flexDirection: "row",
       alignItems: "center",

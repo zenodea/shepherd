@@ -13,7 +13,7 @@ import { IDENTITY, clampView, fitted, pinch, toggleZoom, type Point, type ZoomVi
 const native = Platform.OS !== "web";
 
 /** Where a conversation's images come from, and whether to load them as they appear. */
-export const ImagesContext = createContext<{ client: HostConnection | null; paneId: string; session: string | null; auto: boolean } | null>(null);
+export const ImagesContext = createContext<{ client: HostConnection | null; paneId: string; subagent?: string | null; session: string | null; auto: boolean } | null>(null);
 
 const MAX_PREVIEW = 260;
 const MAX_CACHED = 30;
@@ -22,11 +22,11 @@ const cache = new Map<string, string>();
 /** Images you tapped to load: they stay shown with "Show images" off. */
 const opened = new Set<string>();
 
-async function fetchImage(client: HostConnection, paneId: string, id: string): Promise<string> {
+async function fetchImage(client: HostConnection, paneId: string, subagent: string | null, id: string): Promise<string> {
   let data = "";
   let mime = "image/png";
   for (let from = 0, total = Infinity; from < total; ) {
-    const chunk = await client.call<ImageResult>("shepherd.image", { paneId, id, from });
+    const chunk = await client.call<ImageResult>("shepherd.image", { paneId, ...(subagent ? { subagent } : {}), id, from });
     if (!chunk.available) throw new Error(chunk.reason);
     if (!chunk.data.length) break;
     data += chunk.data;
@@ -45,7 +45,7 @@ const kb = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).t
  */
 export function useImage(image: ImageRef) {
   const ctx = useContext(ImagesContext);
-  const key = `${ctx?.paneId}:${ctx?.session}:${image.id}`;
+  const key = `${ctx?.paneId}:${ctx?.subagent ?? ""}:${ctx?.session}:${image.id}`;
   const [loaded, setLoaded] = useState<{ key: string; uri: string } | null>(() => (cache.has(key) ? { key, uri: cache.get(key)! } : null));
   const [failed, setFailed] = useState<string | null>(null);
   const [tapped, setTapped] = useState(() => opened.has(key));
@@ -59,7 +59,7 @@ export function useImage(image: ImageRef) {
     if (!wanted || uri || inflight.current || !ctx?.client) return;
     inflight.current = true;
     setFailed(null);
-    fetchImage(ctx.client, ctx.paneId, image.id)
+    fetchImage(ctx.client, ctx.paneId, ctx.subagent ?? null, image.id)
       .then((data) => {
         cache.delete(key);
         cache.set(key, data);

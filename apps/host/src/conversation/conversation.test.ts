@@ -4,13 +4,16 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentInfo } from "@shepherd/protocol";
 import { fakeAgent } from "../testing/fake-herdr.ts";
-import { claudeParser, claudeProjectDir } from "./claude.ts";
-import { codexParser } from "./codex.ts";
 import { Conversations, conversationParams } from "./conversations.ts";
 import { toolSummary } from "./entries.ts";
-import { locateTranscript, type Roots } from "./locate.ts";
-import { piParser, piSessionDir } from "./pi.ts";
 import { TranscriptReader } from "./reader.ts";
+import { claude } from "./vendors/claude/index.ts";
+import { claudeParser, claudeProjectDir } from "./vendors/claude/parser.ts";
+import { codex } from "./vendors/codex/index.ts";
+import { codexParser } from "./vendors/codex/parser.ts";
+import { defaultVendors, type VendorHomes } from "./vendors/index.ts";
+import { pi } from "./vendors/pi/index.ts";
+import { piParser, piSessionDir } from "./vendors/pi/parser.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -22,6 +25,11 @@ const tempDir = () => {
   return d;
 };
 const jsonl = (records: unknown[]) => records.map((r) => JSON.stringify(r)).join("\n") + "\n";
+const homes = (): VendorHomes => {
+  const root = tempDir();
+  return { claude: join(root, "claude"), codex: join(root, "codex"), pi: join(root, "pi") };
+};
+const claudeDir = (h: VendorHomes, cwd = "/work/app") => join(h.claude, "projects", claudeProjectDir(cwd));
 const at = "2026-10-02T12:00:00.000Z";
 
 describe("Claude Code transcripts", () => {
@@ -138,10 +146,6 @@ describe("TranscriptReader", () => {
 });
 
 describe("finding transcripts", () => {
-  const roots = (): Roots => {
-    const root = tempDir();
-    return { claude: join(root, "claude"), codex: join(root, "codex"), pi: join(root, "pi") };
-  };
   const agent = (kind: string, extra: Partial<AgentInfo> = {}) => fakeAgent("w1:p1", "idle", { agent: kind, cwd: "/work/app", ...extra });
   const write = (path: string, records: unknown[], mtime: number) => {
     mkdirSync(join(path, ".."), { recursive: true });
@@ -150,35 +154,36 @@ describe("finding transcripts", () => {
   };
 
   it("takes the newest Claude session for the pane's folder", () => {
-    const r = roots();
-    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    const h = homes();
+    const dir = claudeDir(h);
     write(join(dir, "old.jsonl"), [], 1000);
     write(join(dir, "new.jsonl"), [], 2000);
-    expect(locateTranscript(agent("claude"), "claude", r)).toBe(join(dir, "new.jsonl"));
-    expect(locateTranscript(agent("claude", { agent_session: { agent: "claude", kind: "id", source: "x", value: "old" } }), "claude", r)).toBe(join(dir, "old.jsonl"));
+    const vendor = claude({ home: h.claude });
+    expect(vendor.locate(agent("claude"))).toBe(join(dir, "new.jsonl"));
+    expect(vendor.locate(agent("claude", { agent_session: { agent: "claude", kind: "id", source: "x", value: "old" } }))).toBe(join(dir, "old.jsonl"));
   });
 
   it("skips subagent sessions for pi and Codex", () => {
-    const r = roots();
-    const pi = join(r.pi, piSessionDir("/work/app"));
-    write(join(pi, "main.jsonl"), [{ type: "session", cwd: "/work/app" }], 1000);
-    write(join(pi, "sub.jsonl"), [{ type: "session", cwd: "/work/app", parentSession: "main.jsonl" }], 2000);
-    expect(locateTranscript(agent("pi"), "pi", r)).toBe(join(pi, "main.jsonl"));
+    const h = homes();
+    const piDir = join(h.pi, "sessions", piSessionDir("/work/app"));
+    write(join(piDir, "main.jsonl"), [{ type: "session", cwd: "/work/app" }], 1000);
+    write(join(piDir, "sub.jsonl"), [{ type: "session", cwd: "/work/app", parentSession: "main.jsonl" }], 2000);
+    expect(pi({ home: h.pi }).locate(agent("pi"))).toBe(join(piDir, "main.jsonl"));
 
     const now = new Date();
-    const day = join(r.codex, String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0"));
+    const day = join(h.codex, "sessions", String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0"));
     const t = now.getTime() / 1000;
     write(join(day, "rollout-a.jsonl"), [{ type: "session_meta", payload: { cwd: "/work/app", source: "cli" } }], t - 10);
     write(join(day, "rollout-b.jsonl"), [{ type: "session_meta", payload: { cwd: "/work/app", source: { subagent: {} } } }], t);
     write(join(day, "rollout-c.jsonl"), [{ type: "session_meta", payload: { cwd: "/elsewhere", source: "cli" } }], t);
-    expect(locateTranscript(agent("codex"), "codex", r)).toBe(join(day, "rollout-a.jsonl"));
+    expect(codex({ home: h.codex }).locate(agent("codex"))).toBe(join(day, "rollout-a.jsonl"));
   });
 
   it("serves pages and explains when there's nothing to show", () => {
-    const r = roots();
-    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    const h = homes();
+    const dir = claudeDir(h);
     write(join(dir, "s1.jsonl"), [{ type: "user", message: { content: "hello" } }], 1000);
-    const conversations = new Conversations(r);
+    const conversations = new Conversations(defaultVendors(h));
     expect(conversations.get(agent("claude"), { paneId: "w1:p1" })).toMatchObject({ available: true, agent: "claude", session: "s1", first: 0, last: 0 });
     expect(conversations.get(null, { paneId: "w1:p1" })).toMatchObject({ available: false });
     expect(conversations.get(agent("aider"), { paneId: "w1:p1" })).toMatchObject({ available: false, reason: expect.stringContaining("aider") });
@@ -210,7 +215,7 @@ describe("agents' message queues", () => {
 
   it("reads Codex's queue database by thread, whatever shape the message has", async () => {
     const { DatabaseSync } = await import("node:sqlite");
-    const { CodexQueue, codexThreadId, queuedText } = await import("./codex-queue.ts");
+    const { CodexQueue, codexThreadId, queuedText } = await import("./vendors/codex/queue.ts");
     const path = join(tempDir(), "queue_1.sqlite");
     const db = new DatabaseSync(path);
     db.exec(`CREATE TABLE queued_items (id TEXT PRIMARY KEY NOT NULL, thread_id TEXT NOT NULL, payload_json TEXT NOT NULL,
@@ -231,11 +236,11 @@ describe("agents' message queues", () => {
   });
 
   it("shows a queue only while the agent is busy", () => {
-    const r: Roots = { claude: join(tempDir(), "claude"), codex: join(tempDir(), "codex", "sessions"), pi: join(tempDir(), "pi") };
-    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    const h = homes();
+    const dir = claudeDir(h);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "s.jsonl"), jsonl([{ type: "queue-operation", operation: "enqueue", content: "next: the docs", timestamp: at }]));
-    const conversations = new Conversations(r);
+    const conversations = new Conversations(defaultVendors(h));
     const claude = (status: AgentInfo["agent_status"]) => fakeAgent("w1:p1", status, { agent: "claude", cwd: "/work/app" });
     expect(conversations.get(claude("working"), { paneId: "w1:p1" })).toMatchObject({ queued: [{ text: "next: the docs" }] });
     expect(conversations.get(claude("idle"), { paneId: "w1:p1" })).toMatchObject({ queued: [] });
@@ -267,8 +272,8 @@ describe("images", () => {
   });
 
   it("references images by where they are, and serves them in chunks", () => {
-    const r: Roots = { claude: join(tempDir(), "claude"), codex: join(tempDir(), "codex", "sessions"), pi: join(tempDir(), "pi") };
-    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    const h = homes();
+    const dir = claudeDir(h);
     mkdirSync(dir, { recursive: true });
     const big = "Q".repeat(600_000);
     const first = JSON.stringify({ type: "user", message: { content: "look at this" } });
@@ -277,7 +282,7 @@ describe("images", () => {
       message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: big } }] }] },
     });
     writeFileSync(join(dir, "s.jsonl"), `${first}\n${second}\n`);
-    const conversations = new Conversations(r);
+    const conversations = new Conversations(defaultVendors(h));
     const agent = fakeAgent("w1:p1", "working", { agent: "claude", cwd: "/work/app" });
     const result = conversations.get(agent, { paneId: "w1:p1" });
     if (!result.available) throw new Error("unavailable");
@@ -307,7 +312,7 @@ describe("images", () => {
 
 describe("claude messages taken in mid-turn", () => {
   it("shows a queued message once Claude takes it in, and only yours", async () => {
-    const { claudeParser } = await import("./claude.ts");
+    const { claudeParser } = await import("./vendors/claude/parser.ts");
     const parse = claudeParser();
     const text = "also check the tests";
     expect(parse({ type: "queue-operation", operation: "enqueue", timestamp: "t1", content: text })).toEqual([]);
@@ -324,8 +329,8 @@ describe("claude messages taken in mid-turn", () => {
 
 describe("image list", () => {
   it("groups every image under the message of yours it came after, newest first", () => {
-    const r: Roots = { claude: join(tempDir(), "claude"), codex: join(tempDir(), "codex", "sessions"), pi: join(tempDir(), "pi") };
-    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    const h = homes();
+    const dir = claudeDir(h);
     mkdirSync(dir, { recursive: true });
     const img = (data: string) => ({ type: "image", source: { type: "base64", media_type: "image/png", data } });
     const lines = [
@@ -336,7 +341,7 @@ describe("image list", () => {
       { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t2", content: [img("CCCC"), img("DDDD")] }] } },
     ];
     writeFileSync(join(dir, "s.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
-    const conversations = new Conversations(r);
+    const conversations = new Conversations(defaultVendors(h));
     const result = conversations.images(fakeAgent("w1:p1", "working", { agent: "claude", cwd: "/work/app" }));
     if (!result.available) throw new Error(result.reason);
     expect(result.groups.map((g) => [g.message, g.images.length])).toEqual([
@@ -349,9 +354,8 @@ describe("image list", () => {
 
 describe("which Claude session a pane is on", () => {
   it("follows the Claude running in each pane, not the newest file in the folder", async () => {
-    const { locateTranscript } = await import("./locate.ts");
-    const r: Roots = { claude: join(tempDir(), "claude"), codex: join(tempDir(), "codex", "sessions"), pi: join(tempDir(), "pi") };
-    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    const h = homes();
+    const dir = claudeDir(h);
     mkdirSync(dir, { recursive: true });
     const write = (id: string, mtime: number) => {
       writeFileSync(join(dir, `${id}.jsonl`), `${JSON.stringify({ type: "user", message: { content: id } })}\n`);
@@ -366,8 +370,8 @@ describe("which Claude session a pane is on", () => {
       { pid: 33, sessionId: "fresh", cwd: "/work/app", startedAt: 3 },
     ];
     const panes: Record<number, string> = { 11: "w1:p1", 22: "w1:p2", 33: "w1:p4" };
-    const processes = { claude: () => running, paneOf: (pid: number) => panes[pid] ?? null };
-    const at = (pane: string) => locateTranscript(fakeAgent(pane, "idle", { agent: "claude", cwd: "/work/app" }), "claude", r, processes);
+    const vendor = claude({ home: h.claude, running: () => running, paneOf: (pid: number) => panes[pid] ?? null });
+    const at = (pane: string) => vendor.locate(fakeAgent(pane, "idle", { agent: "claude", cwd: "/work/app" }));
 
     expect(at("w1:p1")).toBe(join(dir, "older.jsonl"));
     expect(at("w1:p2")).toBe(join(dir, "newest.jsonl"));
@@ -375,5 +379,100 @@ describe("which Claude session a pane is on", () => {
     expect(at("w1:p4")).toBeNull();
     // No Claude running in the pane (it exited): the newest file no running Claude is on.
     expect(at("w1:p3")).toBe(join(dir, "abandoned.jsonl"));
+  });
+});
+
+describe("subagents", () => {
+  const working = (kind: string) => fakeAgent("w1:p1", "working", { agent: kind, cwd: "/work/app" });
+
+  it("finds Claude subagents, links the call that started each, and reads their own conversation", () => {
+    const h = homes();
+    const dir = claudeDir(h);
+    mkdirSync(join(dir, "main", "subagents"), { recursive: true });
+    writeFileSync(
+      join(dir, "main.jsonl"),
+      jsonl([
+        { type: "user", message: { content: "survey the formats" } },
+        { type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_1", name: "Agent", input: { description: "Survey formats", prompt: "Look at…" } }] } },
+      ]),
+    );
+    const sub = join(dir, "main", "subagents");
+    writeFileSync(join(sub, "agent-a1.meta.json"), JSON.stringify({ agentType: "Explore", description: "Survey formats", toolUseId: "toolu_1", spawnDepth: 1 }));
+    writeFileSync(
+      join(sub, "agent-a1.jsonl"),
+      jsonl([
+        { type: "user", isSidechain: true, timestamp: at, message: { content: "Look at the transcript formats" } },
+        { type: "assistant", isSidechain: true, message: { content: [{ type: "tool_use", id: "t2", name: "Read", input: { file_path: "a.jsonl" } }] } },
+        { type: "assistant", isSidechain: true, message: { stop_reason: "tool_use", content: [{ type: "tool_use", id: "t3", name: "SubagentHandback", input: { report: "done" } }] } },
+      ]),
+    );
+    const conversations = new Conversations(defaultVendors(h));
+    const main = conversations.get(working("claude"), { paneId: "w1:p1" });
+    if (!main.available) throw new Error(main.reason);
+    expect(main.subagents).toEqual([
+      expect.objectContaining({ id: "a1", name: "Survey formats", kind: "Explore", depth: 1, status: "done", toolCalls: 2, startedAt: at, doing: null }),
+    ]);
+    expect(main.entries.find((e) => e.kind === "tool")).toMatchObject({ name: "Agent", subagent: "a1" });
+
+    const own = conversations.get(working("claude"), { paneId: "w1:p1", subagent: "a1" });
+    expect(own).toMatchObject({ available: true, session: "main/a1", entries: [{ kind: "user", text: "Look at the transcript formats" }, { kind: "tool", name: "Read" }, { kind: "tool", name: "SubagentHandback" }] });
+    expect(conversations.get(working("claude"), { paneId: "w1:p1", subagent: "nope" })).toMatchObject({ available: false });
+  });
+
+  it("finds the Codex subagents a thread spawned, not its helper threads, and shows only their own work", () => {
+    const h = homes();
+    const now = new Date();
+    const day = join(h.codex, "sessions", String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0"));
+    mkdirSync(day, { recursive: true });
+    const meta = (id: string, source: unknown) => ({ type: "session_meta", payload: { id, cwd: "/work/app", source, timestamp: at } });
+    const spawn = (parent: string, path: string, depth: number) => ({ subagent: { thread_spawn: { parent_thread_id: parent, depth, agent_path: path, agent_nickname: path.split("/").pop() === "review" ? "Hypatia" : "Franklin" } } });
+    const done = (text: string) => ({ type: "event_msg", payload: { type: "item_completed", item: { type: "AgentMessage", id: text, content: [{ type: "output_text", text }] } } });
+    writeFileSync(
+      join(day, "rollout-root.jsonl"),
+      jsonl([
+        meta("root", "cli"),
+        { type: "response_item", payload: { type: "function_call", name: "spawn_agent", call_id: "c1", arguments: JSON.stringify({ task_name: "review", message: "gAAAAABqvRtchufpHkCzgNVClgXSS4FmoJeAvMdm" }) } },
+      ]),
+    );
+    writeFileSync(
+      join(day, "rollout-child.jsonl"),
+      jsonl([
+        meta("child", spawn("root", "/root/review", 1)),
+        done("inherited from the parent"),
+        { type: "response_item", payload: { type: "agent_message", author: "/root", recipient: "/root/review", content: [{ type: "input_text", text: "Message Type: NEW_TASK\nTask name: /root/review\nPayload:\n" }] } },
+        done("my own review"),
+        { type: "event_msg", payload: { type: "task_complete" } },
+      ]),
+    );
+    writeFileSync(join(day, "rollout-grandchild.jsonl"), jsonl([meta("grandchild", spawn("child", "/root/review/views", 2)), { type: "event_msg", payload: { type: "task_started" } }]));
+    writeFileSync(join(day, "rollout-guardian.jsonl"), jsonl([meta("guardian", { subagent: { other: "guardian" } })]));
+
+    const conversations = new Conversations(defaultVendors(h));
+    const list = conversations.subagents(working("codex"));
+    if (!list.available) throw new Error(list.reason);
+    expect(list.subagents.map((s) => [s.id, s.name, s.kind, s.depth, s.status])).toEqual([
+      ["child", "review", "Hypatia", 1, "done"],
+      ["grandchild", "views", "Franklin", 2, "running"],
+    ]);
+    const main = conversations.get(working("codex"), { paneId: "w1:p1" });
+    expect(main).toMatchObject({ entries: [{ kind: "tool", name: "spawn_agent", summary: "review", subagent: "child" }] });
+
+    const own = conversations.get(working("codex"), { paneId: "w1:p1", subagent: "child" });
+    expect(own).toMatchObject({
+      entries: [
+        { kind: "notice", text: "Task for review from the main agent" },
+        { kind: "assistant", text: "my own review" },
+      ],
+    });
+  });
+
+  it("leaves subagents out for vendors that don't record them", () => {
+    const h = homes();
+    const piDir = join(h.pi, "sessions", piSessionDir("/work/app"));
+    mkdirSync(piDir, { recursive: true });
+    writeFileSync(join(piDir, "s.jsonl"), jsonl([{ type: "session", cwd: "/work/app" }]));
+    const conversations = new Conversations(defaultVendors(h));
+    expect(conversations.get(working("pi"), { paneId: "w1:p1" })).not.toHaveProperty("subagents");
+    expect(conversations.subagents(working("pi"))).toMatchObject({ available: false });
   });
 });

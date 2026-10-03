@@ -3,8 +3,8 @@
 // content block; tool results come back as user records.
 import type { ContextUsage, QueuedMessage } from "@shepherd/protocol";
 import type { FileDiff } from "@shepherd/protocol";
-import { addedFile, editsDiff, lineDiff } from "../changes/diff.ts";
-import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "./entries.ts";
+import { addedFile, editsDiff, lineDiff } from "../../../changes/diff.ts";
+import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "../../entries.ts";
 
 /** What an Edit, MultiEdit or Write call changed, from its own input. */
 function editDiff(name: string, input: unknown): FileDiff | undefined {
@@ -36,7 +36,8 @@ function userText(text: string): string | null {
   return text.trim() || null;
 }
 
-export function claudeParser(): Parser {
+/** `subagent`: read a subagent's own transcript, whose records are all marked as a sidechain. */
+export function claudeParser({ subagent = false } = {}): Parser {
   // Claude Code records its queue of messages sent while it works: `enqueue`
   // adds one, `dequeue` starts a turn with the oldest, `remove` drops one it
   // took in mid-turn. Replaying them gives the queue as Claude has it.
@@ -60,7 +61,7 @@ export function claudeParser(): Parser {
       }
       return [];
     }
-    if (record.isSidechain === true) return [];
+    if (record.isSidechain === true && !subagent) return [];
 
     if (record.type === "system") {
       return record.subtype === "compact_boundary" ? [{ kind: "notice", text: "Conversation compacted", ...stamp }] : [];

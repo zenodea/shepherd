@@ -86,3 +86,11 @@ describe("contextLabel", () => {
     expect(contextLabel(null)).toBeNull();
   });
 });
+
+describe("subagent calls", () => {
+  it("stay out of folded runs of tool calls", () => {
+    const tool = (id: number, subagent?: string) => ({ id, kind: "tool" as const, callId: `c${id}`, name: subagent ? "Agent" : "Read", summary: "", ...(subagent ? { subagent } : {}) });
+    const rows = groupActivity(conversationRows([tool(1), tool(2), tool(3), tool(4, "a1"), tool(5), tool(6), tool(7)]));
+    expect(rows.map((r) => (r.kind === "group" ? `group:${r.tools}` : r.kind === "tool" ? r.call.name : r.kind))).toEqual(["group:3", "Agent", "Read", "Read", "Read"]);
+  });
+});

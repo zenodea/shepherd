@@ -4,7 +4,7 @@
 import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import type { QueuedMessage } from "@shepherd/protocol";
-import { clip, isRecord } from "./entries.ts";
+import { clip, isRecord } from "../../entries.ts";
 
 /** The thread id at the end of a rollout file's name: rollout-<time>-<thread id>.jsonl */
 export function codexThreadId(rolloutPath: string): string | null {

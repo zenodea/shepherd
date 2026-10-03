@@ -8,6 +8,7 @@ import { AgentTracker } from "../herdr/agent-tracker.ts";
 import { HerdrClient, lineReader } from "../herdr/herdr-client.ts";
 import { startLocalServer, type LocalServer } from "./server.ts";
 import { Conversations } from "../conversation/conversations.ts";
+import { defaultVendors } from "../conversation/vendors/index.ts";
 import { TerminalStream, terminalSessionArgs } from "../herdr/terminal-stream.ts";
 import { testDevices } from "../testing/devices.ts";
 import { secureClient, type SecureTestClient } from "../testing/secure-client.ts";
@@ -84,7 +85,7 @@ describe("local server", () => {
         devices: devices.registry,
         hostKey: generateKeyPair(),
         host: { name: "test-host", herdrVersion: "fake" },
-        conversations: new Conversations({ claude: "/nonexistent/claude", codex: "/nonexistent/codex", pi: "/nonexistent/pi" }),
+        conversations: new Conversations(defaultVendors({ claude: "/nonexistent/claude", codex: "/nonexistent/codex", pi: "/nonexistent/pi" })),
         presence: {
           connected: (id, via) => {
             presence.push(`+${id} ${via}`);

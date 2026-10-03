@@ -3,6 +3,7 @@ import {
   ALargeSmall,
   ArrowDown,
   ArrowUp,
+  Bot,
   ChevronLeft,
   Ellipsis,
   Images,
@@ -20,6 +21,8 @@ import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledL
 import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
 import { ImagesContext } from "../../agents/ConversationImage";
+import { SubagentsContext } from "../../agents/SubagentCard";
+import { subagentsPill } from "../../agents/subagents";
 import { useImagesShown } from "../../agents/image-setting";
 import { Conversation, type ConversationHandle } from "../../agents/Conversation";
 import { useConversation } from "../../agents/use-conversation";
@@ -234,6 +237,13 @@ export default function TerminalScreen() {
 
   const live = useRef<LiveTerminalHandle>(null);
   const conversationView = useRef<ConversationHandle>(null);
+  const subagentLinks = useMemo(
+    () => ({
+      byId: new Map(conversation.subagents.map((s) => [s.id, s])),
+      open: (id: string) => router.push({ pathname: "/subagent/[paneId]/[id]", params: { paneId: paneId!, id } }),
+    }),
+    [conversation.subagents, router, paneId],
+  );
   const images = useMemo(
     () => ({ client, paneId, session: conversation.session, auto: imagesShown }),
     [client, paneId, conversation.session, imagesShown],
@@ -432,6 +442,7 @@ export default function TerminalScreen() {
   const usage = isAgent ? contextLabel(conversation.context) : null;
   const { changes } = useChanges(client, isAgent ? paneId : null, online, agentStatus);
   const changed = changes?.available && changes.files.length > 0 ? changes : null;
+  const subagentsLabel = subagentsPill(conversation.subagents);
 
   return (
     <Screen>
@@ -475,38 +486,55 @@ export default function TerminalScreen() {
         </IconButton>
       </View>
 
-      {changed ? (
-        <PressableScale
-          onPress={() => router.push({ pathname: "/changes/[paneId]", params: { paneId: paneId! } })}
-          style={styles.changes}
-          accessibilityRole="button"
-          accessibilityLabel={`${changed.files.length + (changed.omitted ?? 0)} changed files`}
-        >
-          <Text style={styles.changesText}>
-            {`${changed.files.length + (changed.omitted ?? 0)} file${changed.files.length + (changed.omitted ?? 0) === 1 ? "" : "s"}  ·  `}
-          </Text>
-          <Counts additions={changed.additions} deletions={changed.deletions} size={12.5} />
-          {changed.mode === "branch" ? <Text style={styles.changesText}>{`  ·  on ${changed.branch}`}</Text> : null}
-        </PressableScale>
+      {changed || subagentsLabel ? (
+        <View style={styles.pills}>
+          {changed ? (
+            <PressableScale
+              onPress={() => router.push({ pathname: "/changes/[paneId]", params: { paneId: paneId! } })}
+              style={styles.pill}
+              accessibilityRole="button"
+              accessibilityLabel={`${changed.files.length + (changed.omitted ?? 0)} changed files`}
+            >
+              <Text style={styles.changesText}>
+                {`${changed.files.length + (changed.omitted ?? 0)} file${changed.files.length + (changed.omitted ?? 0) === 1 ? "" : "s"}  ·  `}
+              </Text>
+              <Counts additions={changed.additions} deletions={changed.deletions} size={12.5} />
+              {changed.mode === "branch" ? <Text style={styles.changesText}>{`  ·  on ${changed.branch}`}</Text> : null}
+            </PressableScale>
+          ) : null}
+          {subagentsLabel ? (
+            <PressableScale
+              onPress={() => router.push({ pathname: "/subagents/[paneId]", params: { paneId: paneId! } })}
+              style={styles.pill}
+              accessibilityRole="button"
+              accessibilityLabel={subagentsLabel}
+            >
+              <Bot size={13} color={colors.muted} />
+              <Text style={styles.changesText}>{` ${subagentsLabel}`}</Text>
+            </PressableScale>
+          ) : null}
+        </View>
       ) : null}
 
       {!online ? <Banner>{state.status === "connecting" ? "Connecting…" : "Can't reach your computer. Retrying…"}</Banner> : null}
 
       <View style={{ flex: 1, paddingBottom: keyboard.inset }}>
         {chat ? (
-          <ImagesContext.Provider value={images}>
-            <Conversation
-              ref={conversationView}
-              entries={conversation.entries}
-              queued={conversation.queued}
-              ready={conversation.available === true}
-              working={agent?.agent_status === "working"}
-              activity={activity}
-              atStart={conversation.atStart}
-              loadingOlder={conversation.loadingOlder}
-              onLoadOlder={() => void conversation.loadOlder()}
-            />
-          </ImagesContext.Provider>
+          <SubagentsContext.Provider value={subagentLinks}>
+            <ImagesContext.Provider value={images}>
+              <Conversation
+                ref={conversationView}
+                entries={conversation.entries}
+                queued={conversation.queued}
+                ready={conversation.available === true}
+                working={agent?.agent_status === "working"}
+                activity={activity}
+                atStart={conversation.atStart}
+                loadingOlder={conversation.loadingOlder}
+                onLoadOlder={() => void conversation.loadOlder()}
+              />
+            </ImagesContext.Provider>
+          </SubagentsContext.Provider>
         ) : (
           <View style={styles.terminal}>
             <LiveTerminal
@@ -728,12 +756,10 @@ const styles = themed(() => StyleSheet.create({
     includeFontPadding: false,
   },
   send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  changes: {
+  pills: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginLeft: 56, marginBottom: 6 },
+  pill: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    marginLeft: 56,
-    marginBottom: 6,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,

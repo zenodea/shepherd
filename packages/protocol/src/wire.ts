@@ -94,6 +94,7 @@ export const HOST_METHODS = [
   "shepherd.file_diff",
   "shepherd.image",
   "shepherd.images",
+  "shepherd.subagents",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
@@ -161,8 +162,8 @@ export type ConversationEntry = { id: number; at?: string; images?: ImageRef[] }
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
   | { kind: "thinking"; text: string }
-  /** `diff`: for edits, exactly what this call changed. */
-  | { kind: "tool"; callId: string; name: string; summary: string; input?: string; diff?: FileDiff }
+  /** `diff`: for edits, exactly what this call changed. `subagent`: the id of the subagent this call started. */
+  | { kind: "tool"; callId: string; name: string; summary: string; input?: string; diff?: FileDiff; subagent?: string }
   | { kind: "tool_result"; callId: string; ok: boolean; output: string }
   /** Something about the session itself, e.g. "Conversation compacted". */
   | { kind: "notice"; text: string }
@@ -172,7 +173,7 @@ export type ConversationEntry = { id: number; at?: string; images?: ImageRef[] }
  * `after`: entries newer than this id (for polling). `before`: older ones (for
  * scrolling back). Neither: the latest `limit` entries.
  */
-export type ConversationParams = { paneId: string; after?: number; before?: number; limit?: number };
+export type ConversationParams = { paneId: string; subagent?: string; after?: number; before?: number; limit?: number };
 
 export type ConversationResult =
   | { available: false; reason: string }
@@ -198,9 +199,32 @@ export type ConversationResult =
        * agent records it (Codex).
        */
       context?: ContextUsage;
+      /** Subagents this agent started, for agents that record them. */
+      subagents?: Subagent[];
     };
 
 export type ContextUsage = { used: number; window: number | null };
+
+export type SubagentStatus = "running" | "done" | "stopped";
+
+export type Subagent = {
+  id: string;
+  /** Its task, e.g. "Survey transcript formats" or "branch_review". */
+  name: string;
+  /** Its type or nickname, e.g. "Explore" or "Hypatia". */
+  kind: string | null;
+  /** 1 when started by the agent itself, 2 when started by one of its subagents… */
+  depth: number;
+  status: SubagentStatus;
+  startedAt: string | null;
+  updatedAt: string | null;
+  toolCalls: number;
+  /** Its latest step, e.g. "Read src/app.ts". */
+  doing: string | null;
+};
+
+export type SubagentsParams = { paneId: string };
+export type SubagentsResult = { available: false; reason: string } | { available: true; subagents: Subagent[] };
 
 /** One line of a diff; line numbers are 1-based, in the old and new file. */
 export type DiffLine = { kind: "add" | "del" | "ctx"; text: string; old?: number; new?: number };
@@ -251,7 +275,7 @@ export type ChangesResult =
     };
 
 /** One image's data, base64, in chunks: ask again `from` where the last one ended until `total`. */
-export type ImageParams = { paneId: string; id: string; from?: number };
+export type ImageParams = { paneId: string; subagent?: string; id: string; from?: number };
 export type ImageResult = { available: false; reason: string } | { available: true; mime: string; total: number; from: number; data: string };
 
 /** Every image in a conversation, grouped under the message of yours they followed (null: before any), newest group first. */

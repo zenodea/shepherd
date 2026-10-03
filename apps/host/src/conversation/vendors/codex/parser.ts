@@ -3,8 +3,8 @@
 // once (as a response_item and as a completed item), so this reads the
 // completed items, plus function calls for the agent tools that only appear there.
 import type { ContextUsage, FileDiff } from "@shepherd/protocol";
-import { addedFile, parseUnifiedDiff } from "../changes/diff.ts";
-import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "./entries.ts";
+import { addedFile, parseUnifiedDiff } from "../../../changes/diff.ts";
+import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "../../entries.ts";
 
 function itemText(content: unknown): string {
   if (!Array.isArray(content)) return contentText(content);
@@ -14,13 +14,30 @@ function itemText(content: unknown): string {
     .join("\n");
 }
 
+const ENCRYPTED = /^gAAAAA[\w-]{20,}/;
+
 function functionArguments(raw: unknown): unknown {
-  if (typeof raw !== "string") return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
+  let args = raw;
+  if (typeof raw === "string") {
+    try {
+      args = JSON.parse(raw);
+    } catch {
+      return raw;
+    }
   }
+  if (!isRecord(args)) return args;
+  return Object.fromEntries(Object.entries(args).filter(([, v]) => !(typeof v === "string" && ENCRYPTED.test(v))));
+}
+
+const agentName = (path: unknown) => (path === "/root" ? "the main agent" : (str(path)?.split("/").pop() ?? "an agent"));
+
+/** A message between agents; what it says is encrypted, who it's from and to isn't. */
+function agentMessage(payload: Record<string, unknown>): string {
+  const header = contentText(Array.isArray(payload.content) ? payload.content.filter((c) => isRecord(c) && c.type === "input_text") : "");
+  const task = /Message Type: NEW_TASK/.test(header);
+  return task
+    ? `Task for ${agentName(payload.recipient)} from ${agentName(payload.author)}`
+    : `Message from ${agentName(payload.author)} to ${agentName(payload.recipient)}`;
 }
 
 export function codexParser(): Parser {
@@ -92,6 +109,7 @@ export function codexParser(): Parser {
 
     // Agent tools (spawn_agent, wait, …) only appear as function calls.
     if (record.type === "response_item") {
+      if (payload.type === "agent_message") return [{ kind: "notice", text: agentMessage(payload), ...stamp }];
       if (payload.type === "function_call") {
         return [toolCall(str(payload.call_id) ?? `codex-${++synthetic}`, str(payload.name) ?? "tool", functionArguments(payload.arguments), at)];
       }

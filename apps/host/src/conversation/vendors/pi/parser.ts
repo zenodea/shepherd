@@ -3,8 +3,8 @@
 // record holds a whole message.
 import type { ContextUsage } from "@shepherd/protocol";
 import type { FileDiff } from "@shepherd/protocol";
-import { addedFile, editsDiff } from "../changes/diff.ts";
-import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "./entries.ts";
+import { addedFile, editsDiff } from "../../../changes/diff.ts";
+import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "../../entries.ts";
 
 /** What pi's edit or write call changed, from its own arguments. */
 function editDiff(name: string, args: unknown): FileDiff | undefined {

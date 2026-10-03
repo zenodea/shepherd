@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ContextUsage, ConversationEntry, ConversationResult, QueuedMessage } from "@shepherd/protocol";
+import type { ContextUsage, ConversationEntry, ConversationResult, QueuedMessage, Subagent } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 
 const PAGE = 150;
@@ -9,7 +9,8 @@ const POLL_MS = 1000;
 const RETRY_MS = 10_000;
 
 type State = {
-  paneId: string | null;
+  /** The pane, and the subagent when it's one of the agent's subagents. */
+  scope: string | null;
   /** null until the host has answered once. */
   available: boolean | null;
   reason: string | null;
@@ -21,10 +22,11 @@ type State = {
   queued: QueuedMessage[];
   /** How full its context is, as of the last poll. */
   context: ContextUsage | null;
+  subagents: Subagent[];
 };
 
 const EMPTY: State = {
-  paneId: null,
+  scope: null,
   available: null,
   reason: null,
   agent: null,
@@ -33,6 +35,7 @@ const EMPTY: State = {
   first: 0,
   queued: [],
   context: null,
+  subagents: [],
 };
 
 function merge(older: ConversationEntry[], newer: ConversationEntry[]): ConversationEntry[] {
@@ -44,9 +47,10 @@ function merge(older: ConversationEntry[], newer: ConversationEntry[]): Conversa
  * An agent's conversation from its transcript on the host: the latest page,
  * then new entries as they're written, and older pages on request.
  */
-export function useConversation(client: HostConnection | null, paneId: string | null, online: boolean) {
+export function useConversation(client: HostConnection | null, paneId: string | null, online: boolean, subagent: string | null = null) {
+  const scope = paneId && (subagent ? `${paneId}/${subagent}` : paneId);
   const [state, setState] = useState<State>(EMPTY);
-  const current = state.paneId === paneId ? state : { ...EMPTY, paneId };
+  const current = state.scope === scope ? state : { ...EMPTY, scope };
   const stateRef = useRef(current);
   useEffect(() => {
     stateRef.current = current;
@@ -55,23 +59,24 @@ export function useConversation(client: HostConnection | null, paneId: string | 
 
   useEffect(() => {
     if (!client || !paneId || !online) return;
+    const target = subagent ? { paneId, subagent } : { paneId };
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
       const known = stateRef.current;
-      let fresh = known.paneId !== paneId || known.session === null;
+      let fresh = known.scope !== scope || known.session === null;
       let next = RETRY_MS;
       try {
         const latest = () =>
           client.call<ConversationResult>("shepherd.conversation", {
-            paneId,
+            ...target,
             limit: PAGE,
           });
         let result = fresh
           ? await latest()
           : await client.call<ConversationResult>("shepherd.conversation", {
-              paneId,
+              ...target,
               after: known.entries.at(-1)?.id ?? known.first - 1,
             });
         // The agent started a new session (e.g. /clear): start over from its latest page.
@@ -83,13 +88,13 @@ export function useConversation(client: HostConnection | null, paneId: string | 
         if (!result.available) {
           setState({
             ...EMPTY,
-            paneId,
+            scope,
             available: false,
             reason: result.reason,
           });
         } else if (fresh) {
           setState({
-            paneId,
+            scope,
             available: true,
             reason: null,
             agent: result.agent,
@@ -98,16 +103,18 @@ export function useConversation(client: HostConnection | null, paneId: string | 
             first: result.first,
             queued: result.queued ?? [],
             context: result.context ?? null,
+            subagents: result.subagents ?? [],
           });
           next = POLL_MS;
         } else {
           const queued = result.queued ?? [];
           const context = result.context ?? null;
+          const subagents = result.subagents ?? [];
           setState((prev) => {
-            if (prev.paneId !== paneId) return prev;
-            const same = JSON.stringify([prev.queued, prev.context]) === JSON.stringify([queued, context]);
+            if (prev.scope !== scope) return prev;
+            const same = JSON.stringify([prev.queued, prev.context, prev.subagents]) === JSON.stringify([queued, context, subagents]);
             if (!result.entries.length && same) return prev;
-            return { ...prev, entries: result.entries.length ? merge(prev.entries, result.entries) : prev.entries, queued, context };
+            return { ...prev, entries: result.entries.length ? merge(prev.entries, result.entries) : prev.entries, queued, context, subagents };
           });
           next = POLL_MS;
         }
@@ -122,7 +129,7 @@ export function useConversation(client: HostConnection | null, paneId: string | 
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [client, paneId, online]);
+  }, [client, paneId, subagent, scope, online]);
 
   const loadOlder = useCallback(async () => {
     const known = stateRef.current;
@@ -130,10 +137,10 @@ export function useConversation(client: HostConnection | null, paneId: string | 
     if (!client || !paneId || loadingOlder || oldest === undefined || oldest <= known.first) return;
     setLoadingOlder(true);
     try {
-      const result = await client.call<ConversationResult>("shepherd.conversation", { paneId, before: oldest, limit: PAGE });
+      const result = await client.call<ConversationResult>("shepherd.conversation", { paneId, ...(subagent ? { subagent } : {}), before: oldest, limit: PAGE });
       if (result.available && result.session === known.session) {
         setState((prev) =>
-          prev.paneId === paneId && prev.session === result.session ? { ...prev, entries: merge(result.entries, prev.entries) } : prev,
+          prev.scope === scope && prev.session === result.session ? { ...prev, entries: merge(result.entries, prev.entries) } : prev,
         );
       }
     } catch {
@@ -141,7 +148,7 @@ export function useConversation(client: HostConnection | null, paneId: string | 
     } finally {
       setLoadingOlder(false);
     }
-  }, [client, paneId, loadingOlder]);
+  }, [client, paneId, subagent, scope, loadingOlder]);
 
   const atStart = current.entries.length === 0 || current.entries[0]!.id <= current.first;
   return { ...current, loadOlder, loadingOlder, atStart };

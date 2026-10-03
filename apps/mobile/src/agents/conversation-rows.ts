@@ -21,7 +21,7 @@ export type Row =
 const GROUP_MIN_TOOLS = 3;
 
 const isActivity = (row: Row) =>
-  row.kind === "tool" || row.kind === "orphan_result" || (row.kind === "message" && row.entry.kind === "thinking");
+  (row.kind === "tool" && !row.call.subagent) || row.kind === "orphan_result" || (row.kind === "message" && row.entry.kind === "thinking");
 
 function group(rows: Row[]): Row {
   const counts = new Map<string, number>();

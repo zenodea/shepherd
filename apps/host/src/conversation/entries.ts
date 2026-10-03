@@ -58,7 +58,7 @@ export function contentText(content: unknown): string {
     .join("\n");
 }
 
-const SUMMARY_FIELDS = ["command", "cmd", "file_path", "path", "filePath", "pattern", "url", "query", "description", "prompt", "task", "title", "skill", "message", "name", "agent_id", "id"];
+const SUMMARY_FIELDS = ["command", "cmd", "file_path", "path", "filePath", "pattern", "url", "query", "description", "prompt", "task", "task_name", "title", "skill", "message", "name", "agent_id", "id"];
 
 /** One line saying what a tool call does, from its input. */
 export function toolSummary(input: unknown): string {
