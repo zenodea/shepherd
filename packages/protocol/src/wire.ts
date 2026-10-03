@@ -85,7 +85,14 @@ export const FORWARDED_METHODS = [
 export type ForwardedMethod = (typeof FORWARDED_METHODS)[number];
 
 /** Methods the host implements itself, with validated, narrow parameters. */
-export const HOST_METHODS = ["shepherd.projects", "shepherd.start_agent", "shepherd.activity", "shepherd.conversation"] as const;
+export const HOST_METHODS = [
+  "shepherd.projects",
+  "shepherd.start_agent",
+  "shepherd.activity",
+  "shepherd.conversation",
+  "shepherd.changes",
+  "shepherd.file_diff",
+] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
 
@@ -149,7 +156,8 @@ export type ConversationEntry = { id: number; at?: string } & (
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
   | { kind: "thinking"; text: string }
-  | { kind: "tool"; callId: string; name: string; summary: string; input?: string }
+  /** `diff`: for edits, exactly what this call changed. */
+  | { kind: "tool"; callId: string; name: string; summary: string; input?: string; diff?: FileDiff }
   | { kind: "tool_result"; callId: string; ok: boolean; output: string }
   /** Something about the session itself, e.g. "Conversation compacted". */
   | { kind: "notice"; text: string }
@@ -188,6 +196,57 @@ export type ConversationResult =
     };
 
 export type ContextUsage = { used: number; window: number | null };
+
+/** One line of a diff; line numbers are 1-based, in the old and new file. */
+export type DiffLine = { kind: "add" | "del" | "ctx"; text: string; old?: number; new?: number };
+export type DiffHunk = { oldStart: number; newStart: number; lines: DiffLine[] };
+export type FileDiff = {
+  path: string;
+  hunks: DiffHunk[];
+  additions: number;
+  deletions: number;
+  /** Cut short: too big to send whole. */
+  truncated?: boolean;
+  binary?: boolean;
+};
+
+/** What "changes" means: not yet committed, or everything since the branch left the default branch. */
+export type ChangesMode = "uncommitted" | "branch";
+
+export type ChangedFile = {
+  /** Relative to the repository. */
+  path: string;
+  oldPath?: string;
+  status: "added" | "modified" | "deleted" | "renamed";
+  additions: number;
+  deletions: number;
+  binary: boolean;
+  /** Lock files and other generated output: shown, but folded away. */
+  generated: boolean;
+  /** How to refer to it in a message to the agent: relative to its folder. */
+  mention: string;
+};
+
+export type ChangesParams = { paneId: string; mode?: ChangesMode };
+export type ChangesResult =
+  | { available: false; reason: string }
+  | {
+      available: true;
+      mode: ChangesMode;
+      /** Current branch, and the branch it's compared with in "branch" mode. */
+      branch: string | null;
+      base: string | null;
+      /** Whether "branch" mode makes sense here (a branch other than the default one). */
+      canCompareBranch: boolean;
+      /** The first few hundred; `omitted` says how many more there are. Totals count them all. */
+      files: ChangedFile[];
+      omitted?: number;
+      additions: number;
+      deletions: number;
+    };
+
+export type FileDiffParams = { paneId: string; path: string; mode: ChangesMode };
+export type FileDiffResult = { available: false; reason: string } | { available: true; diff: FileDiff };
 
 export type QueuedMessage = { text: string; at?: string };
 

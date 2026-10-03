@@ -3,6 +3,8 @@ import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo,
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View, type ViewToken } from "react-native";
 import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import { PressableScale } from "../ui/Pressable";
+import { Counts } from "./Counts";
+import { DiffView } from "./DiffView";
 import { colors, fonts, space, statusColors, themed } from "../ui/theme";
 import { conversationRows, countUserMessages, groupActivity, markdownBlocks, queuedRows, userMessageIndex, type Row } from "./conversation-rows";
 
@@ -96,11 +98,22 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
               <Text style={styles.toolSummary} numberOfLines={1}>
                 {call.summary}
               </Text>
+              {call.diff ? <Counts additions={call.diff.additions} deletions={call.diff.deletions} /> : null}
             </View>
           }
         >
-          {call.input ? <Output text={call.input} /> : null}
-          {result ? <Output text={result.output} /> : <Text style={styles.muted}>Running…</Text>}
+          {call.diff ? (
+            // Exactly what this edit changed; its output only matters if it failed.
+            <>
+              <DiffView diff={call.diff} compact />
+              {result && !result.ok ? <Output text={result.output} /> : null}
+            </>
+          ) : (
+            <>
+              {call.input ? <Output text={call.input} /> : null}
+              {result ? <Output text={result.output} /> : <Text style={styles.muted}>Running…</Text>}
+            </>
+          )}
         </Expandable>
       </View>
     );

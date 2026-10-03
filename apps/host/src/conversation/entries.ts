@@ -1,6 +1,6 @@
 // Turning transcript records into conversation entries: the pieces every
 // harness's parser shares.
-import type { ContextUsage, ConversationEntry, QueuedMessage } from "@shepherd/protocol";
+import type { ContextUsage, ConversationEntry, FileDiff, QueuedMessage } from "@shepherd/protocol";
 
 /** An entry before the reader numbers it. */
 export type Draft = ConversationEntry extends infer E ? (E extends ConversationEntry ? Omit<E, "id"> : never) : never;
@@ -90,9 +90,12 @@ export function toolInput(input: unknown): string | undefined {
   return clip(text, INPUT_LIMIT);
 }
 
-/** A tool call from structured input, with a readable summary and the full input to expand. */
-export function toolCall(callId: string, name: string, input: unknown, at?: string): Draft {
+/**
+ * A tool call from structured input, with a readable summary and the full
+ * input to expand, or for an edit, the diff of what it changed instead.
+ */
+export function toolCall(callId: string, name: string, input: unknown, at?: string, diff?: FileDiff): Draft {
   const summary = toolSummary(input);
-  const detail = toolInput(input);
-  return { kind: "tool", callId, name, summary, ...(detail ? { input: detail } : {}), ...(at ? { at } : {}) };
+  const detail = diff ? undefined : toolInput(input);
+  return { kind: "tool", callId, name, summary, ...(detail ? { input: detail } : {}), ...(diff ? { diff } : {}), ...(at ? { at } : {}) };
 }

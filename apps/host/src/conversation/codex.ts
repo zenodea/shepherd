@@ -2,7 +2,8 @@
 // Each line is {timestamp, type, payload}. The same message shows up more than
 // once (as a response_item and as a completed item), so this reads the
 // completed items, plus function calls for the agent tools that only appear there.
-import type { ContextUsage } from "@shepherd/protocol";
+import type { ContextUsage, FileDiff } from "@shepherd/protocol";
+import { addedFile, parseUnifiedDiff } from "../changes/diff.ts";
 import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "./entries.ts";
 
 function itemText(content: unknown): string {
@@ -65,19 +66,22 @@ export function codexParser(): Parser {
           ];
         }
         case "FileChange": {
+          // One line per file, each with exactly what changed in it.
           const changes = isRecord(item.changes) ? item.changes : {};
-          const paths = Object.keys(changes);
-          const diff = paths
-            .map((path) => {
-              const change = changes[path];
-              if (!isRecord(change)) return path;
-              return `${path}\n${str(change.unified_diff) ?? str(change.content) ?? ""}`;
-            })
-            .join("\n\n");
-          return [
-            toolCall(id, "edit", { path: paths.join(", ") }, at),
-            { kind: "tool_result", callId: id, ok: item.status !== "failed", output: clipOutput(diff), ...stamp },
-          ];
+          const ok = item.status !== "failed";
+          return Object.entries(changes).flatMap(([path, change], index): Draft[] => {
+            const callId = `${id}:${index}`;
+            let diff: FileDiff = { path, hunks: [], additions: 0, deletions: 0 };
+            if (isRecord(change)) {
+              if (typeof change.unified_diff === "string") diff = parseUnifiedDiff(change.unified_diff, path)[0] ?? diff;
+              else if (typeof change.content === "string") diff = change.type === "delete" ? { ...diff, deletions: change.content.split("\n").length } : addedFile(path, change.content);
+            }
+            const verb = isRecord(change) && change.type === "add" ? "add" : isRecord(change) && change.type === "delete" ? "delete" : "edit";
+            return [
+              toolCall(callId, verb, { path }, at, { ...diff, path }),
+              { kind: "tool_result", callId, ok, output: "", ...stamp },
+            ];
+          });
         }
         case "ContextCompaction":
           return [{ kind: "notice", text: "Conversation compacted", ...stamp }];

@@ -2,7 +2,21 @@
 // One record per line. Assistant messages are split into one record per
 // content block; tool results come back as user records.
 import type { ContextUsage, QueuedMessage } from "@shepherd/protocol";
+import type { FileDiff } from "@shepherd/protocol";
+import { addedFile, editsDiff, lineDiff } from "../changes/diff.ts";
 import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "./entries.ts";
+
+/** What an Edit, MultiEdit or Write call changed, from its own input. */
+function editDiff(name: string, input: unknown): FileDiff | undefined {
+  if (!isRecord(input) || typeof input.file_path !== "string") return undefined;
+  const path = input.file_path;
+  if (name === "Edit" && typeof input.old_string === "string" && typeof input.new_string === "string") return lineDiff(path, input.old_string, input.new_string);
+  if (name === "MultiEdit" && Array.isArray(input.edits)) {
+    return editsDiff(path, input.edits.filter(isRecord).map((e) => ({ before: str(e.old_string) ?? "", after: str(e.new_string) ?? "" })));
+  }
+  if (name === "Write" && typeof input.content === "string") return addedFile(path, input.content);
+  return undefined;
+}
 
 /** Housekeeping Claude Code writes into user messages, not something the person typed. */
 const HIDDEN_USER_TEXT = /^\s*<(local-command-stdout|local-command-stderr|local-command-caveat|task-notification|system-reminder)>/;
@@ -101,7 +115,8 @@ export function claudeParser(): Parser {
         } else if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim()) {
           out.push({ kind: "thinking", text: clip(block.thinking.trim()), ...stamp });
         } else if (block.type === "tool_use") {
-          out.push(toolCall(str(block.id) ?? "", str(block.name) ?? "tool", block.input, at));
+          const name = str(block.name) ?? "tool";
+          out.push(toolCall(str(block.id) ?? "", name, block.input, at, editDiff(name, block.input)));
         }
       }
       return out;

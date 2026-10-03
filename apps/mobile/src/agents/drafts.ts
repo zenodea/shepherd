@@ -47,3 +47,26 @@ export function saveDraft(key: string, text: string): void {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => void savePref(PREF, JSON.stringify(Object.fromEntries(drafts))), 400);
 }
+
+// Changes made from elsewhere (e.g. mentioning a file from its diff), so an
+// open composer picks them up.
+const revisions = new Map<string, number>();
+
+/** Add to an agent's draft from outside its composer. */
+export function appendToDraft(key: string, text: string): void {
+  const current = getDraft(key);
+  saveDraft(key, current && !/\s$/.test(current) ? `${current} ${text}` : `${current}${text}`);
+  revisions.set(key, (revisions.get(key) ?? 0) + 1);
+  listeners.forEach((l) => l());
+}
+
+/** Increases when the draft is changed from outside its composer. */
+export function useDraftRevision(key: string): number {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    () => revisions.get(key) ?? 0,
+  );
+}

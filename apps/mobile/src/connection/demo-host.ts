@@ -6,7 +6,10 @@ import type {
   AgentStatus,
   CallMethod,
   ConversationEntry,
+  ChangesResult,
   ConversationResult,
+  FileDiff,
+  FileDiffResult,
   ProjectsResult,
   QueuedMessage,
   StatusChange,
@@ -49,6 +52,42 @@ const AGENTS: AgentInfo[] = [
   agent("w4:p1", "gemini", "idle", "Ready", "/Users/demo/code/docs"),
 ];
 
+/** What the agent's edit to the login test changed. */
+const LOGIN_EDIT: FileDiff = {
+  path: "src/auth/login.test.ts",
+  additions: 2,
+  deletions: 1,
+  hunks: [
+    {
+      oldStart: 20,
+      newStart: 20,
+      lines: [
+        { kind: "ctx", text: "  it(\"accepts a valid password\", async () => {", old: 20, new: 20 },
+        { kind: "ctx", text: "    await form.submit();", old: 21, new: 21 },
+        { kind: "del", text: "    expect(session.state).toBe(\"signed-in\");", old: 22 },
+        { kind: "add", text: "    await session.flushed;", new: 22 },
+        { kind: "add", text: "    expect(session.state).toBe(\"signed-in\");", new: 23 },
+        { kind: "ctx", text: "  });", old: 23, new: 24 },
+      ],
+    },
+  ],
+};
+
+const CHANGES: ChangesResult = {
+  available: true,
+  mode: "uncommitted",
+  branch: "fix-login-flake",
+  base: "main",
+  canCompareBranch: true,
+  additions: 31,
+  deletions: 6,
+  files: [
+    { path: "src/auth/login.test.ts", status: "modified", additions: 2, deletions: 1, binary: false, generated: false, mention: "src/auth/login.test.ts" },
+    { path: "src/auth/signup.test.ts", status: "modified", additions: 4, deletions: 2, binary: false, generated: false, mention: "src/auth/signup.test.ts" },
+    { path: "src/auth/session.ts", status: "modified", additions: 25, deletions: 3, binary: false, generated: false, mention: "src/auth/session.ts" },
+  ],
+};
+
 /** The fix-the-flaky-test conversation, as the host would read it from Claude Code's transcript. */
 const CONVERSATION: ConversationEntry[] = [
   { id: 0, kind: "user", text: "The login test fails about one run in five on CI. Can you find out why and fix it?" },
@@ -62,7 +101,7 @@ const CONVERSATION: ConversationEntry[] = [
     kind: "assistant",
     text: "Found it. The test checks the session right after `submit()`, but signing in finishes on the next tick, so it passes or fails depending on timing:\n\n```ts\nawait form.submit();\nexpect(session.state).toBe(\"signed-in\");\n```\n\nI'll wait for the state change instead of assuming it already happened.",
   },
-  { id: 7, kind: "tool", callId: "t3", name: "Edit", summary: "src/auth/login.test.ts" },
+  { id: 7, kind: "tool", callId: "t3", name: "Edit", summary: "src/auth/login.test.ts", diff: LOGIN_EDIT },
   { id: 8, kind: "tool_result", callId: "t3", ok: true, output: "Updated with 2 additions and 1 removal" },
   { id: 9, kind: "user", text: "Nice. Is the signup test flaky for the same reason?" },
   { id: 10, kind: "tool", callId: "t4", name: "Grep", summary: "submit() src/auth" },
@@ -252,6 +291,10 @@ export class DemoHost implements HostConnection {
           context: { used: 48_200, window: null },
         } satisfies ConversationResult as T;
       }
+      case "shepherd.changes":
+        return (params.paneId === "w1:p1" ? CHANGES : { available: false, reason: "No changes in the demo for this agent." }) as T;
+      case "shepherd.file_diff":
+        return { available: true, diff: { ...LOGIN_EDIT, path: String(params.path) } } satisfies FileDiffResult as T;
       case "shepherd.activity":
         return { entries: (params as { before?: number }).before ? [] : demoActivity() } as T;
       case "shepherd.start_agent":

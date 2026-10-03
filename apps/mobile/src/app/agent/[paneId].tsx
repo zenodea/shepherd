@@ -20,7 +20,9 @@ import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
 import { Conversation, type ConversationHandle } from "../../agents/Conversation";
 import { useConversation } from "../../agents/use-conversation";
-import { getDraft, saveDraft, useDraftsReady } from "../../agents/drafts";
+import { getDraft, saveDraft, useDraftRevision, useDraftsReady } from "../../agents/drafts";
+import { Counts } from "../../agents/Counts";
+import { useChanges } from "../../agents/use-changes";
 import { contextLabel } from "../../agents/conversation-rows";
 import { parseAnsi, toStyledLines } from "../../agents/ansi";
 import { PromptChips } from "../../agents/PromptCard";
@@ -134,9 +136,10 @@ export default function TerminalScreen() {
   // Unsent text is kept per agent: switching agents or leaving keeps it.
   const draftKey = `${settings?.id ?? "none"}:${paneId}`;
   const draftsReady = useDraftsReady();
-  const [draftOf, setDraftOf] = useState<string | null>(null);
-  if (draftsReady && draftOf !== draftKey) {
-    setDraftOf(draftKey);
+  const draftRevision = useDraftRevision(draftKey);
+  const [draftOf, setDraftOf] = useState<{ key: string; revision: number } | null>(null);
+  if (draftsReady && (draftOf?.key !== draftKey || draftOf.revision !== draftRevision)) {
+    setDraftOf({ key: draftKey, revision: draftRevision });
     setDraft(getDraft(draftKey));
   }
   const changeDraft = (text: string) => {
@@ -405,6 +408,8 @@ export default function TerminalScreen() {
   const title = agent ? (agentTitle(agent) ?? agentName(agent)) : (pane?.terminal_title_stripped ?? pane?.title ?? "Terminal");
   const canSend = draft.trim().length > 0 && !sending;
   const usage = isAgent ? contextLabel(conversation.context) : null;
+  const { changes } = useChanges(client, isAgent ? paneId : null, online, agentStatus);
+  const changed = changes?.available && changes.files.length > 0 ? changes : null;
 
   return (
     <Screen>
@@ -447,6 +452,21 @@ export default function TerminalScreen() {
           <Ellipsis size={19} color={colors.muted} />
         </IconButton>
       </View>
+
+      {changed ? (
+        <PressableScale
+          onPress={() => router.push({ pathname: "/changes/[paneId]", params: { paneId: paneId! } })}
+          style={styles.changes}
+          accessibilityRole="button"
+          accessibilityLabel={`${changed.files.length + (changed.omitted ?? 0)} changed files`}
+        >
+          <Text style={styles.changesText}>
+            {`${changed.files.length + (changed.omitted ?? 0)} file${changed.files.length + (changed.omitted ?? 0) === 1 ? "" : "s"}  ·  `}
+          </Text>
+          <Counts additions={changed.additions} deletions={changed.deletions} size={12.5} />
+          {changed.mode === "branch" ? <Text style={styles.changesText}>{`  ·  on ${changed.branch}`}</Text> : null}
+        </PressableScale>
+      ) : null}
 
       {!online ? <Banner>{state.status === "connecting" ? "Connecting…" : "Can't reach your computer. Retrying…"}</Banner> : null}
 
@@ -669,6 +689,18 @@ const styles = themed(() => StyleSheet.create({
   },
   input: { flex: 1, color: colors.text, fontSize: 15, maxHeight: 120, paddingTop: 8, paddingBottom: 8, textAlignVertical: "top" },
   send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  changes: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginLeft: 56,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: colors.raised,
+  },
+  changesText: { fontSize: 12.5, color: colors.muted },
   stop: {
     width: 34,
     height: 34,

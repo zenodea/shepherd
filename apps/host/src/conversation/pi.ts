@@ -2,7 +2,19 @@
 // A header line, then {type, id, parentId, timestamp} entries; each message
 // record holds a whole message.
 import type { ContextUsage } from "@shepherd/protocol";
+import type { FileDiff } from "@shepherd/protocol";
+import { addedFile, editsDiff } from "../changes/diff.ts";
 import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "./entries.ts";
+
+/** What pi's edit or write call changed, from its own arguments. */
+function editDiff(name: string, args: unknown): FileDiff | undefined {
+  if (!isRecord(args) || typeof args.path !== "string") return undefined;
+  if (name === "edit" && Array.isArray(args.edits)) {
+    return editsDiff(args.path, args.edits.filter(isRecord).map((e) => ({ before: str(e.oldText) ?? "", after: str(e.newText) ?? "" })));
+  }
+  if (name === "write" && typeof args.content === "string") return addedFile(args.path, args.content);
+  return undefined;
+}
 
 export function piSessionDir(cwd: string): string {
   return `--${cwd.replace(/^\//, "").replace(/\//g, "-")}--`;
@@ -35,7 +47,10 @@ export function piParser(): Parser {
         if (!isRecord(block)) continue;
         if (block.type === "text" && typeof block.text === "string" && block.text.trim()) out.push({ kind: "assistant", text: clip(block.text.trim()), ...stamp });
         else if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim()) out.push({ kind: "thinking", text: clip(block.thinking.trim()), ...stamp });
-        else if (block.type === "toolCall") out.push(toolCall(str(block.id) ?? "", str(block.name) ?? "tool", block.arguments, at));
+        else if (block.type === "toolCall") {
+          const name = str(block.name) ?? "tool";
+          out.push(toolCall(str(block.id) ?? "", name, block.arguments, at, editDiff(name, block.arguments)));
+        }
       }
       return out;
     }

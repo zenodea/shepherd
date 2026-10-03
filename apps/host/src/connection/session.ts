@@ -13,6 +13,7 @@ import type {
 } from "@shepherd/protocol";
 import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, isPaneId, parseClientMessage } from "@shepherd/protocol";
 import { conversationParams, type Conversations } from "../conversation/conversations.ts";
+import { changes, changesParams, fileDiff, fileDiffParams } from "../changes/git-changes.ts";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
@@ -218,6 +219,23 @@ export class AppSession {
     if (method === "agent.read" || method === "pane.read") return this.deps.herdr.request(method, params, { timeoutMs: READ_TIMEOUT_MS });
     if (!method.startsWith("shepherd.")) return this.deps.herdr.request(method, params);
     if (method === "shepherd.activity") return Promise.resolve(this.deps.activity?.page(params as ActivityParams) ?? { entries: [] });
+    if (method === "shepherd.changes" || method === "shepherd.file_diff") {
+      const folder = (paneId: string) => {
+        const agent = this.deps.tracker.get(paneId);
+        return agent?.cwd || agent?.foreground_cwd || null;
+      };
+      const noFolder = { available: false, reason: "No folder known for this agent." };
+      if (method === "shepherd.file_diff") {
+        const parsed = fileDiffParams(params, isPaneId);
+        if (!parsed) return Promise.reject(new LaunchError("invalid_params", `${method}: bad parameters`));
+        const cwd = folder(parsed.paneId);
+        return cwd ? fileDiff(cwd, parsed.path, parsed.mode) : Promise.resolve(noFolder);
+      }
+      const parsed = changesParams(params, isPaneId);
+      if (!parsed) return Promise.reject(new LaunchError("invalid_params", `${method}: bad parameters`));
+      const cwd = folder(parsed.paneId);
+      return cwd ? changes(cwd, parsed.mode) : Promise.resolve(noFolder);
+    }
     if (method === "shepherd.conversation") {
       const parsed = conversationParams(params, isPaneId);
       if (!parsed) return Promise.reject(new LaunchError("invalid_params", "shepherd.conversation needs a paneId and whole-number after, before and limit"));
