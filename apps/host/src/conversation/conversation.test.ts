@@ -257,3 +257,50 @@ describe("context usage", () => {
     expect(pi.context!()).toEqual({ used: 401_002, window: null });
   });
 });
+
+describe("images", () => {
+  it("finds images in each agent's records", async () => {
+    const { imagesIn } = await import("./images.ts");
+    expect(imagesIn({ content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "AAA" } }] })).toEqual([{ mime: "image/png", data: "AAA" }]);
+    expect(imagesIn({ content: [{ type: "image", data: "BBB", mimeType: "image/jpeg" }] })).toEqual([{ mime: "image/jpeg", data: "BBB" }]);
+    expect(imagesIn({ content: [{ type: "input_image", image_url: "data:image/webp;base64,CCC" }] })).toEqual([{ mime: "image/webp", data: "CCC" }]);
+  });
+
+  it("references images by where they are, and serves them in chunks", () => {
+    const r: Roots = { claude: join(tempDir(), "claude"), codex: join(tempDir(), "codex", "sessions"), pi: join(tempDir(), "pi") };
+    const dir = join(r.claude, claudeProjectDir("/work/app"));
+    mkdirSync(dir, { recursive: true });
+    const big = "Q".repeat(600_000);
+    const first = JSON.stringify({ type: "user", message: { content: "look at this" } });
+    const second = JSON.stringify({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: big } }] }] },
+    });
+    writeFileSync(join(dir, "s.jsonl"), `${first}\n${second}\n`);
+    const conversations = new Conversations(r);
+    const agent = fakeAgent("w1:p1", "working", { agent: "claude", cwd: "/work/app" });
+    const result = conversations.get(agent, { paneId: "w1:p1" });
+    if (!result.available) throw new Error("unavailable");
+    const withImage = result.entries.find((e) => e.images?.length)!;
+    expect(withImage).toMatchObject({ kind: "tool_result", images: [{ id: `${first.length + 1}:0`, mime: "image/png", bytes: 450_000 }] });
+
+    let data = "";
+    for (let from = 0; ; ) {
+      const chunk = conversations.image(agent, { paneId: "w1:p1", id: withImage.images![0]!.id, from });
+      if (!chunk.available) throw new Error(chunk.reason);
+      data += chunk.data;
+      from += chunk.data.length;
+      if (from >= chunk.total) break;
+    }
+    expect(data).toBe(big);
+    expect(conversations.image(agent, { paneId: "w1:p1", id: "0:5" })).toMatchObject({ available: false });
+  });
+
+  it("validates image requests", async () => {
+    const { imageParams } = await import("./conversations.ts");
+    const isPane = (v: unknown): v is string => v === "w1:p1";
+    expect(imageParams({ paneId: "w1:p1", id: "123:0", from: 10 }, isPane)).toEqual({ paneId: "w1:p1", id: "123:0", from: 10 });
+    expect(imageParams({ paneId: "w1:p1", id: "../etc" }, isPane)).toBeNull();
+    expect(imageParams({ paneId: "w1:p1", id: "1:0", from: -1 }, isPane)).toBeNull();
+  });
+});

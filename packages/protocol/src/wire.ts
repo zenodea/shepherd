@@ -92,6 +92,7 @@ export const HOST_METHODS = [
   "shepherd.conversation",
   "shepherd.changes",
   "shepherd.file_diff",
+  "shepherd.image",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
@@ -152,7 +153,10 @@ export type ActivityResult = { entries: ActivityEntry[] };
  * harness (Claude Code, Codex, pi…) writes, rather than from its screen.
  * Ids increase through a session; a tool call's result is its own entry.
  */
-export type ConversationEntry = { id: number; at?: string } & (
+/** An image in a conversation (one the agent read, or you sent). Its data is fetched separately, on demand. */
+export type ImageRef = { id: string; mime: string; bytes: number };
+
+export type ConversationEntry = { id: number; at?: string; images?: ImageRef[] } & (
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
   | { kind: "thinking"; text: string }
@@ -244,6 +248,10 @@ export type ChangesResult =
       additions: number;
       deletions: number;
     };
+
+/** One image's data, base64, in chunks: ask again `from` where the last one ended until `total`. */
+export type ImageParams = { paneId: string; id: string; from?: number };
+export type ImageResult = { available: false; reason: string } | { available: true; mime: string; total: number; from: number; data: string };
 
 export type FileDiffParams = { paneId: string; path: string; mode: ChangesMode };
 export type FileDiffResult = { available: false; reason: string } | { available: true; diff: FileDiff };

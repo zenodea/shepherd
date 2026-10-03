@@ -4,9 +4,10 @@ import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View, type V
 import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import { PressableScale } from "../ui/Pressable";
 import { Counts } from "./Counts";
+import { ConversationImages } from "./ConversationImage";
 import { DiffView } from "./DiffView";
 import { colors, fonts, space, statusColors, themed } from "../ui/theme";
-import { conversationRows, countUserMessages, groupActivity, markdownBlocks, queuedRows, userMessageIndex, type Row } from "./conversation-rows";
+import { conversationRows, countUserMessages, groupActivity, markdownBlocks, queuedRows, rowImages, userMessageIndex, type Row } from "./conversation-rows";
 
 /** Inline `code`, **bold** and # headings in a line of prose. */
 function Inline({ text }: { text: string }) {
@@ -115,10 +116,12 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
             </>
           )}
         </Expandable>
+        {result?.images?.length ? <ConversationImages images={result.images} /> : null}
       </View>
     );
   }
   if (row.kind === "group") {
+    const groupImages = rowImages(row);
     return (
       <View style={styles.tool}>
         <Expandable
@@ -136,6 +139,7 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
             <RowView key={inner.key} row={inner} />
           ))}
         </Expandable>
+        {groupImages.length ? <ConversationImages images={groupImages} /> : null}
       </View>
     );
   }
@@ -160,21 +164,28 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
         <Expandable title={<Text style={styles.toolSummary}>Tool output</Text>}>
           <Output text={row.result.output} />
         </Expandable>
+        {row.result.images?.length ? <ConversationImages images={row.result.images} /> : null}
       </View>
     );
   }
   const { entry } = row;
   switch (entry.kind) {
-    case "user":
+    case "user": {
+      // With the images themselves below, drop the "[image]" stand-ins from the text.
+      const text = entry.images?.length ? entry.text.replace(/\[image\]\s*/g, "").trim() : entry.text;
       return (
         <View style={styles.userRow}>
-          <View style={styles.userBubble}>
-            <Text style={styles.userText} selectable>
-              {entry.text}
-            </Text>
-          </View>
+          {text ? (
+            <View style={styles.userBubble}>
+              <Text style={styles.userText} selectable>
+                {text}
+              </Text>
+            </View>
+          ) : null}
+          {entry.images?.length ? <ConversationImages images={entry.images} align="end" /> : null}
         </View>
       );
+    }
     case "assistant":
       return (
         <View style={styles.assistant}>
@@ -234,24 +245,40 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
     if (indexes.length) visible.current = { newest: Math.min(...indexes), oldest: Math.max(...indexes) };
   }, []);
 
+  // Where the arrows last went: pressing again continues from there, even before
+  // Android has reported what's on screen after the jump. Scrolling by hand resets it.
+  const lastJump = useRef<number | null>(null);
+  const retries = useRef(0);
   const scrollTo = useCallback((index: number) => {
+    lastJump.current = index;
+    retries.current = 0;
     // viewPosition 1 is the top of the screen in an inverted list: the message, then what followed it.
     list.current?.scrollToIndex({ index, animated: true, viewPosition: 1 });
   }, []);
+  /** What the arrows count from: what's on screen, or where they last went. */
+  const position = () => {
+    const seen = visible.current;
+    const jumped = lastJump.current;
+    return jumped === null ? seen : { newest: Math.min(seen.newest, jumped), oldest: Math.max(seen.oldest, jumped) };
+  };
   // Going back to a message that isn't loaded yet: load older pages until it is.
   const seekingOlder = useRef(false);
   useEffect(() => {
     if (!seekingOlder.current || loadingOlder) return;
-    const index = userMessageIndex(rows, visible.current, "older");
+    const index = userMessageIndex(rows, position(), "older");
     if (index !== null || atStart) seekingOlder.current = false;
     if (index !== null) scrollTo(index);
     else if (!atStart) onLoadOlder();
   }, [loadingOlder, rows, atStart, onLoadOlder, scrollTo]);
 
   const jump = (direction: "older" | "newer") => {
-    const index = userMessageIndex(rows, visible.current, direction);
+    const from = position();
+    const index = userMessageIndex(rows, direction === "newer" && lastJump.current !== null ? { newest: lastJump.current, oldest: lastJump.current } : from, direction);
     if (index !== null) scrollTo(index);
-    else if (direction === "newer") list.current?.scrollToOffset({ offset: 0, animated: true });
+    else if (direction === "newer") {
+      lastJump.current = null;
+      list.current?.scrollToOffset({ offset: 0, animated: true });
+    }
     else if (!atStart) {
       seekingOlder.current = true;
       onLoadOlder();
@@ -287,10 +314,15 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={VIEWABILITY}
         onScrollToIndexFailed={(info) => {
-          // Rows have different heights: get close, then try again once they've been measured.
+          // The row isn't drawn yet: get close (rows differ in height), let the list draw
+          // around there, and try again, a few times if need be.
+          if (retries.current++ > 12) return;
           list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
-          setTimeout(() => list.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 1 }), 80);
+          setTimeout(() => list.current?.scrollToIndex({ index: info.index, animated: false, viewPosition: 1 }), 120);
         }}
+        onScrollBeginDrag={() => (lastJump.current = null)}
+        windowSize={31}
+        maxToRenderPerBatch={30}
         scrollEventThrottle={100}
         ListHeaderComponent={
           // The newest end of the list: keep it clear of the jump arrows.

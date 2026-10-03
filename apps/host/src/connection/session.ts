@@ -12,7 +12,7 @@ import type {
   TerminalRender,
 } from "@shepherd/protocol";
 import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, isPaneId, parseClientMessage } from "@shepherd/protocol";
-import { conversationParams, type Conversations } from "../conversation/conversations.ts";
+import { conversationParams, imageParams, type Conversations } from "../conversation/conversations.ts";
 import { changes, changesParams, fileDiff, fileDiffParams } from "../changes/git-changes.ts";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
@@ -235,6 +235,12 @@ export class AppSession {
       if (!parsed) return Promise.reject(new LaunchError("invalid_params", `${method}: bad parameters`));
       const cwd = folder(parsed.paneId);
       return cwd ? changes(cwd, parsed.mode) : Promise.resolve(noFolder);
+    }
+    if (method === "shepherd.image") {
+      const parsed = imageParams(params, isPaneId);
+      if (!parsed) return Promise.reject(new LaunchError("invalid_params", "shepherd.image needs a paneId and an image id"));
+      if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
+      return Promise.resolve(this.deps.conversations.image(this.deps.tracker.get(parsed.paneId) ?? null, parsed));
     }
     if (method === "shepherd.conversation") {
       const parsed = conversationParams(params, isPaneId);

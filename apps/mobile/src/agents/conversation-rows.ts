@@ -1,4 +1,4 @@
-import type { ContextUsage, ConversationEntry, QueuedMessage } from "@shepherd/protocol";
+import type { ContextUsage, ConversationEntry, ImageRef, QueuedMessage } from "@shepherd/protocol";
 
 type Tool = Extract<ConversationEntry, { kind: "tool" }>;
 type ToolResult = Extract<ConversationEntry, { kind: "tool_result" }>;
@@ -59,6 +59,14 @@ export function groupActivity(rows: Row[]): Row[] {
   }
   flush(true);
   return out;
+}
+
+/** The images a tool row's result (or a group's results) brought back, to show without unfolding it. */
+export function rowImages(row: Row): ImageRef[] {
+  if (row.kind === "tool") return row.result?.images ?? [];
+  if (row.kind === "orphan_result") return row.result.images ?? [];
+  if (row.kind === "group") return row.rows.flatMap(rowImages);
+  return [];
 }
 
 /** Queued messages as rows, newest first like the rest of the (inverted) list. */

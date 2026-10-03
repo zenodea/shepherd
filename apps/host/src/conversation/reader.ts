@@ -4,6 +4,11 @@
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 import type { ContextUsage, ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import type { Draft, Parser } from "./entries.ts";
+import { imageRefs, imagesIn } from "./images.ts";
+
+// Cheap checks before looking for images in a record.
+const IMAGE_MARK = Buffer.from('"image"');
+const DATA_IMAGE_MARK = Buffer.from("data:image/");
 
 /** How much of a file to read when first opening it, or after a big jump. */
 export const TAIL_BYTES = 8 * 1024 * 1024;
@@ -61,9 +66,11 @@ export class TranscriptReader {
           data = data.subarray(nl + 1);
           skipPartialLine = false;
         }
+        // Where `data` starts in the file, so each record knows its own offset.
+        const base = this.offset - data.length;
         let start = 0;
         for (let nl = data.indexOf(NEWLINE); nl !== -1; nl = data.indexOf(NEWLINE, start)) {
-          this.line(data.subarray(start, nl));
+          this.line(data.subarray(start, nl), base + start);
           start = nl + 1;
         }
         // Keep an unfinished last line for next time.
@@ -93,7 +100,7 @@ export class TranscriptReader {
     return { entries, first: this.entries[0]?.id ?? this.nextId, last: this.nextId - 1 };
   }
 
-  private line(bytes: Buffer): void {
+  private line(bytes: Buffer, offset: number): void {
     if (bytes.length === 0) return;
     let record: unknown;
     try {
@@ -102,7 +109,14 @@ export class TranscriptReader {
       return;
     }
     if (typeof record !== "object" || record === null || Array.isArray(record)) return;
-    for (const draft of this.parse(record as Record<string, unknown>)) this.push(draft);
+    const drafts = this.parse(record as Record<string, unknown>);
+    // Images go with the message or tool result they came in, as references only.
+    if (drafts.length && (bytes.includes(IMAGE_MARK) || bytes.includes(DATA_IMAGE_MARK))) {
+      const found = imagesIn(record);
+      const owner = drafts.find((d) => d.kind === "user" || d.kind === "tool_result");
+      if (found.length && owner) owner.images = imageRefs(offset, found);
+    }
+    for (const draft of drafts) this.push(draft);
   }
 
   private push(draft: Draft): void {

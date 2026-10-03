@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
 import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
+import { ImagesContext } from "../../agents/ConversationImage";
+import { useImagesShown } from "../../agents/image-setting";
 import { Conversation, type ConversationHandle } from "../../agents/Conversation";
 import { useConversation } from "../../agents/use-conversation";
 import { getDraft, saveDraft, useDraftRevision, useDraftsReady } from "../../agents/drafts";
@@ -219,6 +221,11 @@ export default function TerminalScreen() {
 
   const live = useRef<LiveTerminalHandle>(null);
   const conversationView = useRef<ConversationHandle>(null);
+  const imagesShown = useImagesShown();
+  const images = useMemo(
+    () => ({ client, paneId, session: conversation.session, auto: imagesShown }),
+    [client, paneId, conversation.session, imagesShown],
+  );
   const capture = useRef<KeyboardCaptureHandle>(null);
   const stream = useRef<TerminalHandle | null>(null);
   const paneIdRef = useRef(paneId);
@@ -475,17 +482,19 @@ export default function TerminalScreen() {
 
       <View style={{ flex: 1, paddingBottom: keyboard.inset }}>
         {chat ? (
-          <Conversation
-            ref={conversationView}
-            entries={conversation.entries}
-            queued={conversation.queued}
-            ready={conversation.available === true}
-            working={agent?.agent_status === "working"}
-            activity={activity}
-            atStart={conversation.atStart}
-            loadingOlder={conversation.loadingOlder}
-            onLoadOlder={() => void conversation.loadOlder()}
-          />
+          <ImagesContext.Provider value={images}>
+            <Conversation
+              ref={conversationView}
+              entries={conversation.entries}
+              queued={conversation.queued}
+              ready={conversation.available === true}
+              working={agent?.agent_status === "working"}
+              activity={activity}
+              atStart={conversation.atStart}
+              loadingOlder={conversation.loadingOlder}
+              onLoadOlder={() => void conversation.loadOlder()}
+            />
+          </ImagesContext.Provider>
         ) : (
           <View style={styles.terminal}>
             <LiveTerminal
@@ -550,7 +559,8 @@ export default function TerminalScreen() {
               </PressableScale>
             )}
             {QUICK_KEYS.map((group, gi) => (
-              <View key={gi} style={[styles.keyGroup, styles.keyGroupDivider]}>
+              // A divider between groups, and after ⌨ (which the chat view doesn't have).
+              <View key={gi} style={[styles.keyGroup, (gi > 0 || !chat) && styles.keyGroupDivider]}>
                 {group.map((k) => (
                   <PressableScale
                     key={k.label}

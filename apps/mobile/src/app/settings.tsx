@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
-import { BatteryCharging, Bell, BellOff, Check, ChevronLeft, Fingerprint, Laptop, QrCode } from "lucide-react-native";
+import { BatteryCharging, Bell, BellOff, Check, ChevronLeft, Fingerprint, Image as ImageIcon, Laptop, QrCode } from "lucide-react-native";
+import { setImagesShown, useImagesShown } from "../agents/image-setting";
 import { useEffect, useState } from "react";
 import { Alert, AppState, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import Background from "../../modules/shepherd-background/src/ShepherdBackgroundModule";
@@ -21,6 +22,7 @@ export default function SettingsScreen() {
   const [busy, setBusy] = useState(false);
   const theme = useTheme();
   const notifications = useNotificationsEnabled();
+  const imagesShown = useImagesShown();
   // What Android allows, re-checked when you come back from its settings.
   const [system, setSystem] = useState({ allowed: true, unrestricted: true });
   useEffect(() => {
@@ -162,6 +164,19 @@ export default function SettingsScreen() {
             </ListGroup>
           </View>
         ) : null}
+
+        <View>
+          <Text style={styles.groupLabel}>Conversations</Text>
+          <ListGroup>
+            <ListRow
+              icon={<ImageIcon size={19} color={colors.muted} />}
+              title="Show images"
+              detail="Load the images agents read, like screenshots, as they appear. Off, tap one to load it."
+              chevron={false}
+              trailing={<Toggle value={imagesShown} onValueChange={setImagesShown} />}
+            />
+          </ListGroup>
+        </View>
 
         <View>
           <Text style={styles.groupLabel}>Security</Text>

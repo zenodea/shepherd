@@ -1,6 +1,7 @@
 // `shepherd.conversation`: an agent's conversation, read from its transcript.
 import { basename, dirname, join } from "node:path";
-import type { AgentInfo, ConversationParams, ConversationResult, QueuedMessage } from "@shepherd/protocol";
+import type { AgentInfo, ConversationParams, ConversationResult, ImageParams, ImageResult, QueuedMessage } from "@shepherd/protocol";
+import { imagesIn, readRecordAt, type FoundImage } from "./images.ts";
 import { claudeParser } from "./claude.ts";
 import { CodexQueue, codexThreadId } from "./codex-queue.ts";
 import { codexParser } from "./codex.ts";
@@ -16,11 +17,15 @@ const MAX_LIMIT = 500;
 /** Look for a newer session file (after /clear, a restart…) at most this often per pane. */
 const LOCATE_EVERY_MS = 4000;
 const MAX_READERS = 8;
+/** base64 characters per answer: well under the relay's 1 MB message limit. */
+const IMAGE_CHUNK = 256 * 1024;
 
 export class Conversations {
   private readonly roots: Roots;
   private located = new Map<string, { at: number; path: string | null }>();
   private readers = new Map<string, TranscriptReader>();
+  /** The last few images asked for, so the chunks of one don't each re-read the file. */
+  private images = new Map<string, FoundImage>();
   private readonly codexQueue: CodexQueue;
 
   constructor(roots: Roots = defaultRoots()) {
@@ -74,6 +79,29 @@ export class Conversations {
    * only, so it has none here yet (TODO: a small pi extension could write it
    * into pi's session file).
    */
+  /** One image from the agent's transcript, in chunks of base64. */
+  image(agent: AgentInfo | null, params: ImageParams): ImageResult {
+    if (!agent) return { available: false, reason: "This tab isn't an agent." };
+    const harness = harnessOf(agent);
+    const path = harness ? this.locate(agent, harness) : null;
+    if (!path) return { available: false, reason: "No conversation found for this agent." };
+    const key = `${path}#${params.id}`;
+    let image = this.images.get(key);
+    if (!image) {
+      const [offset, index] = params.id.split(":").map(Number) as [number, number];
+      try {
+        image = imagesIn(readRecordAt(path, offset))[index];
+      } catch {
+        image = undefined;
+      }
+      if (!image) return { available: false, reason: "That image isn't in the conversation any more." };
+      this.images.set(key, image);
+      if (this.images.size > 4) this.images.delete(this.images.keys().next().value!);
+    }
+    const from = params.from ?? 0;
+    return { available: true, mime: image.mime, total: image.data.length, from, data: image.data.slice(from, from + IMAGE_CHUNK) };
+  }
+
   private queued(agent: AgentInfo, harness: Harness, path: string, reader: TranscriptReader): QueuedMessage[] | null {
     let queued: QueuedMessage[] | null = null;
     if (harness === "claude") queued = reader.queued();
@@ -109,4 +137,11 @@ export function conversationParams(params: Record<string, unknown>, isPaneId: (v
     ...(before !== undefined ? { before: before as number } : {}),
     ...(limit !== undefined ? { limit: limit as number } : {}),
   };
+}
+
+export function imageParams(params: Record<string, unknown>, isPaneId: (v: unknown) => v is string): ImageParams | null {
+  const { paneId, id, from } = params;
+  if (!isPaneId(paneId) || typeof id !== "string" || !/^\d{1,15}:\d{1,4}$/.test(id)) return null;
+  if (from !== undefined && !(Number.isInteger(from) && (from as number) >= 0)) return null;
+  return { paneId, id, ...(from !== undefined ? { from: from as number } : {}) };
 }
