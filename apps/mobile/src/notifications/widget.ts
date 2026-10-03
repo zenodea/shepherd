@@ -8,7 +8,8 @@ export type WidgetSummary = {
   summary: string;
   /** The most urgent state, for the summary's colour. */
   tone: "blocked" | "working" | "done" | "idle";
-  lines: { text: string; status: AgentStatus }[];
+  /** `url`: tapping the line opens that agent. */
+  lines: { text: string; status: AgentStatus; url: string }[];
   /** When this was true, unix ms. */
   at: number;
 };
@@ -16,7 +17,7 @@ export type WidgetSummary = {
 const ORDER: Record<AgentStatus, number> = { blocked: 0, done: 1, working: 2, idle: 3, unknown: 4 };
 const MAX_LINES = 3;
 
-export function widgetSummary(state: HostState, hostName: string | null, now = Date.now()): WidgetSummary {
+export function widgetSummary(state: HostState, hostName: string | null, hostId: string | null = null, now = Date.now()): WidgetSummary {
   const title = `Shepherd · ${state.host?.name ?? hostName ?? "not paired"}`;
   if (!hostName) return { title: "Shepherd", summary: "Open Shepherd to pair", tone: "idle", lines: [], at: now };
   if (state.status !== "online") return { title, summary: "Not connected", tone: "idle", lines: [], at: now };
@@ -36,6 +37,7 @@ export function widgetSummary(state: HostState, hostName: string | null, now = D
     .map((a) => ({
       text: [agentLabel(a, a.pane_id), a.terminal_title_stripped || a.title || a.cwd?.split("/").pop()].filter(Boolean).join(" · "),
       status: a.agent_status,
+      url: `shepherd://agent/${encodeURIComponent(a.pane_id)}${hostId ? `?host=${hostId}` : ""}`,
     }));
   return { title, summary: parts.join(" · ") || (state.agents.length ? "All quiet" : "No agents running"), tone, lines, at: now };
 }

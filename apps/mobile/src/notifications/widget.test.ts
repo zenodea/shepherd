@@ -13,6 +13,7 @@ describe("widgetSummary", () => {
     const summary = widgetSummary(
       state([agent("w1:p1", "working", "Refactor"), agent("w1:p2", "blocked", "Fix login"), agent("w1:p3", "idle", "Docs"), agent("w1:p4", "done", "Bump deps")]),
       "studio",
+      "h1",
       1,
     );
     expect(summary).toEqual({
@@ -20,9 +21,9 @@ describe("widgetSummary", () => {
       summary: "1 needs you · 1 working",
       tone: "blocked",
       lines: [
-        { text: "claude · Fix login", status: "blocked" },
-        { text: "claude · Bump deps", status: "done" },
-        { text: "claude · Refactor", status: "working" },
+        { text: "claude · Fix login", status: "blocked", url: "shepherd://agent/w1%3Ap2?host=h1" },
+        { text: "claude · Bump deps", status: "done", url: "shepherd://agent/w1%3Ap4?host=h1" },
+        { text: "claude · Refactor", status: "working", url: "shepherd://agent/w1%3Ap1?host=h1" },
       ],
       at: 1,
     });

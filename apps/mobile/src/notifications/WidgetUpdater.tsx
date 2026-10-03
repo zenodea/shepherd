@@ -12,13 +12,14 @@ import { widgetSummary } from "./widget";
 export function WidgetUpdater() {
   const { client, settings } = useConnection();
   const hostName = settings?.name ?? null;
+  const hostId = settings?.id ?? null;
 
   useEffect(() => {
     const native = Background;
     if (!native || DEMO_ENABLED) return;
     let shown = "";
     const push = () => {
-      const summary = widgetSummary(client?.getState() ?? { status: "idle", error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] }, hostName);
+      const summary = widgetSummary(client?.getState() ?? { status: "idle", error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] }, hostName, hostId);
       const { at: _at, ...content } = summary;
       const key = JSON.stringify(content);
       if (key === shown) return;
@@ -27,7 +28,7 @@ export function WidgetUpdater() {
     };
     push();
     return client?.subscribe(push);
-  }, [client, hostName]);
+  }, [client, hostName, hostId]);
 
   return null;
 }

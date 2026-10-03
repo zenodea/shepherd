@@ -20,7 +20,8 @@ export function agentLabel(agent: AgentInfo | null, paneId: string): string {
 export function alertFor(change: StatusChange, hostName: string): AgentAlert | null {
   if (change.previous === change.status) return null;
   if (change.status !== "blocked" && change.status !== "done") return null;
-  if (change.status === "done" && change.previous !== "working") return null;
+  // Finished: after working, or after a question (answered somewhere, then it carried on and finished).
+  if (change.status === "done" && change.previous !== "working" && change.previous !== "blocked") return null;
   const agent = change.agent;
   const detail = agent?.terminal_title_stripped || agent?.title || agent?.cwd?.split("/").filter(Boolean).pop() || change.paneId;
   const verb = change.status === "blocked" ? "needs input" : "finished";
@@ -34,7 +35,7 @@ export function alertFor(change: StatusChange, hostName: string): AgentAlert | n
  */
 export function withPrompt(alert: AgentAlert, prompt: BlockedPrompt | null): { alert: AgentAlert; actions: AlertAction[]; write: AlertAction | null } {
   if (!prompt || prompt.options.length === 0) return { alert, actions: [], write: null };
-  const question = prompt.lines.slice(-QUESTION_LINES).join("\n").trim();
+  const question = questionText(prompt);
   const writeOption = prompt.options.find((o) => o.input) ?? null;
   const buttons = prompt.options.filter((o) => !o.input).slice(0, writeOption ? MAX_ACTIONS - 1 : MAX_ACTIONS);
   return {
@@ -42,6 +43,18 @@ export function withPrompt(alert: AgentAlert, prompt: BlockedPrompt | null): { a
     actions: buttons.map(({ key, label }) => ({ key, label })),
     write: writeOption ? { key: writeOption.key, label: writeOption.label } : null,
   };
+}
+
+/** Interface around a question: Claude's tab bar ("← ☐ Database ✔ Submit →"), tool output, bullets. */
+const CHROME = /^(?:[⎿└⏺●•│←→]|.*[☐☑☒]|.*✔ Submit)/;
+
+/** The question itself: the last lines before the answers, without interface around them. */
+export function questionText(prompt: BlockedPrompt): string {
+  return prompt.lines
+    .map((l) => l.trim())
+    .filter((l) => l && !CHROME.test(l))
+    .slice(-QUESTION_LINES)
+    .join("\n");
 }
 
 /** The opening of an agent's reply, as plain text for a notification. */
@@ -81,4 +94,20 @@ export class Cooldown {
     this.last.set(key, t);
     return true;
   }
+}
+
+/**
+ * Status changes missed while the connection was down: the host only sends
+ * changes as they happen, so compare what was last seen with the snapshot it
+ * sends on reconnecting.
+ */
+export function missedChanges(before: Map<string, AgentInfo>, after: AgentInfo[]): StatusChange[] {
+  const changes: StatusChange[] = [];
+  for (const agent of after) {
+    const previous = before.get(agent.pane_id);
+    if (previous && previous.agent_status !== agent.agent_status) {
+      changes.push({ type: "agent.status", paneId: agent.pane_id, status: agent.agent_status, previous: previous.agent_status, agent });
+    }
+  }
+  return changes;
 }

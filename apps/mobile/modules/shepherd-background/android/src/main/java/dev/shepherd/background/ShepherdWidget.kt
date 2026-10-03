@@ -68,6 +68,9 @@ class ShepherdWidget : AppWidgetProvider() {
           views.setViewVisibility(viewId, View.VISIBLE)
           views.setTextViewText(viewId, "●  " + line.optString("text"))
           views.setTextColor(viewId, color(line.optString("status")))
+          // Tapping an agent opens it, its question and answers included.
+          val url = line.optString("url")
+          if (url.isNotEmpty()) views.setOnClickPendingIntent(viewId, Notifications.openIntent(context, url, 9100 + index))
         }
       }
       return views

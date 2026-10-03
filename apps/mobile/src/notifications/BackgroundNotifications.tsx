@@ -7,9 +7,11 @@ import type { HostConnection, HostState } from "../connection/host-client";
 import { DEMO_ENABLED } from "../connection/demo-host";
 import { useAppLock } from "../security/app-lock";
 import { sendAnswer } from "../agents/answer";
-import { Cooldown, agentLabel, alertFor, excerpt, stillOffered, withPrompt } from "./rules";
+import { Cooldown, agentLabel, alertFor, excerpt, missedChanges, stillOffered, withPrompt } from "./rules";
 import { NOTIFICATIONS_SUPPORTED, useNotificationsEnabled } from "./setting";
 
+/** After answering from a notification, when to look for the next question. */
+const FOLLOW_UP_MS = 1500;
 /** How long "Sent “Yes” to claude" and similar stay up. */
 const CONFIRMATION_MS = 6000;
 /** Nothing from the host for this long (it pings every 30 s, the app every 15 s): reconnect. */
@@ -125,57 +127,82 @@ export function BackgroundNotifications() {
     latest.current = { hostId, hostName, active, requireAuth };
   });
 
-  // Agents that need you or finished, while you're not looking at the app.
+  // Agents that need you or finished, while you're not looking at the app, and
+  // the answer buttons on those notifications.
   useEffect(() => {
     const native = Background;
     if (!client || !native) return;
     const cooldown = new Cooldown();
-    const onChange = (change: StatusChange) => {
-      const { active, hostId, hostName, requireAuth } = latest.current;
-      if (!active) return;
-      const id = notificationId(change.paneId);
-      // Answered somewhere else: the question is gone, so is its notification.
-      if (change.previous === "blocked" && change.status !== "blocked") void native.cancel(id).catch(() => {});
-      if (AppState.currentState === "active") return;
-      const alert = alertFor(change, hostName);
-      if (!alert || !cooldown.allow(`${change.paneId}:${change.status}`)) return;
-      void (async () => {
-        let content: ReturnType<typeof withPrompt> = { alert, actions: [], write: null };
-        if (alert.kind === "blocked") content = withPrompt(alert, await settledPrompt(client, change.paneId).catch(() => null));
-        // Finished: what it said last, so you may not need to open it.
-        if (alert.kind === "done") {
-          const said = await lastReply(client, change.paneId).catch(() => null);
-          if (said) content = { ...content, alert: { ...alert, body: `${said}\n${alert.body}` } };
-        }
-        const name = agentLabel(change.agent, change.paneId);
-        const reply =
-          alert.kind === "done"
-            ? { replyHint: `Message ${name}…` }
-            : content.write
-              ? { replyHint: `Answer ${name}…`, replyKey: content.write.key, replyLabel: content.write.label }
-              : {};
-        await native.notify({
-          id,
-          channel: alert.kind === "blocked" ? "input" : "finished",
-          title: content.alert.title,
-          body: content.alert.body,
-          url: agentLink(change.paneId, hostId),
-          paneId: change.paneId,
-          answers: content.actions,
-          timeoutMs: 0,
-          ...reply,
-          requireAuth,
-        });
-      })().catch(() => {});
-    };
-    return client.onStatusChange(onChange);
-  }, [client]);
 
-  // An answer button: send it only if the agent is still asking the same thing.
-  useEffect(() => {
-    const native = Background;
-    if (!client || !native) return;
-    const sub = native.addListener("onAnswer", (event: AnswerEvent) => {
+    /** Post the notification for a change (`again`: a follow-up question, so skip the cooldown). */
+    const post = async (change: StatusChange, again = false) => {
+      const { hostId, hostName, requireAuth } = latest.current;
+      const alert = alertFor(change, hostName);
+      if (!alert || (!again && !cooldown.allow(`${change.paneId}:${change.status}`))) return;
+      let content: ReturnType<typeof withPrompt> = { alert, actions: [], write: null };
+      if (alert.kind === "blocked") content = withPrompt(alert, await settledPrompt(client, change.paneId).catch(() => null));
+      // Finished: what it said last, so you may not need to open it.
+      if (alert.kind === "done") {
+        const said = await lastReply(client, change.paneId).catch(() => null);
+        if (said) content = { ...content, alert: { ...alert, body: `${said}\n${alert.body}` } };
+      }
+      const name = agentLabel(change.agent, change.paneId);
+      const reply =
+        alert.kind === "done"
+          ? { replyHint: `Message ${name}…` }
+          : content.write
+            ? { replyHint: `Answer ${name}…`, replyKey: content.write.key, replyLabel: content.write.label }
+            : {};
+      await native.notify({
+        id: notificationId(change.paneId),
+        channel: alert.kind === "blocked" ? "input" : "finished",
+        title: content.alert.title,
+        body: content.alert.body,
+        url: agentLink(change.paneId, hostId),
+        paneId: change.paneId,
+        answers: content.actions,
+        timeoutMs: 0,
+        ...reply,
+        requireAuth,
+      });
+    };
+
+    const onChange = (change: StatusChange) => {
+      if (!latest.current.active) return;
+      // Answered somewhere else: the question is gone, so is its notification.
+      if (change.previous === "blocked" && change.status !== "blocked") void native.cancel(notificationId(change.paneId)).catch(() => {});
+      if (AppState.currentState === "active") return;
+      void post(change).catch(() => {});
+    };
+    const unsubscribeChanges = client.onStatusChange(onChange);
+
+    // The host sends changes as they happen; if the connection was down when an
+    // agent finished or started asking, catch up from the snapshot on reconnecting.
+    let known = new Map<string, AgentInfo>();
+    let online = false;
+    const unsubscribeState = client.subscribe(() => {
+      const state = client.getState();
+      if (state.status !== "online") {
+        online = false;
+        return;
+      }
+      if (!online && known.size) for (const change of missedChanges(known, state.agents)) onChange(change);
+      online = true;
+      known = new Map(state.agents.map((a) => [a.pane_id, a]));
+    });
+
+    /** After an answer: if the agent asks something else straight away (the next of several questions), notify that too. */
+    const followUp = async (event: AnswerEvent) => {
+      await new Promise((r) => setTimeout(r, FOLLOW_UP_MS));
+      const agent = client.getState().agents.find((a) => a.pane_id === event.paneId) ?? null;
+      if (agent?.agent_status !== "blocked" || AppState.currentState === "active") return;
+      const prompt = await readPrompt(client, event.paneId);
+      if (prompt.options.length === 0 || stillOffered(prompt, event)) return;
+      await post({ type: "agent.status", paneId: event.paneId, status: "blocked", previous: "working", agent }, true);
+    };
+
+    // An answer button: send it only if the agent is still asking the same thing.
+    const answers = native.addListener("onAnswer", (event: AnswerEvent) => {
       void (async () => {
         const { hostId } = latest.current;
         const agent: AgentInfo | null = client.getState().agents.find((a) => a.pane_id === event.paneId) ?? null;
@@ -199,7 +226,7 @@ export function BackgroundNotifications() {
             if (agent?.agent_status !== "blocked") return await outcome("It isn't waiting for an answer any more.", false);
             if (!stillOffered(await readPrompt(client, event.paneId), event)) return await outcome("It's asking something else now. Tap to open it.", false);
             await sendAnswer(client, event.paneId, event, text);
-            return await native.notify({
+            await native.notify({
               id: event.notificationId,
               channel: "input",
               title: `Answered ${name}`,
@@ -209,6 +236,7 @@ export function BackgroundNotifications() {
               answers: [],
               timeoutMs: CONFIRMATION_MS,
             });
+            return await followUp(event);
           }
           if (event.reply != null) {
             const text = event.reply.trim();
@@ -232,12 +260,18 @@ export function BackgroundNotifications() {
           if (!stillOffered(prompt, event)) return await outcome("It's asking something else now. Tap to open it.", false);
           await sendAnswer(client, event.paneId, event);
           await outcome(agent.terminal_title_stripped || agent.cwd?.split("/").pop() || "", true);
+          await followUp(event);
         } catch {
           await outcome("Couldn't reach your computer. Tap to open Shepherd.", false);
         }
       })().catch(() => {});
     });
-    return () => sub.remove();
+
+    return () => {
+      unsubscribeChanges();
+      unsubscribeState();
+      answers.remove();
+    };
   }, [client]);
 
   return null;
