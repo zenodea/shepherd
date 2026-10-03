@@ -17,13 +17,15 @@ import { ActivityLog } from "./herdr/activity-log.ts";
 import { Launcher } from "./herdr/launcher.ts";
 import { hostAddresses, printDevices, printHostInfo, printPairing, renderQr } from "./pairing/pairing.ts";
 import { RelayTunnel, appRelayUrl } from "./connection/relay-tunnel.ts";
-import { startLocalServer } from "./connection/server.ts";
+import { ROUTE_LABELS, ROUTES, accepts, checkRoutes, listenAddress, routesOf, type Route, type Routes } from "./connection/routes.ts";
+import { startLocalServer, type LocalServer } from "./connection/server.ts";
 import type { SessionDeps } from "./connection/session.ts";
 import { Service, serviceSpec } from "./system/service.ts";
 import { HostStatusWriter } from "./system/host-status.ts";
 import { Conversations } from "./conversation/conversations.ts";
+import { Uploads } from "./uploads.ts";
 import { SCREENS, runWindow, type Screen } from "./ui/window.ts";
-import { clearPidFile, readRunningHost, restartHost, startDetached, stopRunningHost, turnOff, turnOn, writePidFile } from "./system/daemon.ts";
+import { clearPidFile, readRunningHost, restartHost, setConnections, startDetached, stopRunningHost, turnOff, turnOn, writePidFile } from "./system/daemon.ts";
 import { TerminalStream } from "./herdr/terminal-stream.ts";
 
 const USAGE = `shepherd-host — bridge your herdr agents to the shepherd app
@@ -36,6 +38,8 @@ Usage (from the repo root):
   npm run host -- devices revoke <id|all>  Unpair a device (disconnects it immediately)
   npm run host -- relay <url> <host-token> Also connect through a shepherd relay
   npm run host -- relay off                Stop using the relay
+  npm run host -- connections [lan] [tailscale] [relay]
+                                           Which ways phones may connect (no arguments: show them)
   npm run host -- service install          Run in the background (launchd / systemd)
   npm run host -- service uninstall|status|logs
   npm run host -- status                   Is the host running, addresses, devices, recent log
@@ -57,6 +61,7 @@ Environment:
 const HERDR_WAIT_MS = 5000;
 /** With --follow-herdr, exit once herdr has been unreachable this long. */
 const HERDR_GONE_MS = 60_000;
+const TAILSCALE_WATCH_MS = 15_000;
 
 /** Wait for herdr to come up (e.g. the host started at login before herdr). */
 async function waitForHerdr(herdr: HerdrClient, socketPath: string): Promise<string> {
@@ -106,15 +111,20 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     launcher: new Launcher({ herdr, onError: (err) => console.error(`[launch] ${err.message}`) }),
     activity,
     conversations: new Conversations(),
+    uploads: new Uploads(),
   };
 
-  const server = await startLocalServer({ port: config.port, bind: config.bind, deps }).catch((err: NodeJS.ErrnoException) => {
+  const routes = routesOf(config);
+  console.log(`Phones can connect over: ${ROUTES.filter((r) => routes[r]).map((r) => ROUTE_LABELS[r]).join(", ") || "nothing"}`);
+  const direct = new DirectServer(config, routes, deps);
+  await direct.start().catch((err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
       console.error(`Port ${config.port} is already in use. Is another shepherd host running (a terminal, or \`service status\`)?`);
       process.exit(1);
     }
     throw err;
   });
+  const server = { port: direct.port };
   deps.host.addresses = hostAddresses(config, server.port).map((a) => a.url);
   writePidFile(config.configPath, config.socketPath);
 
@@ -144,7 +154,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   console.log("");
 
   let tunnel: RelayTunnel | null = null;
-  if (config.relayUrl && config.relayHostToken) {
+  if (config.relayUrl && config.relayHostToken && routes.relay) {
     tunnel = new RelayTunnel({
       relayUrl: config.relayUrl,
       hostId: config.hostId,
@@ -183,12 +193,60 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     devices.unwatch();
     tracker.stop();
     activity.flush();
-    await server.close();
+    await direct.close();
     herdr.close();
     process.exit(0);
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+}
+
+/**
+ * The server phones connect to directly, on the routes that are on. Tailscale
+ * only: it listens on the Tailscale address, and moves when that changes.
+ */
+class DirectServer {
+  port: number;
+  private server: LocalServer | null = null;
+  private bind: string | null = null;
+  private watch: NodeJS.Timeout | null = null;
+
+  private readonly config: HostConfig;
+  private readonly routes: Routes;
+  private readonly deps: SessionDeps;
+
+  constructor(config: HostConfig, routes: Routes, deps: SessionDeps) {
+    this.config = config;
+    this.routes = routes;
+    this.deps = deps;
+    this.port = config.port;
+  }
+
+  async start(): Promise<void> {
+    await this.listen();
+    if (!this.routes.lan && this.routes.tailscale) this.watch = setInterval(() => void this.listen().catch(() => {}), TAILSCALE_WATCH_MS);
+  }
+
+  async close(): Promise<void> {
+    if (this.watch) clearInterval(this.watch);
+    await this.server?.close();
+    this.server = null;
+  }
+
+  private async listen(): Promise<void> {
+    const bind = listenAddress(this.config.bind, this.routes);
+    if (bind === this.bind) return;
+    await this.server?.close();
+    this.server = null;
+    this.bind = bind;
+    if (!bind) {
+      if (this.routes.tailscale && !this.routes.lan) console.log("Waiting for a Tailscale address…");
+      return;
+    }
+    this.server = await startLocalServer({ port: this.config.port, bind, deps: this.deps, accepts: (local) => accepts(this.routes, local) });
+    this.port = this.server.port;
+    if (!this.routes.lan) console.log(`Listening on Tailscale only (${bind})`);
+  }
 }
 
 async function serviceCommand(action: string | undefined): Promise<void> {
@@ -353,6 +411,30 @@ async function main(argv: string[]): Promise<void> {
       appRelayUrl(url, config.hostId); // validates the URL
       saveStoredConfig(config.configPath, { ...stored, relayUrl: url, relayHostToken: hostToken });
       console.log("Relay saved. Restart the host; paired phones learn the relay address the next time they connect.");
+      return;
+    }
+    case "connections": {
+      const config = loadConfig();
+      const wanted = argv.slice(1).map((a) => a.toLowerCase());
+      if (wanted.length === 0) {
+        const routes = routesOf(config);
+        for (const r of ROUTES) console.log(`  ${ROUTE_LABELS[r].padEnd(10)} ${routes[r] ? "on" : "off"}`);
+        console.log(`\nChoose with: ${hostCommand("connections")} <${ROUTES.join("|")}>…   e.g. connections tailscale relay`);
+        return;
+      }
+      const unknown = wanted.filter((w) => !(ROUTES as readonly string[]).includes(w));
+      if (unknown.length) {
+        console.error(`Unknown: ${unknown.join(", ")}. Choose from: ${ROUTES.join(", ")}`);
+        process.exit(2);
+      }
+      let routes: Routes;
+      try {
+        routes = checkRoutes(config, { lan: wanted.includes("lan"), tailscale: wanted.includes("tailscale"), relay: wanted.includes("relay") }, wanted as Route[]);
+      } catch (err) {
+        console.error((err as Error).message);
+        process.exit(2);
+      }
+      console.log(await setConnections(config.configPath, routes));
       return;
     }
     case "service":

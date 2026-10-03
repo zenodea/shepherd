@@ -26,6 +26,7 @@ const data = (patch: Partial<WindowData> = {}): WindowData => ({
     { id: "new", name: "Pixel 8", tokenHash: "", createdAt: "2026-10-01T00:00:00Z" },
   ],
   addresses: [{ label: "LAN", url: "ws://192.168.1.20:7420/connect" }],
+  routes: { lan: true, tailscale: true, relay: true },
   relayConfigured: true,
   log: ["[agent] w1:p1 working → idle"],
   logFile: "/tmp/host.log",
@@ -125,5 +126,22 @@ describe("the window process", () => {
     expect(output).toContain("Shepherd");
     expect(await exited).toBe(0);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("connection switches", () => {
+  it("shows each way in as a switch, and what it's at", () => {
+    const text = plain(render(view(), data({ routes: { lan: true, tailscale: false, relay: true } }), 100, 40));
+    expect(text).toMatch(/LAN\s+━━━● on\s+\[1\]\s+ws:\/\/192\.168\.1\.20:7420\/connect/);
+    expect(text).toMatch(/Tailscale\s+●━━━ off\s+\[2\]\s+off/);
+    expect(text).toMatch(/Relay\s+━━━● on\s+\[3\]/);
+  });
+
+  it("refuses to leave phones no way in, and to turn on a relay that isn't set up", async () => {
+    const { withRoute, checkRoutes } = await import("../connection/routes.ts");
+    expect(() => withRoute({ hostId: "h", name: "n", connections: { tailscale: false, relay: false } }, "lan", false)).toThrow(/at least one/);
+    expect(() => withRoute({ hostId: "h", name: "n" }, "relay", true)).toThrow(/relay first/);
+    expect(withRoute({ hostId: "h", name: "n" }, "lan", false)).toEqual({ lan: false, tailscale: true, relay: true });
+    expect(() => checkRoutes({ hostId: "h", name: "n" }, { lan: false, tailscale: false, relay: true })).toThrow(/at least one/);
   });
 });

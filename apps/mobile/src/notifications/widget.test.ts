@@ -35,3 +35,25 @@ describe("widgetSummary", () => {
     expect(widgetSummary(state([]), null).summary).toBe("Open Shepherd to pair");
   });
 });
+
+describe("widget question", () => {
+  it("offers the first two answers you can tap, not the ones you'd write", async () => {
+    const { widgetAsk } = await import("./widget");
+    const agent = { pane_id: "w1:p2", agent: "claude", agent_status: "blocked" } as never;
+    const prompt = {
+      lines: ["Do you want to make this edit to login.test.ts?"],
+      options: [
+        { key: "1", label: "Yes" },
+        { key: "2", label: "Yes, allow all edits" },
+        { key: "3", label: "No, and tell Claude what to do differently", input: true },
+      ],
+    } as never;
+    expect(widgetAsk(agent, prompt, "h1")).toMatchObject({
+      paneId: "w1:p2",
+      url: "shepherd://agent/w1%3Ap2?host=h1",
+      question: "Do you want to make this edit to login.test.ts?",
+      answers: [{ key: "1", label: "Yes" }, { key: "2", label: "Yes, allow all edits" }],
+    });
+    expect(widgetAsk(agent, { lines: [], options: [] } as never, null)).toBeNull();
+  });
+});

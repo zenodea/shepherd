@@ -21,8 +21,10 @@ export type AgentNotification = {
   replyKey?: string;
   /** The Reply box's button, e.g. "Type something."; "Reply" by default. */
   replyLabel?: string;
-  /** App lock is on: private on the lock screen, and answering asks for the fingerprint. */
+  /** Answering from the lock screen asks to unlock first. */
   requireAuth?: boolean;
+  /** Hide the content on the lock screen (App lock). */
+  privateContent?: boolean;
 };
 
 /** A pressed answer button, or (with `reply`) text typed into the Reply box. */

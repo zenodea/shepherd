@@ -4,19 +4,15 @@ import { encodePairingLink, toHex, type PairingInfo } from "@shepherd/protocol";
 import { hostCommand, hostKeyPair, type HostConfig } from "../system/config.ts";
 import type { DeviceRegistry } from "./devices.ts";
 import { appRelayUrl } from "../connection/relay-tunnel.ts";
+import { isTailscale, routesOf } from "../connection/routes.ts";
 
 export type HostAddress = { label: "LAN" | "Tailscale" | "Relay"; url: string };
 
 type Interfaces = ReturnType<typeof networkInterfaces>;
 
-/** Tailscale hands out addresses from the CGNAT range 100.64.0.0/10. */
-function isTailscale(ip: string): boolean {
-  const [a, b] = ip.split(".").map(Number);
-  return a === 100 && b! >= 64 && b! <= 127;
-}
-
-/** Every URL the app could use to reach this host, best first. */
+/** Every URL the app could use to reach this host, best first, on the routes that are on. */
 export function hostAddresses(config: HostConfig, port: number, interfaces: Interfaces = networkInterfaces()): HostAddress[] {
+  const routes = routesOf(config);
   const ips =
     config.bind === "0.0.0.0"
       ? Object.values(interfaces)
@@ -29,8 +25,9 @@ export function hostAddresses(config: HostConfig, port: number, interfaces: Inte
 
   const addresses: HostAddress[] = ips
     .map((ip): HostAddress => ({ label: isTailscale(ip) ? "Tailscale" : "LAN", url: `ws://${ip}:${port}/connect` }))
+    .filter((a) => (a.label === "Tailscale" ? routes.tailscale : routes.lan))
     .sort((a, b) => Number(a.label === "Tailscale") - Number(b.label === "Tailscale"));
-  if (config.relayUrl) addresses.push({ label: "Relay", url: appRelayUrl(config.relayUrl, config.hostId) });
+  if (config.relayUrl && routes.relay) addresses.push({ label: "Relay", url: appRelayUrl(config.relayUrl, config.hostId) });
   return addresses;
 }
 

@@ -23,6 +23,8 @@ export type StoredConfig = {
   relayHostToken?: string;
   /** Turned off in the Shepherd window: the herdr plugin doesn't start the host. */
   disabled?: boolean;
+  /** Which ways phones may connect; each is on unless set to false. */
+  connections?: { lan?: boolean; tailscale?: boolean; relay?: boolean };
 };
 
 export type HostConfig = StoredConfig & {

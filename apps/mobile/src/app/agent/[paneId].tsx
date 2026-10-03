@@ -6,6 +6,7 @@ import {
   Bot,
   ChevronLeft,
   Ellipsis,
+  ImagePlus,
   Images,
   Keyboard as KeyboardIcon,
   MessageSquareText,
@@ -13,13 +14,17 @@ import {
   Sparkles,
   Square,
   SquareTerminal,
+  X,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Platform, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
 import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
+import { withImages } from "../../agents/attachment-message";
+import { useAttachments } from "../../agents/attachments";
+import { stillSending, type Sending } from "../../agents/sending";
 import { ImagesContext } from "../../agents/ConversationImage";
 import { SubagentsContext } from "../../agents/SubagentCard";
 import { subagentsPill } from "../../agents/subagents";
@@ -54,6 +59,8 @@ const REOPEN_MS = 1500;
 /** react-native-web renders a multiline input as a two-row textarea unless told otherwise. */
 const WEB_ONE_ROW = Platform.OS === "web" ? ({ rows: 1 } as object) : {};
 const SCROLLBACK_LINES = 3000;
+/** A sent message that never showed up in the conversation (an agent whose queue isn't visible) stops showing after this. */
+const OPTIMISTIC_MS = 60_000;
 /** herdr keeps at most this many lines of an agent's transcript. */
 const TRANSCRIPT_LINES = 1000;
 /** herdr may scroll an agent for up to 15s (plus 5s back) to collect its transcript. */
@@ -237,6 +244,10 @@ export default function TerminalScreen() {
 
   const live = useRef<LiveTerminalHandle>(null);
   const conversationView = useRef<ConversationHandle>(null);
+  const attachments = useAttachments(client);
+  const [outgoing, setOutgoing] = useState<Sending[]>([]);
+  const outgoingIds = useRef(0);
+  const shownOutgoing = useMemo(() => stillSending(outgoing, conversation.entries, conversation.queued), [outgoing, conversation.entries, conversation.queued]);
   const subagentLinks = useMemo(
     () => ({
       byId: new Map(conversation.subagents.map((s) => [s.id, s])),
@@ -408,15 +419,24 @@ export default function TerminalScreen() {
   };
 
   const submit = async () => {
-    const text = draft.trim();
-    if (!client || !paneId || !text) return;
+    const text = agent ? withImages(draft.trim(), attachments.attachments) : draft.trim();
+    if (!client || !paneId || !text || attachments.uploading) return;
     setSending(true);
+    const optimistic = { id: String(++outgoingIds.current), text, after: conversation.entries.at(-1)?.id ?? -1 };
+    if (agent && chat) {
+      setOutgoing((list) => [...list, optimistic]);
+      conversationView.current?.scrollToBottom();
+    }
+    const forget = () => setOutgoing((list) => list.filter((s) => s.id !== optimistic.id));
     try {
       if (agent) await client.call("agent.prompt", { target: paneId, text });
       else await client.call("pane.send_input", { pane_id: paneId, text, keys: ["enter"] });
       changeDraft("");
+      attachments.clear();
+      setTimeout(forget, OPTIMISTIC_MS);
       toLive();
     } catch (err) {
+      forget();
       // herdr won't type a message into an agent that's waiting for an answer: it would become the answer.
       if (err instanceof HostCallError && err.code === "agent_blocked" && agent) {
         Alert.alert(`${agentName(agent)} is waiting for an answer`, "Answer its question first, then send this. Your message is still here.");
@@ -438,7 +458,7 @@ export default function TerminalScreen() {
   };
 
   const title = agent ? (agentTitle(agent) ?? agentName(agent)) : (pane?.terminal_title_stripped ?? pane?.title ?? "Terminal");
-  const canSend = draft.trim().length > 0 && !sending;
+  const canSend = (draft.trim().length > 0 || attachments.ready) && !attachments.uploading && !sending;
   const usage = isAgent ? contextLabel(conversation.context) : null;
   const { changes } = useChanges(client, isAgent ? paneId : null, online, agentStatus);
   const changed = changes?.available && changes.files.length > 0 ? changes : null;
@@ -526,6 +546,7 @@ export default function TerminalScreen() {
                 ref={conversationView}
                 entries={conversation.entries}
                 queued={conversation.queued}
+                sending={shownOutgoing}
                 ready={conversation.available === true}
                 working={agent?.agent_status === "working"}
                 activity={activity}
@@ -618,8 +639,26 @@ export default function TerminalScreen() {
             ))}
           </View>
 
+          {!typing && attachments.attachments.length ? (
+            <ScrollView horizontal style={styles.attachments} contentContainerStyle={styles.attachmentsInner} keyboardShouldPersistTaps="handled">
+              {attachments.attachments.map((a) => (
+                <View key={a.id} style={[styles.attachment, a.state === "failed" && styles.attachmentFailed]}>
+                  <Image source={{ uri: a.uri }} style={styles.attachmentImage} />
+                  {a.state === "uploading" ? <ActivityIndicator style={styles.attachmentOverlay} color="#FFFFFF" /> : null}
+                  <PressableScale onPress={() => attachments.remove(a.id)} style={styles.attachmentRemove} accessibilityRole="button" accessibilityLabel="Remove image">
+                    <X size={12} color="#FFFFFF" />
+                  </PressableScale>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
           {!typing ? (
-            <View style={styles.composer}>
+            <View style={[styles.composer, agent && styles.composerWithAttach]}>
+              {agent ? (
+                <PressableScale onPress={() => void attachments.add()} style={styles.attach} accessibilityRole="button" accessibilityLabel="Add an image">
+                  <ImagePlus size={19} color={colors.muted} />
+                </PressableScale>
+              ) : null}
               <TextInput
                 {...WEB_ONE_ROW}
                 style={styles.input}
@@ -756,6 +795,15 @@ const styles = themed(() => StyleSheet.create({
     includeFontPadding: false,
   },
   send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  composerWithAttach: { paddingLeft: 6 },
+  attach: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  attachments: { flexGrow: 0, marginHorizontal: 12, marginBottom: 8 },
+  attachmentsInner: { gap: 8 },
+  attachment: { width: 56, height: 56, borderRadius: 12, overflow: "hidden", backgroundColor: colors.raised },
+  attachmentFailed: { borderWidth: 2, borderColor: colors.danger },
+  attachmentImage: { width: 56, height: 56 },
+  attachmentOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.35)" },
+  attachmentRemove: { position: "absolute", top: 3, right: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginLeft: 56, marginBottom: 6 },
   pill: {
     flexDirection: "row",

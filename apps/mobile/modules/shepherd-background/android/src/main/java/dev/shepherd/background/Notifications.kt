@@ -74,6 +74,10 @@ object Notifications {
       .putExtra(ActionReceiver.EXTRA_LABEL, label)
       .putExtra(ActionReceiver.EXTRA_URL, url)
 
+  /** Sends an answer the same way a notification button does: through ActionReceiver, checked by the app. */
+  fun answerIntent(context: Context, id: Int, paneId: String, url: String, key: String, label: String, requestCode: Int): PendingIntent =
+    PendingIntent.getBroadcast(context, requestCode, actionIntent(context, id, paneId, url, key, label), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
   fun show(
     context: Context,
     id: Int,
@@ -89,8 +93,10 @@ object Notifications {
     /** The answer the reply is for ("Type something."): its key and label. Empty key: a new message. */
     replyKey: String = "",
     replyLabel: String = "Reply",
-    /** App lock is on: keep the content private and ask for the fingerprint before an answer is sent. */
+    /** Unlock (fingerprint or screen lock) before an answer from the lock screen is sent. */
     requireAuth: Boolean = false,
+    /** Hide the content on the lock screen (App lock); Android's "sensitive content" setting decides. */
+    privateContent: Boolean = false,
   ) {
     ensureChannels(context)
     val builder = NotificationCompat.Builder(context, channel)
@@ -103,9 +109,7 @@ object Notifications {
       .setPriority(if (channel == CHANNEL_INPUT) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
       .setCategory(if (channel == CHANNEL_INPUT) NotificationCompat.CATEGORY_MESSAGE else NotificationCompat.CATEGORY_STATUS)
     if (timeoutMs > 0) builder.setTimeoutAfter(timeoutMs)
-    // On the lock screen: everything, so it can be answered there, unless App
-    // lock is on; then Android's "sensitive content" setting decides.
-    builder.setVisibility(if (requireAuth) NotificationCompat.VISIBILITY_PRIVATE else NotificationCompat.VISIBILITY_PUBLIC)
+    builder.setVisibility(if (privateContent) NotificationCompat.VISIBILITY_PRIVATE else NotificationCompat.VISIBILITY_PUBLIC)
     answers.forEachIndexed { index, answer ->
       val intent = actionIntent(context, id, paneId, url, answer.key, answer.label)
       // A distinct request code per button, so the extras aren't shared between them.

@@ -104,7 +104,7 @@ export type LocalServer = { port: number; close: () => Promise<void> };
  * Apps authenticate with their first message (see AppSession), the same way
  * they do through the relay.
  */
-export function startLocalServer(opts: { port: number; bind: string; deps: SessionDeps }): Promise<LocalServer> {
+export function startLocalServer(opts: { port: number; bind: string; deps: SessionDeps; accepts?: (localAddress: string | undefined) => boolean }): Promise<LocalServer> {
   const http = createServer((req, res) => {
     if (req.url === "/healthz") {
       res.writeHead(200, { "content-type": "text/plain" }).end("ok\n");
@@ -113,6 +113,7 @@ export function startLocalServer(opts: { port: number; bind: string; deps: Sessi
     res.writeHead(404).end();
   });
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
+  if (opts.accepts) http.on("connection", (socket) => opts.accepts!(socket.localAddress) || socket.destroy());
 
   http.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://localhost");

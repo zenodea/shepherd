@@ -18,6 +18,7 @@ import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
 import type { ActivityLog } from "../herdr/activity-log.ts";
+import type { Uploads } from "../uploads.ts";
 import { LaunchError, type Launcher } from "../herdr/launcher.ts";
 import { ScreenRenderer } from "../herdr/screen-renderer.ts";
 import type { TerminalStream } from "../herdr/terminal-stream.ts";
@@ -50,6 +51,8 @@ export type SessionDeps = {
   activity?: ActivityLog;
   /** Backs `shepherd.conversation`; without it there are no conversations. */
   conversations?: Conversations;
+  /** Backs `shepherd.upload`; without it images can't be sent. */
+  uploads?: Uploads;
   /** Told which phones are connected, for the Shepherd window. */
   presence?: { connected: (deviceId: string, via: "direct" | "relay") => () => void };
 };
@@ -245,6 +248,18 @@ export class AppSession {
       if (!parsed) return Promise.reject(new LaunchError("invalid_params", `${method}: bad parameters`));
       const cwd = folder(parsed.paneId);
       return cwd ? changes(cwd, parsed.mode) : Promise.resolve(noFolder);
+    }
+    if (method === "shepherd.upload") {
+      const { uploadId, mime, data, done } = params;
+      if (typeof uploadId !== "string" || typeof mime !== "string" || typeof data !== "string" || typeof done !== "boolean") {
+        return Promise.reject(new LaunchError("invalid_params", "shepherd.upload needs uploadId, mime, data and done"));
+      }
+      if (!this.deps.uploads) return Promise.reject(new LaunchError("unsupported", "This host can't receive images."));
+      try {
+        return Promise.resolve(this.deps.uploads.receive({ uploadId, mime, data, done }));
+      } catch (err) {
+        return Promise.reject(new LaunchError("invalid_params", (err as Error).message));
+      }
     }
     if (method === "shepherd.subagents") {
       if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.subagents needs a paneId"));

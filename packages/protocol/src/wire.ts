@@ -95,6 +95,7 @@ export const HOST_METHODS = [
   "shepherd.image",
   "shepherd.images",
   "shepherd.subagents",
+  "shepherd.upload",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
@@ -222,6 +223,10 @@ export type Subagent = {
   /** Its latest step, e.g. "Read src/app.ts". */
   doing: string | null;
 };
+
+/** An image from the phone for an agent, in base64 chunks; the last one (`done`) saves it and returns its path. */
+export type UploadParams = { uploadId: string; mime: string; data: string; done: boolean };
+export type UploadResult = { received: number } | { path: string };
 
 export type SubagentsParams = { paneId: string };
 export type SubagentsResult = { available: false; reason: string } | { available: true; subagents: Subagent[] };

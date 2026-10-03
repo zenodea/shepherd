@@ -5,7 +5,8 @@ import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readStoredConfig, setDisabled } from "./config.ts";
+import { ROUTE_LABELS, ROUTES, type Routes } from "../connection/routes.ts";
+import { readStoredConfig, saveStoredConfig, setDisabled } from "./config.ts";
 import { Service, serviceSpec } from "./service.ts";
 
 export type RunningHost = { pid: number; socketPath: string; startedAt: string };
@@ -95,6 +96,17 @@ export async function restartHost(configPath: string, service = new Service()): 
   const env = running ? { ...process.env, HERDR_SOCKET_PATH: running.socketPath } : process.env;
   const { logFile } = serviceSpec();
   return `${running ? "Restarted" : "Started"} the host (pid ${startDetached(logFile, env)}). Logs: ${logFile}`;
+}
+
+/** Save which ways phones may connect, and restart a running host so it applies now. */
+export async function setConnections(configPath: string, routes: Routes, service = new Service()): Promise<string> {
+  const stored = readStoredConfig(configPath);
+  if (!stored) throw new Error("No host config yet: start the host once first.");
+  saveStoredConfig(configPath, { ...stored, connections: routes });
+  const on = ROUTES.filter((r) => routes[r]).map((r) => ROUTE_LABELS[r]).join(", ");
+  if (!readRunningHost(configPath) && !service.status().installed) return `Phones can connect over: ${on}.`;
+  await restartHost(configPath, service);
+  return `Phones can connect over: ${on}. Restarted the host; phones reconnect on their own.`;
 }
 
 export function isTurnedOff(configPath: string): boolean {

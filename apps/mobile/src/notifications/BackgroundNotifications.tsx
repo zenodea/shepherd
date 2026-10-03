@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
 import { AppRegistry, AppState } from "react-native";
-import { extractPrompt, type AgentInfo, type ConversationResult, type PaneReadResult, type StatusChange } from "@shepherd/protocol";
+import type { AgentInfo, ConversationResult, StatusChange } from "@shepherd/protocol";
 import Background, { type AnswerEvent } from "../../modules/shepherd-background/src/ShepherdBackgroundModule";
 import { useConnection, useHostState } from "../connection/connection";
 import type { HostConnection, HostState } from "../connection/host-client";
 import { DEMO_ENABLED } from "../connection/demo-host";
 import { useAppLock } from "../security/app-lock";
+import { useAnswerUnlocked } from "./lock-screen-setting";
 import { sendAnswer } from "../agents/answer";
+import { notificationId, readPrompt, settledPrompt } from "./agent-prompt";
 import { Cooldown, agentLabel, alertFor, excerpt, missedChanges, stillOffered, withPrompt } from "./rules";
 import { NOTIFICATIONS_SUPPORTED, useNotificationsEnabled } from "./setting";
 
@@ -21,12 +23,6 @@ const STALE_MS = 45_000;
 // native module starts it with the background service and finishes it on stop.
 if (NOTIFICATIONS_SUPPORTED) AppRegistry.registerHeadlessTask("ShepherdKeepAlive", () => () => new Promise<void>(() => {}));
 
-/** A stable notification id per pane: its alert, and one below it for the outcome of a button. */
-function notificationId(paneId: string): number {
-  let hash = 7;
-  for (const ch of paneId) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
-  return (Math.abs(hash) % 1_000_000) * 2 + 2;
-}
 
 function agentLink(paneId: string, hostId: string | null): string {
   return `shepherd://agent/${encodeURIComponent(paneId)}${hostId ? `?host=${hostId}` : ""}`;
@@ -52,20 +48,7 @@ async function lastReply(client: HostConnection, paneId: string): Promise<string
   return last && last.kind === "assistant" ? excerpt(last.text) || null : null;
 }
 
-async function readPrompt(client: HostConnection, paneId: string) {
-  const { read } = await client.call<{ read: PaneReadResult }>("agent.read", { target: paneId, source: "visible", format: "text" });
-  return extractPrompt(read.text);
-}
 
-/**
- * The question an agent just asked. It may still be drawing its answers, so
- * read again if there are none yet; the round trip is the wait (a JS timer
- * wouldn't fire while the app is in the background).
- */
-async function settledPrompt(client: HostConnection, paneId: string) {
-  const first = await readPrompt(client, paneId);
-  return first.options.length > 0 ? first : readPrompt(client, paneId);
-}
 
 /**
  * Background notifications without a push service: while they're on, a
@@ -80,14 +63,17 @@ export function BackgroundNotifications() {
   const hostId = settings?.id ?? null;
   const hostName = state.host?.name ?? settings?.name ?? "your computer";
   // With App lock on, answering from a notification asks for the fingerprint too.
-  const requireAuth = useAppLock().enabled === true;
+  const requireAuth = !useAnswerUnlocked();
+  const privateContent = useAppLock().enabled === true;
 
   // Run the background service while notifications are on. Android only lets it
   // start while the app is visible, so (re)start it whenever the app comes forward.
+  // What the permanent notification says, so restarting the service doesn't put back "Connecting…".
+  const ongoing = useRef({ title: "Shepherd", text: "Connecting…" });
   useEffect(() => {
     const native = Background;
     if (!active || !native) return;
-    const start = () => void native.start("Shepherd", "Connecting…").catch(() => {});
+    const start = () => void native.start(ongoing.current.title, ongoing.current.text).catch(() => {});
     if (AppState.currentState === "active") start();
     const sub = AppState.addEventListener("change", (s) => s === "active" && start());
     return () => {
@@ -102,13 +88,13 @@ export function BackgroundNotifications() {
   useEffect(() => {
     const native = Background;
     if (!active || !native || !client) return;
-    let shown = "";
     const refresh = () => {
-      const { title, text } = connectionText(client.getState());
-      if (`${title}\n${text}` === shown) return;
-      shown = `${title}\n${text}`;
-      void native.update(title, text).catch(() => {});
+      const next = connectionText(client.getState());
+      if (next.title === ongoing.current.title && next.text === ongoing.current.text) return;
+      ongoing.current = next;
+      void native.update(next.title, next.text).catch(() => {});
     };
+    ongoing.current = { title: "", text: "" };
     refresh();
     const unsubscribe = client.subscribe(refresh);
     const tick = native.addListener("onTick", () => {
@@ -122,9 +108,9 @@ export function BackgroundNotifications() {
   }, [active, client]);
 
   // Latest values for the listeners below, which are set up once per client.
-  const latest = useRef({ hostId, hostName, active, requireAuth });
+  const latest = useRef({ hostId, hostName, active, requireAuth, privateContent });
   useEffect(() => {
-    latest.current = { hostId, hostName, active, requireAuth };
+    latest.current = { hostId, hostName, active, requireAuth, privateContent };
   });
 
   // Agents that need you or finished, while you're not looking at the app, and
@@ -136,7 +122,7 @@ export function BackgroundNotifications() {
 
     /** Post the notification for a change (`again`: a follow-up question, so skip the cooldown). */
     const post = async (change: StatusChange, again = false) => {
-      const { hostId, hostName, requireAuth } = latest.current;
+      const { hostId, hostName, requireAuth, privateContent } = latest.current;
       const alert = alertFor(change, hostName);
       if (!alert || (!again && !cooldown.allow(`${change.paneId}:${change.status}`))) return;
       let content: ReturnType<typeof withPrompt> = { alert, actions: [], write: null };
@@ -164,6 +150,7 @@ export function BackgroundNotifications() {
         timeoutMs: 0,
         ...reply,
         requireAuth,
+        privateContent,
       });
     };
 

@@ -43,8 +43,10 @@ class AgentNotification : Record {
   /** The answer the Reply box is for (an option you write yourself): its key; empty for a new message. */
   @Field val replyKey: String = ""
   @Field val replyLabel: String = "Reply"
-  /** App lock is on: private on the lock screen, fingerprint before answering. */
+  /** Unlock before an answer from the lock screen is sent. */
   @Field val requireAuth: Boolean = false
+  /** Hide the content on the lock screen. */
+  @Field val privateContent: Boolean = false
 }
 
 /**
@@ -125,6 +127,7 @@ class ShepherdBackgroundModule : Module() {
         notification.replyKey,
         notification.replyLabel,
         notification.requireAuth,
+        notification.privateContent,
       )
     }
 

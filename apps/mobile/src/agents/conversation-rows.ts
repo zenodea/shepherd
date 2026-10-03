@@ -14,6 +14,8 @@ export type Row =
   | { key: string; kind: "orphan_result"; result: ToolResult }
   /** A message waiting in the agent's own queue. */
   | { key: string; kind: "queued"; message: QueuedMessage }
+  /** A message you just sent, before the agent's transcript has it. */
+  | { key: string; kind: "sending"; text: string }
   /** A run of tool calls (and thinking) between messages, folded into one line. */
   | { key: string; kind: "group"; rows: Row[]; tools: number; names: [string, number][]; failed: boolean };
 
@@ -67,6 +69,11 @@ export function rowImages(row: Row): ImageRef[] {
   if (row.kind === "orphan_result") return row.result.images ?? [];
   if (row.kind === "group") return row.rows.flatMap(rowImages);
   return [];
+}
+
+/** Messages being sent as rows, newest first: they go below everything else. */
+export function sendingRows(sending: { id: string; text: string }[]): Row[] {
+  return sending.map((s) => ({ key: `s${s.id}`, kind: "sending" as const, text: s.text })).reverse();
 }
 
 /** Queued messages as rows, newest first like the rest of the (inverted) list. */

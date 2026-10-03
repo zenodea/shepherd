@@ -138,6 +138,7 @@ The app tries every address in the QR code at once and uses whichever answers fi
 ## What you can do
 
 - **See every agent at a glance.** Agents that need input come first, with their question and one button per answer.
+- **Send images.** The image button next to the message box sends a photo or screenshot to the agent: it's saved on your computer (in a temporary folder, cleared after a week) and its path goes into your message, for the agent to open.
 - **Read the conversation.** Agents open on their conversation: your messages, their replies and each tool call (tap one to see its output), read from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app however the agent draws its screen, and older messages load as you scroll up. The arrows on the right jump between your own messages, runs of tool calls fold into one line ("12 tool calls · Read ×6, Edit ×4"), and the header shows how full the agent's context is (a percentage for Codex, which records its window; tokens for Claude and pi).
 - **Formatted replies.** Tables, lists, checklists, quotes, headings and code come out formatted, and links open in your browser. Wide tables scroll sideways.
 - **See the images it read.** Screenshots and pictures the agent looked at, and images you pasted, appear in the chat as "Image · 80 KB": tap to load one, then tap it for full screen. There, pinch to zoom into a spot, double-tap to zoom in or out, swipe down to close, and **save** it to your phone's Pictures/Shepherd folder. Turn on **Settings → Show images** to load them as they appear; the agent's **⋯** menu then has **Images**, every image in the conversation grouped under the message of yours it came after. They come from the transcript, a piece at a time, so it works through the relay too.
@@ -146,7 +147,7 @@ The app tries every address in the QR code at once and uses whichever answers fi
 - **See what's queued.** Send while the agent is working and it queues the message itself; Shepherd shows it as a dashed "Queued" bubble until the agent picks it up, then as a message where the agent took it in, even in the middle of a turn. That's read from the agent's own records: Claude Code's transcript and Codex's queue, so messages you queue at the computer show up too. pi takes queued messages as well, but doesn't record them anywhere Shepherd can read yet, so they don't show.
 - **Watch the live terminal.** Tap the terminal icon to switch. The agent is fitted to your screen as native text. Scroll up for the history, pinch to resize, search, long-press to copy, tap links.
 - **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal. Answers you write yourself ("Type something.", "No, and tell Claude what to do") open a text box. While an agent works, the send button turns into **Stop**. Unsent text is kept per agent until you send it.
-- **Home-screen widget.** Long-press your home screen → Widgets → Shepherd: which agents need you, at a glance. Tap an agent to open it, its question and answers included. It stays current while notifications are on (they keep Shepherd connected); otherwise it shows how things were when the app last ran.
+- **Home-screen widget.** Long-press your home screen → Widgets → Shepherd: which agents need you, at a glance. Tap an agent to open it. When one needs you, the widget shows its question with its first two answers as buttons; a tap answers it, if it's still asking the same thing. It stays current while notifications are on (they keep Shepherd connected); otherwise it shows how things were when the app last ran.
 - **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project or a fresh git worktree.
 - **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
 - **See what happened.** The activity feed shows what your agents did while you were away, and how long they waited for you.
@@ -162,7 +163,7 @@ To stay connected, Android requires the app to show a permanent notification whi
 
 When an agent asks a question, the notification shows it with up to three answers as buttons. A button only answers if the agent is still asking that same question; otherwise it tells you to open Shepherd. When an agent finishes, the notification shows the start of its last reply and has a **Reply** box for what to do next. An answer you write yourself ("Type something.") becomes a Reply box too. When an agent asks several questions in a row, the next one arrives as soon as you've answered the last. If your phone lost its connection for a while, Shepherd catches up when it's back: anything that finished or started asking in between still gets its notification.
 
-You can answer from the lock screen. If yours shows notifications as icons only or hides their content, change that in Android's lock screen settings. With **App lock** on, the question stays private on the lock screen (your Android setting decides) and every answer asks for your fingerprint first.
+You can answer from the lock screen. Android asks for your fingerprint or screen lock before the answer is sent, so someone holding your phone can't approve anything; turn on **Settings → Answer without unlocking** to skip that. If your lock screen shows notifications as icons only or hides their content, change that in Android's lock screen settings. With **App lock** on, the question also stays private on the lock screen (your Android setting decides).
 
 Notifications come from the computer you're connected to. If you've paired several, switch to the one you want to hear from.
 
@@ -235,6 +236,7 @@ npm run host -- devices           # list paired phones
 npm run host -- devices revoke <id|all>  # unpair (disconnects immediately)
 npm run host -- relay <url> <tok> # connect through a relay
 npm run host -- relay off         # stop using the relay
+npm run host -- connections tailscale relay   # which ways phones may connect (lan, tailscale, relay)
 npm run host -- status            # is the host running, addresses, devices, recent log
 npm run host -- restart | stop    # restart or stop a host running in the background
 npm run host -- on | off          # turn Shepherd on or off (off: herdr doesn't start it)
@@ -251,6 +253,7 @@ npm run host -- ui                # the Shepherd window (status, pairing, phones
 
 ## Security model
 
+- **Ways in:** choose which of LAN, Tailscale and the relay phones may use, in the Shepherd window (keys 1–3) or with `connections`. With only Tailscale, the host listens on its Tailscale address alone, so nothing is open on other networks; connections arriving on a way that's off are dropped. The relay off means the host never connects to it. Shepherd won't let you turn off the last way in.
 - **Pairing:** each phone gets its own random token (the host stores only a hash). Pairing codes work once and expire after 10 minutes. `devices revoke` cuts a phone off immediately.
 - **End-to-end encryption** on every connection, including through the relay: a Noise NK-style handshake with the host's X25519 key pinned from the QR code, then ChaCha20-Poly1305. The relay only ever sees ciphertext. Built on the audited [@noble](https://paulmillr.com/noble/) libraries (`packages/protocol/src/secure.ts`).
 - **Limited API:** the host forwards only an allowlist of herdr methods (`FORWARDED_METHODS` in `packages/protocol/src/wire.ts`), and starts agents only as installed agent types in existing workspaces. A leaked token can't run shell commands through the API, but it can type into your terminals, so revoke lost phones.

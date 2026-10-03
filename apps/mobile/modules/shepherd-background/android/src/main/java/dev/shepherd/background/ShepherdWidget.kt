@@ -25,6 +25,7 @@ class ShepherdWidget : AppWidgetProvider() {
     private const val PREFS = "shepherd_widget"
     private const val KEY = "summary"
     private val LINES = intArrayOf(R.id.widget_line1, R.id.widget_line2, R.id.widget_line3)
+    private val ANSWERS = intArrayOf(R.id.widget_answer1, R.id.widget_answer2)
 
     /** Save the app's latest summary (JSON) and redraw every widget. */
     fun update(context: Context, json: String) {
@@ -59,9 +60,13 @@ class ShepherdWidget : AppWidgetProvider() {
       views.setTextColor(R.id.widget_summary, if (tone == "idle") Color.parseColor("#FAFAFA") else color(tone))
       val at = summary.optLong("at", 0L)
       views.setTextViewText(R.id.widget_updated, if (at > 0) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(at)) else "")
+      val ask = summary.optJSONObject("ask")
+      renderAsk(context, views, ask)
       val lines = summary.optJSONArray("lines")
+      // With a question showing, one agent line fits: the one asking.
+      val shown = if (ask != null) 1 else LINES.size
       LINES.forEachIndexed { index, viewId ->
-        val line = lines?.optJSONObject(index)
+        val line = if (index < shown) lines?.optJSONObject(index) else null
         if (line == null) {
           views.setViewVisibility(viewId, View.GONE)
         } else {
@@ -74,6 +79,30 @@ class ShepherdWidget : AppWidgetProvider() {
         }
       }
       return views
+    }
+
+    private fun renderAsk(context: Context, views: RemoteViews, ask: JSONObject?) {
+      val answers = ask?.optJSONArray("answers")
+      if (ask == null || answers == null || answers.length() == 0) {
+        views.setViewVisibility(R.id.widget_ask, View.GONE)
+        return
+      }
+      views.setViewVisibility(R.id.widget_ask, View.VISIBLE)
+      views.setTextViewText(R.id.widget_question, ask.optString("question"))
+      val id = ask.optInt("notificationId")
+      val paneId = ask.optString("paneId")
+      val url = ask.optString("url", "shepherd://")
+      ANSWERS.forEachIndexed { index, viewId ->
+        val answer = answers.optJSONObject(index)
+        if (answer == null) {
+          views.setViewVisibility(viewId, View.GONE)
+        } else {
+          val label = answer.optString("label")
+          views.setViewVisibility(viewId, View.VISIBLE)
+          views.setTextViewText(viewId, label)
+          views.setOnClickPendingIntent(viewId, Notifications.answerIntent(context, id, paneId, url, answer.optString("key"), label, 9200 + index))
+        }
+      }
     }
   }
 }

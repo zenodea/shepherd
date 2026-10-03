@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
-import { BatteryCharging, Bell, BellOff, Check, ChevronLeft, Fingerprint, Image as ImageIcon, Laptop, QrCode } from "lucide-react-native";
+import { BatteryCharging, Bell, BellOff, Check, ChevronLeft, Fingerprint, Image as ImageIcon, Laptop, LockOpen, QrCode } from "lucide-react-native";
 import { setImagesShown, useImagesShown } from "../agents/image-setting";
+import { setAnswerUnlocked, useAnswerUnlocked } from "../notifications/lock-screen-setting";
 import { useEffect, useState } from "react";
 import { Alert, AppState, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import Background from "../../modules/shepherd-background/src/ShepherdBackgroundModule";
@@ -24,6 +25,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const notifications = useNotificationsEnabled();
   const imagesShown = useImagesShown();
+  const answerUnlocked = useAnswerUnlocked();
   // What Android allows, re-checked when you come back from its settings.
   const [system, setSystem] = useState({ allowed: true, unrestricted: true });
   useEffect(() => {
@@ -150,6 +152,18 @@ export default function SettingsScreen() {
                     title="Run in the background without limits"
                     detail="Otherwise Android can delay notifications while your phone is idle"
                     onPress={() => void Background?.requestIgnoreBatteryOptimizations().catch(() => {})}
+                  />
+                </>
+              ) : null}
+              {notifications ? (
+                <>
+                  <Divider inset={56} />
+                  <ListRow
+                    icon={<LockOpen size={19} color={colors.muted} />}
+                    title="Answer without unlocking"
+                    detail="Off: answering from the lock screen asks for your fingerprint or screen lock first, so someone holding your phone can't approve anything."
+                    chevron={false}
+                    trailing={<Toggle value={answerUnlocked} onValueChange={setAnswerUnlocked} />}
                   />
                 </>
               ) : null}

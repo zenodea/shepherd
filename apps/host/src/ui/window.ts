@@ -5,7 +5,8 @@ import { encodePairingLink } from "@shepherd/protocol";
 import { DeviceRegistry, type Device } from "../pairing/devices.ts";
 import { hostAddresses, pairingInfo, renderQr, type HostAddress } from "../pairing/pairing.ts";
 import { loadConfig, type HostConfig } from "../system/config.ts";
-import { readRunningHost, restartHost, turnOff, turnOn, type RunningHost } from "../system/daemon.ts";
+import { readRunningHost, restartHost, setConnections, turnOff, turnOn, type RunningHost } from "../system/daemon.ts";
+import { ROUTE_LABELS, ROUTES, routesOf, withRoute, type Route, type Routes } from "../connection/routes.ts";
 import { readHostStatus, type ConnectedPhone, type HostStatus } from "../system/host-status.ts";
 import { Service } from "../system/service.ts";
 import { duration, frame, pad, screen, style, visibleLength, when } from "./ansi.ts";
@@ -30,6 +31,7 @@ export type WindowData = {
   turnedOff: boolean;
   devices: Device[];
   addresses: HostAddress[];
+  routes: Routes;
   relayConfigured: boolean;
   log: string[];
   logFile: string;
@@ -101,17 +103,20 @@ function overview(data: WindowData, now: number): string[] {
   const connected = new Set((status?.phones ?? []).map((p) => p.deviceId)).size;
   lines.push(`  ${label("Phones")}${status ? `${connected} connected` : style.dim("—")}${style.dim(` · ${data.devices.length} paired`)}`);
   lines.push("");
-  lines.push(`  ${style.bold("Reachable at")}`);
-  const direct = data.addresses.filter((a) => a.label !== "Relay");
-  if (direct.length === 0) lines.push(`    ${style.dim("No LAN or Tailscale address. Set SHEPHERD_BIND or use the relay.")}`);
-  const sub = (s: string) => style.dim(pad(s, 13));
-  for (const a of direct) lines.push(`    ${sub(a.label)}${a.url}`);
-  lines.push(`    ${sub("Relay")}${relayText(data)}`);
+  lines.push(`  ${style.bold("Phones connect over")}`);
+  for (const [route, key] of [["lan", "1"], ["tailscale", "2"], ["relay", "3"]] as const) {
+    const on = data.routes[route];
+    const urls = data.addresses.filter((a) => a.label === ROUTE_LABELS[route]).map((a) => a.url);
+    const detail = route === "relay" ? relayText(data) : !on ? style.dim("off") : urls[0] ?? style.dim(`no ${ROUTE_LABELS[route]} address`);
+    lines.push(switchRow(ROUTE_LABELS[route], slider(on && (route !== "relay" || data.relayConfigured)), key, detail));
+    if (route !== "relay") for (const url of urls.slice(1)) lines.push(`  ${label("")}${" ".repeat(16)}${url}`);
+  }
   return lines;
 }
 
 function relayText(data: WindowData): string {
   if (!data.relayConfigured) return style.dim("not set up");
+  if (!data.routes.relay) return style.dim("off");
   const relay = data.status?.relay;
   if (!data.running) return style.dim("configured");
   if (!relay) return style.dim("starting");
@@ -169,7 +174,7 @@ function logScreen(data: WindowData, height: number): string[] {
 }
 
 const HINTS: Record<Screen, [string, string][]> = {
-  overview: [["s", "shepherd on/off"], ["r", "restart"], ["q", "close"]],
+  overview: [["s", "shepherd on/off"], ["1-3", "connections"], ["r", "restart"], ["q", "close"]],
   pair: [["p", "new code"], ["r", "restart"], ["q", "close"]],
   phones: [["↑↓", "select"], ["x", "revoke"], ["p", "pair"], ["q", "close"]],
   log: [["r", "restart"], ["q", "close"]],
@@ -243,6 +248,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       turnedOff: config.disabled === true,
       devices: devices.list(),
       addresses: status?.addresses ?? hostAddresses(config, config.port),
+      routes: routesOf(config),
       relayConfigured: Boolean(config.relayUrl && config.relayHostToken),
       log: tail(svc.logFile),
       logFile: svc.logFile,
@@ -330,6 +336,21 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
     refresh();
     setTimeout(refresh, 1500);
   };
+  const toggleRoute = async (route: Route) => {
+    if (busy) return;
+    busy = true;
+    try {
+      const routes = withRoute(config, route, !routesOf(config)[route]);
+      flash(`${ROUTE_LABELS[route]} ${routes[route] ? "on" : "off"}: applying…`, "warn");
+      flash(await setConnections(config.configPath, routes, service));
+      config = loadConfig();
+    } catch (err) {
+      flash((err as Error).message, "error");
+    }
+    busy = false;
+    refresh();
+    setTimeout(refresh, 1500);
+  };
   const close = () => {
     devices.unwatch();
     out.write(screen.leave);
@@ -374,6 +395,11 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
         return void restart();
       case "s":
         if (view.screen === "overview" && !data.service.installed) void toggleShepherd();
+        return;
+      case "1":
+      case "2":
+      case "3":
+        if (view.screen === "overview") void toggleRoute(ROUTES[Number(key) - 1]!);
         return;
     }
     if (view.screen === "phones") {

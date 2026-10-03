@@ -1,14 +1,15 @@
 import { ArrowDown, ChevronDown, ChevronRight, ChevronUp, Clock } from "lucide-react-native";
 import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Easing, FlatList, Platform, ScrollView, StyleSheet, Text, View, type ViewToken } from "react-native";
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View, type ViewToken } from "react-native";
 import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
+import { Appear } from "../ui/Appear";
 import { PressableScale } from "../ui/Pressable";
 import { Counts } from "./Counts";
 import { ConversationImages } from "./ConversationImage";
 import { SubagentCard, SubagentsContext } from "./SubagentCard";
 import { DiffView } from "./DiffView";
 import { colors, fonts, space, statusColors, themed } from "../ui/theme";
-import { conversationRows, countUserMessages, groupActivity, queuedRows, rowImages, userMessageIndex, type Row } from "./conversation-rows";
+import { conversationRows, countUserMessages, groupActivity, queuedRows, rowImages, sendingRows, userMessageIndex, type Row } from "./conversation-rows";
 import { Markdown } from "./Markdown";
 
 /**
@@ -166,6 +167,18 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
       </View>
     );
   }
+  if (row.kind === "sending") {
+    return (
+      <View style={[styles.userRow, styles.sending]}>
+        <View style={styles.userBubble}>
+          <Text style={styles.userText} selectable>
+            {row.text}
+          </Text>
+        </View>
+        <Text style={[styles.queuedLabelText, styles.queuedLabel]}>Sending…</Text>
+      </View>
+    );
+  }
   if (row.kind === "orphan_result") {
     return (
       <View style={styles.tool}>
@@ -215,39 +228,18 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
   }
 });
 
-const native = Platform.OS !== "web";
-
-/** "Jump to the latest": pops up with a little bounce when you scroll away from the bottom, and shrinks away when you're back. */
+/** "Jump to the latest", when you've scrolled away from the bottom. */
 function ToBottom({ visible, onPress }: { visible: boolean; onPress: () => void }) {
-  const [shown] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    const animation = visible
-      ? Animated.spring(shown, { toValue: 1, friction: 6, tension: 140, useNativeDriver: native })
-      : Animated.timing(shown, { toValue: 0, duration: 140, easing: Easing.in(Easing.cubic), useNativeDriver: native });
-    animation.start();
-    return () => animation.stop();
-  }, [visible, shown]);
   return (
-    <Animated.View
-      pointerEvents={visible ? "auto" : "none"}
-      importantForAccessibility={visible ? "auto" : "no-hide-descendants"}
-      style={[
-        styles.toBottomPlace,
-        {
-          opacity: shown.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 1, 1], extrapolate: "clamp" }),
-          transform: [
-            { translateY: shown.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
-            { scale: shown.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) },
-          ],
-        },
-      ]}
-    >
+    <Appear visible={visible} style={styles.toBottomPlace}>
       <PressableScale onPress={onPress} style={styles.toBottom} accessibilityLabel="Jump to the latest">
         <ArrowDown size={18} color={colors.text} />
       </PressableScale>
-    </Animated.View>
+    </Appear>
   );
 }
+
+const NONE: { id: string; text: string }[] = [];
 
 export type ConversationHandle = { scrollToBottom: () => void };
 
@@ -258,6 +250,8 @@ type Props = {
   entries: ConversationEntry[];
   /** Messages waiting in the agent's own queue. */
   queued: QueuedMessage[];
+  /** Messages you just sent, until the agent's transcript or queue has them. */
+  sending?: { id: string; text: string }[];
   /** null while the first page is loading. */
   ready: boolean;
   working: boolean;
@@ -270,7 +264,7 @@ type Props = {
 
 /** An agent's conversation as native, smoothly scrolling messages, newest at the bottom. */
 export const Conversation = forwardRef<ConversationHandle, Props>(function Conversation(
-  { entries, queued, ready, working, activity, atStart, loadingOlder, onLoadOlder },
+  { entries, queued, sending = NONE, ready, working, activity, atStart, loadingOlder, onLoadOlder },
   ref,
 ) {
   const list = useRef<FlatList<Row>>(null);
@@ -282,7 +276,10 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
     list.current?.scrollToOffset({ offset: offset.current, animated: false });
   }, []);
   // Inverted: the newest row is first, at the bottom of the screen; queued messages below that.
-  const rows = useMemo(() => [...queuedRows(queued), ...groupActivity(conversationRows(entries)).reverse()], [entries, queued]);
+  const rows = useMemo(
+    () => [...sendingRows(sending), ...queuedRows(queued), ...groupActivity(conversationRows(entries)).reverse()],
+    [entries, queued, sending],
+  );
   const userMessages = useMemo(() => countUserMessages(rows), [rows]);
   const showJumps = userMessages > 1 || scrolledUp;
 
@@ -399,7 +396,7 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
         />
       </GrowContext.Provider>
       <ToBottom visible={scrolledUp} onPress={() => list.current?.scrollToOffset({ offset: 0, animated: true })} />
-      {showJumps ? (
+      <Appear visible={showJumps} style={styles.jumpsPlace}>
         <View style={styles.jumps}>
           <PressableScale onPress={() => jump("older")} style={styles.jump} accessibilityLabel="Your previous message">
             {loadingOlder ? <ActivityIndicator size="small" color={colors.muted} /> : <ChevronUp size={18} color={colors.text} />}
@@ -409,7 +406,7 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
             <ChevronDown size={18} color={colors.text} />
           </PressableScale>
         </View>
-      ) : null}
+      </Appear>
     </View>
   );
 });
@@ -500,10 +497,9 @@ const styles = themed(() =>
     queuedText: { color: colors.muted },
     queuedLabel: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4, marginRight: 4 },
     queuedLabelText: { fontSize: 11, color: colors.subtle },
+    sending: { opacity: 0.6 },
+    jumpsPlace: { position: "absolute", right: 12, bottom: 12 },
     jumps: {
-      position: "absolute",
-      right: 12,
-      bottom: 12,
       borderRadius: 20,
       backgroundColor: colors.floating,
       borderWidth: StyleSheet.hairlineWidth,
