@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
+import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, type StyleProp, type ViewStyle } from "react-native";
 import { colors, themed } from "./theme";
 
 const OPEN_MS = 280;
 const CLOSE_MS = 200;
 const native = Platform.OS !== "web";
+/** No sheet covers more than this much of the screen; longer content scrolls inside it. */
+const MAX_SHARE = 0.55;
 
 /**
  * A bottom sheet: the backdrop fades in place while the sheet slides up from
@@ -25,6 +27,7 @@ export function Sheet({
   const [progress] = useState(() => new Animated.Value(0));
   const [height, setHeight] = useState(600);
   const measured = useRef(false);
+  const screen = useWindowDimensions();
 
   // Mount as soon as it should show; unmount only after the exit animation.
   if (visible && !mounted) setMounted(true);
@@ -50,7 +53,7 @@ export function Sheet({
           <Pressable style={styles.fill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
         </Animated.View>
         <Animated.View
-          style={[styles.sheet, style, { transform: [{ translateY }] }]}
+          style={[styles.sheet, style, { maxHeight: screen.height * MAX_SHARE, transform: [{ translateY }] }]}
           onLayout={(e) => {
             // Slide from exactly below the screen edge, whatever the sheet's height.
             const h = e.nativeEvent.layout.height;

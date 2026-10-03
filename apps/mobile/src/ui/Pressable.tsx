@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useState, type ReactNode } from "react";
-import { Animated, Platform, Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
+import { Animated, Platform, Pressable, StyleSheet, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { colors } from "./theme";
 
 // The style (including absolute positioning) must sit on the Pressable itself:
@@ -18,6 +18,14 @@ type Props = Omit<PressableProps, "style" | "children"> & {
 };
 
 /** Pressable that shrinks slightly and highlights, with a light haptic tick. */
+const CORNERS = ["borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius"] as const;
+
+/** The button's own corner rounding: Android doesn't always clip children to it while the button scales. */
+function corners(style: StyleProp<ViewStyle>): ViewStyle {
+  const flat = StyleSheet.flatten(style) ?? {};
+  return Object.fromEntries(CORNERS.filter((k) => flat[k] !== undefined).map((k) => [k, flat[k]]));
+}
+
 export function PressableScale({ style, children, haptic = true, highlight = true, onPressIn, onPressOut, onPress, disabled, ...rest }: Props) {
   const [scale] = useState(() => new Animated.Value(1));
   const [overlay] = useState(() => new Animated.Value(0));
@@ -51,7 +59,7 @@ export function PressableScale({ style, children, haptic = true, highlight = tru
       {highlight ? (
         <Animated.View
           pointerEvents="none"
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.pressed, opacity: overlay }}
+          style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.pressed, opacity: overlay }, corners(style)]}
         />
       ) : null}
     </AnimatedPressable>

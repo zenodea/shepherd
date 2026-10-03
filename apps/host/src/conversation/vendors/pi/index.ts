@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { AgentInfo } from "@shepherd/protocol";
 import { cwdsOf, firstRecord, jsonlFiles } from "../../files.ts";
+import { TranscriptReader } from "../../reader.ts";
 import type { Vendor } from "../../vendor.ts";
 import { piParser, piSessionDir } from "./parser.ts";
 
@@ -13,5 +14,5 @@ export function pi({ home }: { home: string }): Vendor {
     }
     return null;
   };
-  return { id: "pi", locate, parser: piParser };
+  return { id: "pi", locate, open: (transcript) => new TranscriptReader(transcript, piParser) };
 }

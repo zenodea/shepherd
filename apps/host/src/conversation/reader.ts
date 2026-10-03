@@ -1,10 +1,7 @@
-// Follow a transcript file as the agent appends to it, parsing only the new
-// lines each time. Transcripts can reach hundreds of MB, so a big file is read
-// from its last few MB.
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 import type { ContextUsage, ConversationEntry, ImageGroup, QueuedMessage } from "@shepherd/protocol";
 import type { Draft, Parser } from "./entries.ts";
-import { imageRefs, imagesIn } from "./images.ts";
+import { imageRefs, imagesIn, readRecordAt, type FoundImage } from "./images.ts";
 
 // Cheap checks before looking for images in a record.
 const IMAGE_MARK = Buffer.from('"image"');
@@ -20,20 +17,100 @@ const NEWLINE = 0x0a;
 
 export type Page = { entries: ConversationEntry[]; first: number; last: number };
 
-export class TranscriptReader {
+/** What the rest of the code needs from a conversation, wherever the agent keeps it. */
+export interface ConversationReader {
+  refresh(): void;
+  page(range: { after?: number; before?: number; limit: number }): Page;
+  context(): ContextUsage | null;
+  queued(): QueuedMessage[] | null;
+  imageGroups(): ImageGroup[];
+  progress(): { toolCalls: number; latest: Extract<ConversationEntry, { kind: "tool" }> | null };
+  image(id: string): FoundImage | null;
+}
+
+/** Numbered entries, newest last, with what every reader offers on top of them. */
+export abstract class EntryLog implements ConversationReader {
+  protected entries: ConversationEntry[] = [];
+  protected nextId = 0;
+
+  abstract refresh(): void;
+  abstract context(): ContextUsage | null;
+  abstract queued(): QueuedMessage[] | null;
+  abstract image(id: string): FoundImage | null;
+
+  /** Every image, grouped under the message of yours they came after (a message's own images included), newest group first. */
+  imageGroups(): ImageGroup[] {
+    const groups: ImageGroup[] = [];
+    let current: ImageGroup = { message: null, images: [] };
+    for (const entry of this.entries) {
+      if (entry.kind === "user") {
+        if (current.images.length) groups.push(current);
+        const text = entry.text.replace(/\[image\]\s*/g, "").trim();
+        current = { message: text ? text.slice(0, MESSAGE_PREVIEW) : null, ...(entry.at ? { at: entry.at } : {}), images: [] };
+      }
+      if (entry.images) current.images.push(...entry.images);
+    }
+    if (current.images.length) groups.push(current);
+    return groups.reverse();
+  }
+
+  /** How many tool calls so far, and the latest one. */
+  progress(): { toolCalls: number; latest: Extract<ConversationEntry, { kind: "tool" }> | null } {
+    let toolCalls = 0;
+    let latest: Extract<ConversationEntry, { kind: "tool" }> | null = null;
+    for (const entry of this.entries) {
+      if (entry.kind !== "tool") continue;
+      toolCalls++;
+      latest = entry;
+    }
+    return { toolCalls, latest };
+  }
+
+  page({ after, before, limit }: { after?: number; before?: number; limit: number }): Page {
+    let entries: ConversationEntry[];
+    if (after !== undefined) entries = this.entries.filter((e) => e.id > after).slice(0, limit);
+    else if (before !== undefined) entries = this.entries.filter((e) => e.id < before).slice(-limit);
+    else entries = this.entries.slice(-limit);
+    return { entries, first: this.entries[0]?.id ?? this.nextId, last: this.nextId - 1 };
+  }
+
+  protected push(draft: Draft): void {
+    this.entries.push({ ...draft, id: this.nextId++ } as ConversationEntry);
+  }
+
+  protected trim(): void {
+    if (this.entries.length > MAX_ENTRIES) this.entries = this.entries.slice(-MAX_ENTRIES);
+  }
+}
+
+/**
+ * Follows a transcript file the agent appends to, one JSON record per line,
+ * parsing only the new lines each time. Transcripts can reach hundreds of MB,
+ * so a big file is read from its last few MB.
+ */
+export class TranscriptReader extends EntryLog {
   readonly path: string;
   private readonly makeParser: () => Parser;
   private parse: Parser;
   private offset = 0;
   private partial: Buffer = Buffer.alloc(0);
-  private entries: ConversationEntry[] = [];
-  private nextId = 0;
   private ino = -1;
 
   constructor(path: string, makeParser: () => Parser) {
+    super();
     this.path = path;
     this.makeParser = makeParser;
     this.parse = makeParser();
+  }
+
+  /** An image by its reference: the record at that offset, and which image in it. */
+  image(id: string): FoundImage | null {
+    const [offset, index] = id.split(":").map(Number) as [number, number];
+    try {
+      return imagesIn(readRecordAt(this.path, offset))[index] ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /** Read whatever was appended since last time. */
@@ -81,7 +158,7 @@ export class TranscriptReader {
     } finally {
       closeSync(fd);
     }
-    if (this.entries.length > MAX_ENTRIES) this.entries = this.entries.slice(-MAX_ENTRIES);
+    this.trim();
   }
 
   /** How full the agent's context is, from the latest usage it recorded. */
@@ -92,42 +169,6 @@ export class TranscriptReader {
   /** The agent's message queue, when its transcript records one. */
   queued(): QueuedMessage[] | null {
     return this.parse.queued?.() ?? null;
-  }
-
-  /** Every image, grouped under the message of yours they came after (a message's own images included), newest group first. */
-  imageGroups(): ImageGroup[] {
-    const groups: ImageGroup[] = [];
-    let current: ImageGroup = { message: null, images: [] };
-    for (const entry of this.entries) {
-      if (entry.kind === "user") {
-        if (current.images.length) groups.push(current);
-        const text = entry.text.replace(/\[image\]\s*/g, "").trim();
-        current = { message: text ? text.slice(0, MESSAGE_PREVIEW) : null, ...(entry.at ? { at: entry.at } : {}), images: [] };
-      }
-      if (entry.images) current.images.push(...entry.images);
-    }
-    if (current.images.length) groups.push(current);
-    return groups.reverse();
-  }
-
-  /** How many tool calls so far, and the latest one. */
-  progress(): { toolCalls: number; latest: Extract<ConversationEntry, { kind: "tool" }> | null } {
-    let toolCalls = 0;
-    let latest: Extract<ConversationEntry, { kind: "tool" }> | null = null;
-    for (const entry of this.entries) {
-      if (entry.kind !== "tool") continue;
-      toolCalls++;
-      latest = entry;
-    }
-    return { toolCalls, latest };
-  }
-
-  page({ after, before, limit }: { after?: number; before?: number; limit: number }): Page {
-    let entries: ConversationEntry[];
-    if (after !== undefined) entries = this.entries.filter((e) => e.id > after).slice(0, limit);
-    else if (before !== undefined) entries = this.entries.filter((e) => e.id < before).slice(-limit);
-    else entries = this.entries.slice(-limit);
-    return { entries, first: this.entries[0]?.id ?? this.nextId, last: this.nextId - 1 };
   }
 
   private line(bytes: Buffer, offset: number): void {
@@ -147,10 +188,6 @@ export class TranscriptReader {
       if (found.length && owner) owner.images = imageRefs(offset, found);
     }
     for (const draft of drafts) this.push(draft);
-  }
-
-  private push(draft: Draft): void {
-    this.entries.push({ ...draft, id: this.nextId++ } as ConversationEntry);
   }
 
   /** A different or shortened file: start over, keeping ids increasing. */

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PressableScale } from "./Pressable";
 import { Sheet } from "./Sheet";
@@ -14,6 +14,7 @@ export function ActionSheet({ visible, title, actions, onClose }: { visible: boo
     <Sheet visible={visible} onClose={onClose} style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
         <View style={styles.grabber} />
         {title ? <Text style={[type.sub, styles.title]}>{title}</Text> : null}
+        <ScrollView style={styles.list}>
         {actions.map((action) => (
           <PressableScale
             key={action.key ?? action.title}
@@ -31,6 +32,7 @@ export function ActionSheet({ visible, title, actions, onClose }: { visible: boo
             {action.trailing}
           </PressableScale>
         ))}
+        </ScrollView>
     </Sheet>
   );
 }
@@ -39,6 +41,7 @@ const styles = themed(() => StyleSheet.create({
   sheet: { paddingHorizontal: space.md, paddingTop: space.sm, gap: 4 },
   grabber: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: space.sm },
   title: { paddingHorizontal: space.sm, paddingBottom: space.xs },
+  list: { flexShrink: 1 },
   action: { flexDirection: "row", alignItems: "center", gap: space.md, padding: space.md, borderRadius: 14 },
   icon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center" },
 }));

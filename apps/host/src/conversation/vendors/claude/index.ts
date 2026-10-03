@@ -4,6 +4,7 @@ import type { AgentInfo, SubagentStatus } from "@shepherd/protocol";
 import { isRecord, str } from "../../entries.ts";
 import { cwdsOf, firstRecord, jsonlFiles, lastRecords, modifiedAt } from "../../files.ts";
 import { isAlive, paneOfProcess } from "../../panes.ts";
+import { TranscriptReader } from "../../reader.ts";
 import { STALE_MS, type SubagentSource, type Vendor } from "../../vendor.ts";
 import { claudeParser, claudeProjectDir } from "./parser.ts";
 
@@ -72,7 +73,7 @@ function subagents(transcript: string): SubagentSource[] {
         depth: typeof meta.spawnDepth === "number" ? meta.spawnDepth : 1,
         startedAt: str(firstRecord(path)?.timestamp) ?? null,
         transcript: path,
-        parser: () => claudeParser({ subagent: true }),
+        open: () => new TranscriptReader(path, () => claudeParser({ subagent: true })),
         status: () => status(path),
         startedBy: (call) => toolUseId !== undefined && call.callId === toolUseId,
       },
@@ -105,7 +106,7 @@ export function claude({ home, running = () => runningSessions(join(home, "sessi
   return {
     id: "claude",
     locate,
-    parser: () => claudeParser(),
+    open: (transcript) => new TranscriptReader(transcript, () => claudeParser()),
     queued: (_transcript, reader) => reader.queued() ?? [],
     subagents,
   };

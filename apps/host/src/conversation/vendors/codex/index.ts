@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { AgentInfo, SubagentStatus } from "@shepherd/protocol";
 import { isRecord, str, type Parser } from "../../entries.ts";
 import { cwdsOf, firstRecord, jsonlFiles, lastRecords, modifiedAt, recentDayDirs } from "../../files.ts";
-import { TAIL_BYTES } from "../../reader.ts";
+import { TAIL_BYTES, TranscriptReader } from "../../reader.ts";
 import { STALE_MS, type SubagentSource, type Vendor } from "../../vendor.ts";
 import { codexParser } from "./parser.ts";
 import { CodexQueue, codexThreadId } from "./queue.ts";
@@ -101,7 +101,7 @@ export function codex({ home }: { home: string }): Vendor {
         depth: typeof spawn.depth === "number" ? spawn.depth : 1,
         startedAt: h.timestamp,
         transcript: file,
-        parser: () => (readsWholeFile ? ownWork(codexParser(), agentPath) : codexParser()),
+        open: () => new TranscriptReader(file, () => (readsWholeFile ? ownWork(codexParser(), agentPath) : codexParser())),
         status: () => status(file),
         startedBy: (call) => call.name === "spawn_agent" && call.summary === name,
       };
@@ -111,7 +111,7 @@ export function codex({ home }: { home: string }): Vendor {
   return {
     id: "codex",
     locate,
-    parser: codexParser,
+    open: (transcript) => new TranscriptReader(transcript, codexParser),
     queued: (transcript) => {
       const thread = codexThreadId(transcript);
       return thread ? queue.read(thread) : [];

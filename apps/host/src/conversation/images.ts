@@ -19,6 +19,10 @@ export function imagesIn(value: unknown): FoundImage[] {
     }
     // pi: {type: "image", data, mimeType}
     if (v.type === "image" && typeof v.data === "string" && typeof v.mimeType === "string") return void found.push({ mime: v.mimeType, data: v.data });
+    // Gemini: {inlineData: {mimeType, data}}
+    if (isRecord(v.inlineData) && typeof v.inlineData.data === "string" && typeof v.inlineData.mimeType === "string" && v.inlineData.mimeType.startsWith("image/")) {
+      return void found.push({ mime: v.inlineData.mimeType, data: v.inlineData.data });
+    }
     // Data URLs: {type: "input_image", image_url: "data:image/png;base64,…"}
     if (typeof v.image_url === "string" && v.image_url.startsWith("data:image/")) {
       const match = /^data:(image\/[\w.+-]+);base64,(.*)$/s.exec(v.image_url);

@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { basename } from "node:path";
 import type {
   AgentInfo,
   ConversationEntry,
@@ -11,11 +10,10 @@ import type {
   Subagent,
   SubagentsResult,
 } from "@shepherd/protocol";
-import type { Parser } from "./entries.ts";
 import { expandHome } from "./files.ts";
-import { imagesIn, readRecordAt, type FoundImage } from "./images.ts";
-import { TranscriptReader } from "./reader.ts";
-import { vendorFor, type SubagentSource, type Vendor } from "./vendor.ts";
+import type { FoundImage } from "./images.ts";
+import type { ConversationReader } from "./reader.ts";
+import { sessionName, vendorFor, type SubagentSource, type Vendor } from "./vendor.ts";
 import { defaultVendors } from "./vendors/index.ts";
 
 const DEFAULT_LIMIT = 150;
@@ -34,7 +32,7 @@ const unavailable = (reason: string): Unavailable => ({ available: false, reason
 export class Conversations {
   private readonly vendors: readonly Vendor[];
   private located = new Map<string, { at: number; path: string | null }>();
-  private readers = new Map<string, TranscriptReader>();
+  private readers = new Map<string, ConversationReader>();
   private subagentLists = new Map<string, { at: number; sources: SubagentSource[]; described: Subagent[] | null }>();
   private imageCache = new Map<string, FoundImage>();
 
@@ -50,7 +48,7 @@ export class Conversations {
     const source = params.subagent ? sources.find((s) => s.id === params.subagent) : undefined;
     if (params.subagent && !source) return unavailable("That subagent isn't in this conversation.");
 
-    const reader = this.reader(source?.transcript ?? transcript, source?.parser ?? vendor.parser);
+    const reader = source ? this.reader(source.transcript, source.open) : this.reader(transcript, () => vendor.open(transcript));
     if (!reader) return unavailable("Couldn't read this agent's conversation.");
     const limit = Math.min(MAX_LIMIT, Math.max(1, params.limit ?? DEFAULT_LIMIT));
     const page = reader.page({ after: params.after, before: params.before, limit });
@@ -60,7 +58,7 @@ export class Conversations {
     return {
       available: true,
       agent: vendor.id,
-      session: basename(transcript, ".jsonl") + (source ? `/${source.id}` : ""),
+      session: sessionName(transcript) + (source ? `/${source.id}` : ""),
       ...page,
       entries: page.entries.map((entry) => linkSubagent(entry, sources)),
       ...(queued ? { queued } : {}),
@@ -79,26 +77,23 @@ export class Conversations {
   images(agent: AgentInfo | null): ImagesResult {
     const session = this.session(agent);
     if ("reason" in session) return session;
-    const reader = this.reader(session.transcript, session.vendor.parser);
+    const reader = this.reader(session.transcript, () => session.vendor.open(session.transcript));
     if (!reader) return unavailable("Couldn't read this agent's conversation.");
-    return { available: true, session: basename(session.transcript, ".jsonl"), groups: reader.imageGroups() };
+    return { available: true, session: sessionName(session.transcript), groups: reader.imageGroups() };
   }
 
   /** One image from a transcript, in chunks of base64. */
   image(agent: AgentInfo | null, params: ImageParams): ImageResult {
     const session = this.session(agent);
     if ("reason" in session) return session;
-    const path = params.subagent ? this.subagentSources(session).find((s) => s.id === params.subagent)?.transcript : session.transcript;
-    if (!path) return unavailable("That subagent isn't in this conversation.");
-    const key = `${path}#${params.id}`;
+    const source = params.subagent ? this.subagentSources(session).find((s) => s.id === params.subagent) : undefined;
+    if (params.subagent && !source) return unavailable("That subagent isn't in this conversation.");
+    const transcript = source?.transcript ?? session.transcript;
+    const key = `${transcript}@${params.id}`;
     let image = this.imageCache.get(key);
     if (!image) {
-      const [offset, index] = params.id.split(":").map(Number) as [number, number];
-      try {
-        image = imagesIn(readRecordAt(path, offset))[index];
-      } catch {
-        image = undefined;
-      }
+      const reader = source ? this.reader(source.transcript, source.open) : this.reader(transcript, () => session.vendor.open(transcript));
+      image = reader?.image(params.id) ?? undefined;
       if (!image) return unavailable("That image isn't in the conversation any more.");
       this.imageCache.set(key, image);
       if (this.imageCache.size > 4) this.imageCache.delete(this.imageCache.keys().next().value!);
@@ -125,17 +120,17 @@ export class Conversations {
     return path;
   }
 
-  private reader(path: string, parser: () => Parser): TranscriptReader | null {
-    let reader = this.readers.get(path);
-    if (reader) this.readers.delete(path);
-    else reader = new TranscriptReader(path, parser);
-    this.readers.set(path, reader);
+  private reader(transcript: string, open: () => ConversationReader): ConversationReader | null {
+    let reader = this.readers.get(transcript);
+    if (reader) this.readers.delete(transcript);
+    else reader = open();
+    this.readers.set(transcript, reader);
     if (this.readers.size > MAX_READERS) this.readers.delete(this.readers.keys().next().value!);
     try {
       reader.refresh();
       return reader;
     } catch {
-      this.readers.delete(path);
+      this.readers.delete(transcript);
       this.located.clear();
       return null;
     }
@@ -159,7 +154,7 @@ export class Conversations {
   }
 
   private describe(source: SubagentSource): Subagent {
-    const progress = this.reader(source.transcript, source.parser)?.progress();
+    const progress = this.reader(source.transcript, source.open)?.progress();
     const latest = progress?.latest;
     const status = source.status();
     return {
@@ -183,6 +178,7 @@ function linkSubagent(entry: ConversationEntry, sources: SubagentSource[]): Conv
 }
 
 const SUBAGENT_ID = /^[\w.-]{1,100}$/;
+const IMAGE_ID = /^[\w.:-]{1,100}$/;
 
 export function conversationParams(params: Record<string, unknown>, isPaneId: (v: unknown) => v is string): ConversationParams | null {
   const { paneId, subagent, after, before, limit } = params;
@@ -201,7 +197,7 @@ export function conversationParams(params: Record<string, unknown>, isPaneId: (v
 
 export function imageParams(params: Record<string, unknown>, isPaneId: (v: unknown) => v is string): ImageParams | null {
   const { paneId, subagent, id, from } = params;
-  if (!isPaneId(paneId) || typeof id !== "string" || !/^\d{1,15}:\d{1,4}$/.test(id)) return null;
+  if (!isPaneId(paneId) || typeof id !== "string" || !IMAGE_ID.test(id)) return null;
   if (subagent !== undefined && !(typeof subagent === "string" && SUBAGENT_ID.test(subagent))) return null;
   if (from !== undefined && !(Number.isInteger(from) && (from as number) >= 0)) return null;
   return { paneId, id, ...(subagent !== undefined ? { subagent: subagent as string } : {}), ...(from !== undefined ? { from: from as number } : {}) };

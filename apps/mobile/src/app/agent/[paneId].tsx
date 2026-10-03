@@ -515,22 +515,26 @@ export default function TerminalScreen() {
               accessibilityRole="button"
               accessibilityLabel={`${changed.files.length + (changed.omitted ?? 0)} changed files`}
             >
-              <Text style={styles.changesText}>
+              <Text style={[styles.changesText, styles.pillFixed]}>
                 {`${changed.files.length + (changed.omitted ?? 0)} file${changed.files.length + (changed.omitted ?? 0) === 1 ? "" : "s"}  ·  `}
               </Text>
               <Counts additions={changed.additions} deletions={changed.deletions} size={12.5} />
-              {changed.mode === "branch" ? <Text style={styles.changesText}>{`  ·  on ${changed.branch}`}</Text> : null}
+              {changed.mode === "branch" ? (
+                <Text style={[styles.changesText, styles.pillFlexible, styles.pillBranch]} numberOfLines={1}>
+                  {`·  on ${changed.branch}`}
+                </Text>
+              ) : null}
             </PressableScale>
           ) : null}
           {subagentsLabel ? (
             <PressableScale
               onPress={() => router.push({ pathname: "/subagents/[paneId]", params: { paneId: paneId! } })}
-              style={styles.pill}
+              style={[styles.pill, styles.pillSecond]}
               accessibilityRole="button"
               accessibilityLabel={subagentsLabel}
             >
               <Bot size={13} color={colors.muted} />
-              <Text style={styles.changesText}>{` ${subagentsLabel}`}</Text>
+              <Text style={[styles.changesText, styles.pillFlexible]} numberOfLines={1}>{` ${subagentsLabel}`}</Text>
             </PressableScale>
           ) : null}
         </View>
@@ -804,16 +808,23 @@ const styles = themed(() => StyleSheet.create({
   attachmentImage: { width: 56, height: 56 },
   attachmentOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.35)" },
   attachmentRemove: { position: "absolute", top: 3, right: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
-  pills: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginLeft: 56, marginBottom: 6 },
+  pills: { flexDirection: "row", gap: 6, marginHorizontal: space.md, marginBottom: 6 },
   pill: {
     flexDirection: "row",
     alignItems: "center",
+    minWidth: 0,
+    flexShrink: 1,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: colors.raised,
   },
   changesText: { fontSize: 12.5, color: colors.muted },
+  pillFixed: { flexShrink: 0 },
+  pillFlexible: { flexShrink: 1 },
+  pillBranch: { marginLeft: 8 },
+  // Both pills stay on one line: the changes pill (its branch name) gives way first.
+  pillSecond: { flexShrink: 0 },
   stop: {
     width: 34,
     height: 34,

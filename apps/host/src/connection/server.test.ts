@@ -85,7 +85,7 @@ describe("local server", () => {
         devices: devices.registry,
         hostKey: generateKeyPair(),
         host: { name: "test-host", herdrVersion: "fake" },
-        conversations: new Conversations(defaultVendors({ claude: "/nonexistent/claude", codex: "/nonexistent/codex", pi: "/nonexistent/pi" })),
+        conversations: new Conversations(defaultVendors({ claude: "/nonexistent/claude", codex: "/nonexistent/codex", pi: "/nonexistent/pi", gemini: "/nonexistent/gemini", opencode: { data: "/nonexistent/opencode", cache: "/nonexistent/opencode" }, hermes: "/nonexistent/hermes" })),
         presence: {
           connected: (id, via) => {
             presence.push(`+${id} ${via}`);

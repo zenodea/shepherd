@@ -27,7 +27,14 @@ const tempDir = () => {
 const jsonl = (records: unknown[]) => records.map((r) => JSON.stringify(r)).join("\n") + "\n";
 const homes = (): VendorHomes => {
   const root = tempDir();
-  return { claude: join(root, "claude"), codex: join(root, "codex"), pi: join(root, "pi") };
+  return {
+    claude: join(root, "claude"),
+    codex: join(root, "codex"),
+    pi: join(root, "pi"),
+    gemini: join(root, "gemini"),
+    opencode: { data: join(root, "opencode"), cache: join(root, "opencode-cache") },
+    hermes: join(root, "hermes"),
+  };
 };
 const claudeDir = (h: VendorHomes, cwd = "/work/app") => join(h.claude, "projects", claudeProjectDir(cwd));
 const at = "2026-10-02T12:00:00.000Z";

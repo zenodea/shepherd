@@ -1,6 +1,6 @@
 import { Check, ChevronDown } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ListRow } from "./ListRow";
 import { PressableScale } from "./Pressable";
@@ -23,7 +23,6 @@ export function Select<T extends string>({
 }) {
   const [open, setOpen] = useState(false);
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
   const selected = options.find((o) => o.value === value);
   return (
     <>
@@ -38,7 +37,7 @@ export function Select<T extends string>({
       <Sheet visible={open} onClose={() => setOpen(false)} style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
         <View style={styles.grabber} />
         <Text style={[type.sub, styles.title]}>{title}</Text>
-        <ScrollView style={{ maxHeight: height * 0.6 }}>
+        <ScrollView style={styles.list}>
           {options.map((option) => (
             <PressableScale
               key={option.value}
@@ -69,6 +68,7 @@ const styles = themed(() =>
     sheet: { paddingHorizontal: space.md, paddingTop: space.sm, gap: 4 },
     grabber: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: space.sm },
     title: { paddingHorizontal: space.sm, paddingBottom: space.xs },
+    list: { flexShrink: 1 },
     option: { flexDirection: "row", alignItems: "center", gap: space.md, padding: space.md, borderRadius: 14 },
     icon: { width: 28, alignItems: "center" },
   }),
