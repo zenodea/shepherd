@@ -4,7 +4,7 @@ import type { HostConnection } from "../connection/host-client";
 
 const PAGE = 150;
 /** While the conversation is on screen: new messages show up within this. */
-const POLL_MS = 1500;
+const POLL_MS = 1000;
 /** No transcript yet (the agent hasn't written one, or its harness isn't supported): check now and then. */
 const RETRY_MS = 10_000;
 

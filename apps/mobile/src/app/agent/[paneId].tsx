@@ -23,6 +23,7 @@ import { useConversation } from "../../agents/use-conversation";
 import { getDraft, saveDraft, useDraftRevision, useDraftsReady } from "../../agents/drafts";
 import { Counts } from "../../agents/Counts";
 import { useChanges } from "../../agents/use-changes";
+import { useActivityLine } from "../../agents/use-activity-line";
 import { contextLabel } from "../../agents/conversation-rows";
 import { parseAnsi, toStyledLines } from "../../agents/ansi";
 import { PromptChips } from "../../agents/PromptCard";
@@ -191,6 +192,8 @@ export default function TerminalScreen() {
   const agentStatus = agent?.agent_status ?? null;
   const isAgent = agent !== null;
   const conversation = useConversation(client, isAgent ? paneId : null, online);
+  // The chat only gets a reply once it's finished; meanwhile, show what the agent's screen says it's doing.
+  const activity = useActivityLine(client, paneId, online && agent?.agent_status === "working" && view === "chat");
   const chatAvailable = isAgent && conversation.available !== false;
   const chat = chatAvailable && view === "chat";
   const readable = agentStatus === "idle" || agentStatus === "done";
@@ -478,6 +481,7 @@ export default function TerminalScreen() {
             queued={conversation.queued}
             ready={conversation.available === true}
             working={agent?.agent_status === "working"}
+            activity={activity}
             atStart={conversation.atStart}
             loadingOlder={conversation.loadingOlder}
             onLoadOlder={() => void conversation.loadOlder()}

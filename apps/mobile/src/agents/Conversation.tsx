@@ -208,6 +208,8 @@ type Props = {
   /** null while the first page is loading. */
   ready: boolean;
   working: boolean;
+  /** What the agent's screen says it's doing right now, e.g. "Baking… · 5m 20s". */
+  activity?: string | null;
   atStart: boolean;
   loadingOlder: boolean;
   onLoadOlder: () => void;
@@ -215,7 +217,7 @@ type Props = {
 
 /** An agent's conversation as native, smoothly scrolling messages, newest at the bottom. */
 export const Conversation = forwardRef<ConversationHandle, Props>(function Conversation(
-  { entries, queued, ready, working, atStart, loadingOlder, onLoadOlder },
+  { entries, queued, ready, working, activity, atStart, loadingOlder, onLoadOlder },
   ref,
 ) {
   const list = useRef<FlatList<Row>>(null);
@@ -293,7 +295,11 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
         ListHeaderComponent={
           // The newest end of the list: keep it clear of the jump arrows.
           <View>
-            {working ? <Text style={styles.working}>Working…</Text> : null}
+            {working ? (
+              <Text style={styles.working} numberOfLines={1}>
+                {activity ?? "Working…"}
+              </Text>
+            ) : null}
             {showJumps ? <View style={styles.jumpsSpace} /> : null}
           </View>
         }
