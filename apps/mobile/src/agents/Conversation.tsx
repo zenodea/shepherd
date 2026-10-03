@@ -1,6 +1,6 @@
 import { ArrowDown, ChevronDown, ChevronRight, ChevronUp, Clock } from "lucide-react-native";
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View, type ViewToken } from "react-native";
+import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Animated, Easing, FlatList, Platform, ScrollView, StyleSheet, Text, View, type ViewToken } from "react-native";
 import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import { PressableScale } from "../ui/Pressable";
 import { Counts } from "./Counts";
@@ -60,11 +60,32 @@ function Markdown({ text }: { text: string }) {
   );
 }
 
+/**
+ * Called with how much a row grew or shrank when you opened or closed it. The
+ * list is anchored at the bottom, so a row that grows would push its own title
+ * up; the list scrolls by the same amount to keep the title where you tapped it.
+ */
+const GrowContext = createContext<((delta: number) => void) | null>(null);
+
 function Expandable({ title, children, defaultOpen = false }: { title: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+  const grow = useContext(GrowContext);
+  const height = useRef(0);
+  const toggled = useRef(false);
   return (
-    <View>
-      <PressableScale onPress={() => setOpen((o) => !o)} style={styles.expandHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+    <View
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        if (toggled.current && height.current && h !== height.current) grow?.(h - height.current);
+        toggled.current = false;
+        height.current = h;
+      }}
+    >
+      <PressableScale
+        onPress={() => {
+          toggled.current = true;
+          setOpen((o) => !o);
+        }} style={styles.expandHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
         <View style={{ transform: [{ rotate: open ? "90deg" : "0deg" }] }}>
           <ChevronRight size={14} color={colors.subtle} />
         </View>
@@ -207,6 +228,40 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
   }
 });
 
+const native = Platform.OS !== "web";
+
+/** "Jump to the latest": pops up with a little bounce when you scroll away from the bottom, and shrinks away when you're back. */
+function ToBottom({ visible, onPress }: { visible: boolean; onPress: () => void }) {
+  const [shown] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    const animation = visible
+      ? Animated.spring(shown, { toValue: 1, friction: 6, tension: 140, useNativeDriver: native })
+      : Animated.timing(shown, { toValue: 0, duration: 140, easing: Easing.in(Easing.cubic), useNativeDriver: native });
+    animation.start();
+    return () => animation.stop();
+  }, [visible, shown]);
+  return (
+    <Animated.View
+      pointerEvents={visible ? "auto" : "none"}
+      importantForAccessibility={visible ? "auto" : "no-hide-descendants"}
+      style={[
+        styles.toBottomPlace,
+        {
+          opacity: shown.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 1, 1], extrapolate: "clamp" }),
+          transform: [
+            { translateY: shown.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
+            { scale: shown.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) },
+          ],
+        },
+      ]}
+    >
+      <PressableScale onPress={onPress} style={styles.toBottom} accessibilityLabel="Jump to the latest">
+        <ArrowDown size={18} color={colors.text} />
+      </PressableScale>
+    </Animated.View>
+  );
+}
+
 export type ConversationHandle = { scrollToBottom: () => void };
 
 /** A row counts as on screen when a third of it shows. */
@@ -233,6 +288,12 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
 ) {
   const list = useRef<FlatList<Row>>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
+  const offset = useRef(0);
+  // Opening a row: keep its title in place and let it unfold downwards (see GrowContext).
+  const keepTitleInPlace = useCallback((delta: number) => {
+    offset.current = Math.max(0, offset.current + delta);
+    list.current?.scrollToOffset({ offset: offset.current, animated: false });
+  }, []);
   // Inverted: the newest row is first, at the bottom of the screen; queued messages below that.
   const rows = useMemo(() => [...queuedRows(queued), ...groupActivity(conversationRows(entries)).reverse()], [entries, queued]);
   const userMessages = useMemo(() => countUserMessages(rows), [rows]);
@@ -301,59 +362,56 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
   }
   return (
     <View style={styles.container}>
-      <FlatList
-        ref={list}
-        inverted
-        data={rows}
-        keyExtractor={(r) => r.key}
-        renderItem={({ item }) => <RowView row={item} />}
-        contentContainerStyle={styles.content}
-        onEndReached={atStart ? undefined : onLoadOlder}
-        onEndReachedThreshold={0.6}
-        onScroll={(e) => setScrolledUp(e.nativeEvent.contentOffset.y > 240)}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={VIEWABILITY}
-        onScrollToIndexFailed={(info) => {
-          // The row isn't drawn yet: get close (rows differ in height), let the list draw
-          // around there, and try again, a few times if need be.
-          if (retries.current++ > 12) return;
-          list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
-          setTimeout(() => list.current?.scrollToIndex({ index: info.index, animated: false, viewPosition: 1 }), 120);
-        }}
-        onScrollBeginDrag={() => (lastJump.current = null)}
-        windowSize={31}
-        maxToRenderPerBatch={30}
-        scrollEventThrottle={100}
-        ListHeaderComponent={
-          // The newest end of the list: keep it clear of the jump arrows.
-          <View>
-            {working ? (
-              <Text style={styles.working} numberOfLines={1}>
-                {activity ?? "Working…"}
-              </Text>
-            ) : null}
-            {showJumps ? <View style={styles.jumpsSpace} /> : null}
-          </View>
-        }
-        ListFooterComponent={
-          loadingOlder ? (
-            <ActivityIndicator style={styles.older} color={colors.subtle} />
-          ) : atStart && rows.length > 0 ? (
-            <Text style={styles.notice}>Start of the conversation</Text>
-          ) : null
-        }
-        ListEmptyComponent={<Text style={[styles.notice, styles.flipped]}>No messages yet.</Text>}
-        keyboardShouldPersistTaps="handled"
-      />
-      {scrolledUp ? (
-        <PressableScale
-          onPress={() => list.current?.scrollToOffset({ offset: 0, animated: true })}
-          style={styles.toBottom}
-          accessibilityLabel="Jump to the latest"
-        >
-          <ArrowDown size={18} color={colors.text} />
-        </PressableScale>
-      ) : null}
+      <GrowContext.Provider value={keepTitleInPlace}>
+        <FlatList
+          ref={list}
+          inverted
+          data={rows}
+          keyExtractor={(r) => r.key}
+          renderItem={({ item }) => <RowView row={item} />}
+          contentContainerStyle={styles.content}
+          onEndReached={atStart ? undefined : onLoadOlder}
+          onEndReachedThreshold={0.6}
+          onScroll={(e) => {
+            offset.current = e.nativeEvent.contentOffset.y;
+            setScrolledUp(e.nativeEvent.contentOffset.y > 240);
+          }}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={VIEWABILITY}
+          onScrollToIndexFailed={(info) => {
+            // The row isn't drawn yet: get close (rows differ in height), let the list draw
+            // around there, and try again, a few times if need be.
+            if (retries.current++ > 12) return;
+            list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+            setTimeout(() => list.current?.scrollToIndex({ index: info.index, animated: false, viewPosition: 1 }), 120);
+          }}
+          onScrollBeginDrag={() => (lastJump.current = null)}
+          windowSize={31}
+          maxToRenderPerBatch={30}
+          scrollEventThrottle={100}
+          ListHeaderComponent={
+            // The newest end of the list: keep it clear of the jump arrows.
+            <View>
+              {working ? (
+                <Text style={styles.working} numberOfLines={1}>
+                  {activity ?? "Working…"}
+                </Text>
+              ) : null}
+              {showJumps ? <View style={styles.jumpsSpace} /> : null}
+            </View>
+          }
+          ListFooterComponent={
+            loadingOlder ? (
+              <ActivityIndicator style={styles.older} color={colors.subtle} />
+            ) : atStart && rows.length > 0 ? (
+              <Text style={styles.notice}>Start of the conversation</Text>
+            ) : null
+          }
+          ListEmptyComponent={<Text style={[styles.notice, styles.flipped]}>No messages yet.</Text>}
+          keyboardShouldPersistTaps="handled"
+        />
+      </GrowContext.Provider>
+      <ToBottom visible={scrolledUp} onPress={() => list.current?.scrollToOffset({ offset: 0, animated: true })} />
       {showJumps ? (
         <View style={styles.jumps}>
           <PressableScale onPress={() => jump("older")} style={styles.jump} accessibilityLabel="Your previous message">
@@ -477,10 +535,8 @@ const styles = themed(() =>
     jump: { width: 40, height: 38, alignItems: "center", justifyContent: "center" },
     jumpsSpace: { height: 72 },
     jumpDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.edge, marginHorizontal: 8 },
+    toBottomPlace: { position: "absolute", bottom: 12, alignSelf: "center" },
     toBottom: {
-      position: "absolute",
-      bottom: 12,
-      alignSelf: "center",
       width: 40,
       height: 40,
       borderRadius: 20,

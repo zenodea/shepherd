@@ -590,13 +590,14 @@ export default function TerminalScreen() {
                 accessibilityLabel={agent ? `Message ${agentName(agent)}` : "Command to run"}
                 multiline
               />
+              {/* Separate keys: Android draws a restyled stop button wrong, so each is its own view. */}
               {canSend || sending ? (
-                <PressableScale onPress={submit} disabled={!canSend} style={styles.send} accessibilityRole="button" accessibilityLabel="Send">
+                <PressableScale key="send" onPress={submit} disabled={!canSend} style={styles.send} accessibilityRole="button" accessibilityLabel="Send">
                   <ArrowUp size={18} color={colors.onPrimary} strokeWidth={2.5} />
                 </PressableScale>
               ) : agent?.agent_status === "working" ? (
                 // Esc interrupts Claude Code, Codex and pi alike.
-                <PressableScale onPress={() => void sendKeys(["esc"])} style={styles.stop} accessibilityRole="button" accessibilityLabel={`Stop ${agentName(agent)}`}>
+                <PressableScale key="stop" onPress={() => void sendKeys(["esc"])} style={styles.stop} accessibilityRole="button" accessibilityLabel={`Stop ${agentName(agent)}`}>
                   <Square size={13} color={colors.text} fill={colors.text} />
                 </PressableScale>
               ) : null}
@@ -697,11 +698,23 @@ const styles = themed(() => StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     paddingLeft: 16,
-    paddingRight: 5,
-    paddingVertical: 5,
+    // 6 + the 34pt button + 6 = 46: on one line the button sits in the exact middle of the rounded end.
+    paddingRight: 6,
+    paddingVertical: 6,
     minHeight: 46,
   },
-  input: { flex: 1, color: colors.text, fontSize: 15, maxHeight: 120, paddingTop: 8, paddingBottom: 8, textAlignVertical: "top" },
+  // One line is exactly as tall as the button (20 + 7 + 7), so the two line up.
+  input: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 20,
+    maxHeight: 120,
+    paddingTop: 7,
+    paddingBottom: 7,
+    textAlignVertical: "top",
+    includeFontPadding: false,
+  },
   send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   changes: {
     flexDirection: "row",
