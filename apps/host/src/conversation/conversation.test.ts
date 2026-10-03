@@ -304,3 +304,20 @@ describe("images", () => {
     expect(imageParams({ paneId: "w1:p1", id: "1:0", from: -1 }, isPane)).toBeNull();
   });
 });
+
+describe("claude messages taken in mid-turn", () => {
+  it("shows a queued message once Claude takes it in, and only yours", async () => {
+    const { claudeParser } = await import("./claude.ts");
+    const parse = claudeParser();
+    const text = "also check the tests";
+    expect(parse({ type: "queue-operation", operation: "enqueue", timestamp: "t1", content: text })).toEqual([]);
+    expect(parse.queued?.()).toEqual([{ text, at: "t1" }]);
+    parse({ type: "queue-operation", operation: "remove", timestamp: "t2", content: text, reason: "absorbed_mid_turn" });
+    expect(parse.queued?.()).toEqual([]);
+    const attachment = (origin: object, prompt: unknown) => ({ type: "attachment", timestamp: "t2", attachment: { type: "queued_command", prompt, commandMode: "prompt", origin } });
+    expect(parse(attachment({ kind: "human" }, text))).toEqual([{ kind: "user", text, at: "t2" }]);
+    expect(parse(attachment({ kind: "human" }, [{ type: "text", text: "look" }, { type: "image", source: {} }]))).toEqual([{ kind: "user", text: "look\n[image]", at: "t2" }]);
+    expect(parse(attachment({ kind: "task-notification" }, "<task-notification>done</task-notification>"))).toEqual([]);
+    expect(parse(attachment({ kind: "peer" }, "a subagent's report"))).toEqual([]);
+  });
+});

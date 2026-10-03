@@ -66,6 +66,21 @@ export function claudeParser(): Parser {
       return record.subtype === "compact_boundary" ? [{ kind: "notice", text: "Conversation compacted", ...stamp }] : [];
     }
 
+    // A message you sent while it worked and it took in mid-turn: Claude records
+    // it only here (the queue says `remove`), not as a user record.
+    if (record.type === "attachment") {
+      const attached = record.attachment;
+      if (!isRecord(attached) || attached.type !== "queued_command" || !isRecord(attached.origin) || attached.origin.kind !== "human") return [];
+      const prompt = Array.isArray(attached.prompt)
+        ? attached.prompt
+            .map((b) => (isRecord(b) && typeof b.text === "string" ? b.text : isRecord(b) && b.type === "image" ? "[image]" : ""))
+            .filter(Boolean)
+            .join("\n")
+        : (str(attached.prompt) ?? "");
+      const text = userText(prompt);
+      return text ? [{ kind: "user", text: clip(text), ...stamp }] : [];
+    }
+
     const message = record.message;
     if (!isRecord(message)) return [];
 
