@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentInfo, StatusChange } from "@shepherd/protocol";
-import { Cooldown, alertFor, stillOffered, withPrompt } from "./rules";
+import { Cooldown, alertFor, excerpt, stillOffered, withPrompt } from "./rules";
 
 const agent = { agent: "claude", pane_id: "w1:p1", terminal_title_stripped: "Fix login test" } as AgentInfo;
 const change = (status: StatusChange["status"], previous: StatusChange["previous"]): StatusChange => ({ type: "agent.status", paneId: "w1:p1", status, previous, agent });
@@ -51,5 +51,29 @@ describe("Cooldown", () => {
     expect(cooldown.allow("b")).toBe(true);
     t = 1000;
     expect(cooldown.allow("a")).toBe(true);
+  });
+});
+
+describe("answers you write and finished replies", () => {
+  it("turns a write-your-own option into the Reply box, leaving two buttons", () => {
+    const prompt = {
+      lines: ["Which database?"],
+      options: [
+        { key: "1", label: "Postgres", selected: true },
+        { key: "2", label: "SQLite", selected: false },
+        { key: "3", label: "MySQL", selected: false },
+        { key: "4", label: "Type something.", selected: false, input: true },
+      ],
+    };
+    const { actions, write } = withPrompt(alertFor(change("blocked", "working"), "studio")!, prompt);
+    expect(actions.map((a) => a.label)).toEqual(["Postgres", "SQLite"]);
+    expect(write).toEqual({ key: "4", label: "Type something." });
+  });
+
+  it("excerpts the last reply as plain text", () => {
+    expect(excerpt("Fixed. The test now **waits** for `flush`.\n\n```ts\ncode\n```")).toBe("Fixed. The test now waits for flush.");
+    const long = `${"word ".repeat(30)}end. ${"more ".repeat(30)}`;
+    expect(excerpt(long).length).toBeLessThanOrEqual(181);
+    expect(excerpt(long).endsWith("…") || excerpt(long).endsWith(".")).toBe(true);
   });
 });

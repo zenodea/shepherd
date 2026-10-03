@@ -1,5 +1,17 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ALargeSmall, ArrowDown, ArrowUp, ChevronLeft, Ellipsis, Keyboard as KeyboardIcon, MessageSquareText, Search, Sparkles, SquareTerminal } from "lucide-react-native";
+import {
+  ALargeSmall,
+  ArrowDown,
+  ArrowUp,
+  ChevronLeft,
+  Ellipsis,
+  Keyboard as KeyboardIcon,
+  MessageSquareText,
+  Search,
+  Sparkles,
+  Square,
+  SquareTerminal,
+} from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +20,8 @@ import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
 import { Conversation, type ConversationHandle } from "../../agents/Conversation";
 import { useConversation } from "../../agents/use-conversation";
+import { getDraft, saveDraft, useDraftsReady } from "../../agents/drafts";
+import { contextLabel } from "../../agents/conversation-rows";
 import { parseAnsi, toStyledLines } from "../../agents/ansi";
 import { PromptChips } from "../../agents/PromptCard";
 import { useBlockedPrompts } from "../../agents/use-blocked-prompts";
@@ -117,6 +131,18 @@ export default function TerminalScreen() {
   });
 
   const [draft, setDraft] = useState("");
+  // Unsent text is kept per agent: switching agents or leaving keeps it.
+  const draftKey = `${settings?.id ?? "none"}:${paneId}`;
+  const draftsReady = useDraftsReady();
+  const [draftOf, setDraftOf] = useState<string | null>(null);
+  if (draftsReady && draftOf !== draftKey) {
+    setDraftOf(draftKey);
+    setDraft(getDraft(draftKey));
+  }
+  const changeDraft = (text: string) => {
+    setDraft(text);
+    saveDraft(draftKey, text);
+  };
   const [sending, setSending] = useState(false);
   const [closedReason, setClosedReason] = useState<string | null>(null);
   const [epoch, setEpoch] = useState(0);
@@ -353,7 +379,7 @@ export default function TerminalScreen() {
     try {
       if (agent) await client.call("agent.prompt", { target: paneId, text });
       else await client.call("pane.send_input", { pane_id: paneId, text, keys: ["enter"] });
-      setDraft("");
+      changeDraft("");
       toLive();
     } catch (err) {
       // herdr won't type a message into an agent that's waiting for an answer: it would become the answer.
@@ -378,6 +404,7 @@ export default function TerminalScreen() {
 
   const title = agent ? (agentTitle(agent) ?? agentName(agent)) : (pane?.terminal_title_stripped ?? pane?.title ?? "Terminal");
   const canSend = draft.trim().length > 0 && !sending;
+  const usage = isAgent ? contextLabel(conversation.context) : null;
 
   return (
     <Screen>
@@ -398,6 +425,7 @@ export default function TerminalScreen() {
                     {statusLabels[agent.agent_status]}
                   </Text>
                   {`  ·  ${agentName(agent)}  ·  ${projectOf(agent)}`}
+                  {usage ? <Text style={usage.high ? { color: statusColors.blocked } : undefined}>{`  ·  ${usage.text}`}</Text> : null}
                 </>
               ) : (
                 `Shell  ·  ${pane?.cwd?.split("/").filter(Boolean).pop() ?? paneId}`
@@ -522,7 +550,7 @@ export default function TerminalScreen() {
                 {...WEB_ONE_ROW}
                 style={styles.input}
                 value={draft}
-                onChangeText={setDraft}
+                onChangeText={changeDraft}
                 placeholder={agent ? `Message ${agentName(agent)}…` : "Run a command…"}
                 placeholderTextColor={colors.subtle}
                 accessibilityLabel={agent ? `Message ${agentName(agent)}` : "Command to run"}
@@ -531,6 +559,11 @@ export default function TerminalScreen() {
               {canSend || sending ? (
                 <PressableScale onPress={submit} disabled={!canSend} style={styles.send} accessibilityRole="button" accessibilityLabel="Send">
                   <ArrowUp size={18} color={colors.onPrimary} strokeWidth={2.5} />
+                </PressableScale>
+              ) : agent?.agent_status === "working" ? (
+                // Esc interrupts Claude Code, Codex and pi alike.
+                <PressableScale onPress={() => void sendKeys(["esc"])} style={styles.stop} accessibilityRole="button" accessibilityLabel={`Stop ${agentName(agent)}`}>
+                  <Square size={13} color={colors.text} fill={colors.text} />
                 </PressableScale>
               ) : null}
             </View>
@@ -636,5 +669,15 @@ const styles = themed(() => StyleSheet.create({
   },
   input: { flex: 1, color: colors.text, fontSize: 15, maxHeight: 120, paddingTop: 8, paddingBottom: 8, textAlignVertical: "top" },
   send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  stop: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.raised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   typingHint: { fontSize: 12.5, color: colors.muted, textAlign: "center", paddingVertical: 12 },
 }));

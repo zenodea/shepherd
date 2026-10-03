@@ -40,6 +40,9 @@ class AgentNotification : Record {
   @Field val timeoutMs: Long = 0
   /** Hint for a Reply box that sends text to the agent; empty for none. */
   @Field val replyHint: String = ""
+  /** The answer the Reply box is for (an option you write yourself): its key; empty for a new message. */
+  @Field val replyKey: String = ""
+  @Field val replyLabel: String = "Reply"
   /** App lock is on: private on the lock screen, fingerprint before answering. */
   @Field val requireAuth: Boolean = false
 }
@@ -119,12 +122,19 @@ class ShepherdBackgroundModule : Module() {
         notification.answers.map { AnswerButton(it.key, it.label) },
         notification.timeoutMs,
         notification.replyHint.ifEmpty { null },
+        notification.replyKey,
+        notification.replyLabel,
         notification.requireAuth,
       )
     }
 
     AsyncFunction("cancel") { id: Int ->
       NotificationManagerCompat.from(context).cancel(id)
+    }
+
+    // The home-screen widget's content: JSON from the app (see ShepherdWidget).
+    AsyncFunction("updateWidget") { json: String ->
+      ShepherdWidget.update(context, json)
     }
 
     Function("notificationsEnabled") {

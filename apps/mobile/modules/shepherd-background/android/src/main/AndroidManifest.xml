@@ -10,6 +10,18 @@
         android:name="dev.shepherd.background.KeepAliveService"
         android:exported="false"
         android:foregroundServiceType="remoteMessaging" />
+    <!-- The home-screen widget. Exported: the launcher sends it updates. -->
+    <receiver
+        android:name="dev.shepherd.background.ShepherdWidget"
+        android:exported="true"
+        android:label="@string/shepherd_widget_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/shepherd_widget_info" />
+    </receiver>
     <!-- Answer buttons on notifications. -->
     <receiver
         android:name="dev.shepherd.background.ActionReceiver"

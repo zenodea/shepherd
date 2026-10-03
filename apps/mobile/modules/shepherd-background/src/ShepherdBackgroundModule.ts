@@ -17,6 +17,10 @@ export type AgentNotification = {
   timeoutMs: number;
   /** Adds a Reply box that sends text to the agent, with this hint. */
   replyHint?: string;
+  /** The Reply box answers this option (one you write yourself) instead of sending a new message. */
+  replyKey?: string;
+  /** The Reply box's button, e.g. "Type something."; "Reply" by default. */
+  replyLabel?: string;
   /** App lock is on: private on the lock screen, and answering asks for the fingerprint. */
   requireAuth?: boolean;
 };
@@ -37,6 +41,8 @@ declare class ShepherdBackgroundModule extends NativeModule<Events> {
   stop(): Promise<boolean>;
   notify(notification: AgentNotification): Promise<void>;
   cancel(id: number): Promise<void>;
+  /** Redraw the home-screen widget from this summary (JSON of a WidgetSummary). */
+  updateWidget(json: string): Promise<void>;
   notificationsEnabled(): boolean;
   isIgnoringBatteryOptimizations(): boolean;
   requestIgnoreBatteryOptimizations(): Promise<void>;

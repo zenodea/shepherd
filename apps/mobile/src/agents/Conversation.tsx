@@ -4,7 +4,7 @@ import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View, type V
 import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import { PressableScale } from "../ui/Pressable";
 import { colors, fonts, space, statusColors, themed } from "../ui/theme";
-import { conversationRows, countUserMessages, markdownBlocks, queuedRows, userMessageIndex, type Row } from "./conversation-rows";
+import { conversationRows, countUserMessages, groupActivity, markdownBlocks, queuedRows, userMessageIndex, type Row } from "./conversation-rows";
 
 /** Inline `code`, **bold** and # headings in a line of prose. */
 function Inline({ text }: { text: string }) {
@@ -105,6 +105,27 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
       </View>
     );
   }
+  if (row.kind === "group") {
+    return (
+      <View style={styles.tool}>
+        <Expandable
+          title={
+            <View style={styles.toolTitle}>
+              <View style={[styles.toolDot, { backgroundColor: row.failed ? colors.danger : statusColors.done }]} />
+              <Text style={styles.toolName}>{row.tools} tool calls</Text>
+              <Text style={styles.toolSummary} numberOfLines={1}>
+                {row.names.map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(" · ")}
+              </Text>
+            </View>
+          }
+        >
+          {row.rows.map((inner) => (
+            <RowView key={inner.key} row={inner} />
+          ))}
+        </Expandable>
+      </View>
+    );
+  }
   if (row.kind === "queued") {
     return (
       <View style={styles.userRow}>
@@ -187,7 +208,7 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
   const list = useRef<FlatList<Row>>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
   // Inverted: the newest row is first, at the bottom of the screen; queued messages below that.
-  const rows = useMemo(() => [...queuedRows(queued), ...conversationRows(entries).reverse()], [entries, queued]);
+  const rows = useMemo(() => [...queuedRows(queued), ...groupActivity(conversationRows(entries)).reverse()], [entries, queued]);
   const userMessages = useMemo(() => countUserMessages(rows), [rows]);
   const showJumps = userMessages > 1 || scrolledUp;
 

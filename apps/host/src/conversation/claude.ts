@@ -1,8 +1,8 @@
 // Claude Code: ~/.claude/projects/<cwd with every non-alphanumeric as "-">/<session id>.jsonl
 // One record per line. Assistant messages are split into one record per
 // content block; tool results come back as user records.
-import type { QueuedMessage } from "@shepherd/protocol";
-import { clip, clipOutput, contentText, isRecord, str, toolCall, type Draft, type Parser } from "./entries.ts";
+import type { ContextUsage, QueuedMessage } from "@shepherd/protocol";
+import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "./entries.ts";
 
 /** Housekeeping Claude Code writes into user messages, not something the person typed. */
 const HIDDEN_USER_TEXT = /^\s*<(local-command-stdout|local-command-stderr|local-command-caveat|task-notification|system-reminder)>/;
@@ -29,6 +29,7 @@ export function claudeParser(): Parser {
   // Housekeeping Claude queues for itself stays in the replay (a later
   // `dequeue` takes it off the front) but isn't shown.
   const queue: { content: string; shown: QueuedMessage | null }[] = [];
+  let context: ContextUsage | null = null;
   const parse = (record: Record<string, unknown>): Draft[] => {
     const at = str(record.timestamp);
     const stamp = at ? { at } : {};
@@ -85,6 +86,12 @@ export function claudeParser(): Parser {
     }
 
     if (record.type === "assistant") {
+      // Everything sent to the model for this reply: new, cache-written and cache-read input.
+      if (isRecord(message.usage)) {
+        const u = message.usage;
+        const used = num(u.input_tokens) + num(u.cache_creation_input_tokens) + num(u.cache_read_input_tokens);
+        if (used > 0) context = { used, window: null };
+      }
       if (!Array.isArray(message.content)) return [];
       const out: Draft[] = [];
       for (const block of message.content) {
@@ -101,5 +108,5 @@ export function claudeParser(): Parser {
     }
     return [];
   };
-  return Object.assign(parse, { queued: () => queue.flatMap((q) => (q.shown ? [q.shown] : [])) });
+  return Object.assign(parse, { queued: () => queue.flatMap((q) => (q.shown ? [q.shown] : [])), context: () => context });
 }

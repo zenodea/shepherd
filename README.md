@@ -138,10 +138,11 @@ The app tries every address in the QR code at once and uses whichever answers fi
 ## What you can do
 
 - **See every agent at a glance.** Agents that need input come first, with their question and one button per answer.
-- **Read the conversation.** Agents open on their conversation: your messages, their replies and each tool call (tap one to see its output), read from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app however the agent draws its screen, and older messages load as you scroll up. The arrows on the right jump between your own messages.
+- **Read the conversation.** Agents open on their conversation: your messages, their replies and each tool call (tap one to see its output), read from the transcript Claude Code, Codex or pi writes. It scrolls like a chat app however the agent draws its screen, and older messages load as you scroll up. The arrows on the right jump between your own messages, runs of tool calls fold into one line ("12 tool calls · Read ×6, Edit ×4"), and the header shows how full the agent's context is (a percentage for Codex, which records its window; tokens for Claude and pi).
 - **See what's queued.** Send while the agent is working and it queues the message itself; Shepherd shows it as a dashed "Queued" bubble until the agent picks it up. That's read from the agent's own records: Claude Code's transcript and Codex's queue, so messages you queue at the computer show up too. pi takes queued messages as well, but doesn't record them anywhere Shepherd can read yet, so they don't show.
 - **Watch the live terminal.** Tap the terminal icon to switch. The agent is fitted to your screen as native text. Scroll up for the history, pinch to resize, search, long-press to copy, tap links.
-- **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal.
+- **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal. Answers you write yourself ("Type something.", "No, and tell Claude what to do") open a text box. While an agent works, the send button turns into **Stop**. Unsent text is kept per agent until you send it.
+- **Home-screen widget.** Long-press your home screen → Widgets → Shepherd: which agents need you, at a glance. It stays current while notifications are on (they keep Shepherd connected); otherwise it shows how things were when the app last ran.
 - **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project or a fresh git worktree.
 - **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
 - **See what happened.** The activity feed shows what your agents did while you were away, and how long they waited for you.
@@ -155,7 +156,7 @@ Turn on **Settings → Notifications** in the app. Shepherd then stays connected
 
 To stay connected, Android requires the app to show a permanent notification while it runs in the background. Shepherd uses it to show how your agents are doing. You can collapse it, or silence its channel in Android's notification settings. Settings also has **Run in the background without limits**, which asks Android not to pause Shepherd when the phone is idle. Without it, notifications can arrive late while the screen is off.
 
-When an agent asks a question, the notification shows it with up to three answers as buttons. A button only answers if the agent is still asking that same question; otherwise it tells you to open Shepherd. When an agent finishes, the notification has a **Reply** box for what to do next.
+When an agent asks a question, the notification shows it with up to three answers as buttons. A button only answers if the agent is still asking that same question; otherwise it tells you to open Shepherd. When an agent finishes, the notification shows the start of its last reply and has a **Reply** box for what to do next. An answer you write yourself ("Type something.") becomes a Reply box too.
 
 You can answer from the lock screen. If yours shows notifications as icons only or hides their content, change that in Android's lock screen settings. With **App lock** on, the question stays private on the lock screen (your Android setting decides) and every answer asks for your fingerprint first.
 

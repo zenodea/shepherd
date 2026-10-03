@@ -9,6 +9,8 @@ const QUESTION_LINES = 2;
 
 export type AgentAlert = { paneId: string; kind: "blocked" | "done"; title: string; body: string };
 export type AlertAction = Pick<PromptOption, "key" | "label">;
+/** How long the excerpt of a finished agent's last reply can be. */
+const EXCERPT_CHARS = 180;
 
 export function agentLabel(agent: AgentInfo | null, paneId: string): string {
   return agent?.name || agent?.display_agent || agent?.agent || paneId;
@@ -25,14 +27,36 @@ export function alertFor(change: StatusChange, hostName: string): AgentAlert | n
   return { paneId: change.paneId, kind: change.status, title: `${agentLabel(agent, change.paneId)} ${verb}`, body: `${detail} · ${hostName}` };
 }
 
-/** Put the question in the body and its first answers on buttons. */
-export function withPrompt(alert: AgentAlert, prompt: BlockedPrompt | null): { alert: AgentAlert; actions: AlertAction[] } {
-  if (!prompt || prompt.options.length === 0) return { alert, actions: [] };
+/**
+ * Put the question in the body and its answers on buttons. An answer you
+ * write yourself ("Type something.") becomes the Reply box instead, which
+ * takes one of Android's three action slots.
+ */
+export function withPrompt(alert: AgentAlert, prompt: BlockedPrompt | null): { alert: AgentAlert; actions: AlertAction[]; write: AlertAction | null } {
+  if (!prompt || prompt.options.length === 0) return { alert, actions: [], write: null };
   const question = prompt.lines.slice(-QUESTION_LINES).join("\n").trim();
+  const writeOption = prompt.options.find((o) => o.input) ?? null;
+  const buttons = prompt.options.filter((o) => !o.input).slice(0, writeOption ? MAX_ACTIONS - 1 : MAX_ACTIONS);
   return {
     alert: question ? { ...alert, body: `${question}\n${alert.body}` } : alert,
-    actions: prompt.options.slice(0, MAX_ACTIONS).map(({ key, label }) => ({ key, label })),
+    actions: buttons.map(({ key, label }) => ({ key, label })),
+    write: writeOption ? { key: writeOption.key, label: writeOption.label } : null,
   };
+}
+
+/** The opening of an agent's reply, as plain text for a notification. */
+export function excerpt(markdown: string): string {
+  const text = markdown
+    .replace(/```[\s\S]*?(```|$)/g, " ")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/^#+\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= EXCERPT_CHARS) return text;
+  const cut = text.slice(0, EXCERPT_CHARS);
+  const sentence = cut.lastIndexOf(". ");
+  return sentence > EXCERPT_CHARS / 2 ? cut.slice(0, sentence + 1) : `${cut.slice(0, cut.lastIndexOf(" "))}…`;
 }
 
 /** A button answers only if the agent is still asking the same thing: same key, same words. */

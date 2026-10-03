@@ -179,7 +179,15 @@ export type ConversationResult =
        * agents that don't record theirs.
        */
       queued?: QueuedMessage[];
+      /**
+       * How much of the model's context the conversation fills, from the
+       * latest usage the agent recorded. `window` is known only when the
+       * agent records it (Codex).
+       */
+      context?: ContextUsage;
     };
+
+export type ContextUsage = { used: number; window: number | null };
 
 export type QueuedMessage = { text: string; at?: string };
 

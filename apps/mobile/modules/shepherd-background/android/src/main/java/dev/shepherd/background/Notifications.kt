@@ -84,8 +84,11 @@ object Notifications {
     paneId: String,
     answers: List<AnswerButton>,
     timeoutMs: Long,
-    /** A "Reply" box that sends text to the agent; its hint, e.g. "Message claude…". Null for none. */
+    /** A Reply box that sends text to the agent; its hint, e.g. "Message claude…". Null for none. */
     replyHint: String? = null,
+    /** The answer the reply is for ("Type something."): its key and label. Empty key: a new message. */
+    replyKey: String = "",
+    replyLabel: String = "Reply",
     /** App lock is on: keep the content private and ask for the fingerprint before an answer is sent. */
     requireAuth: Boolean = false,
   ) {
@@ -119,11 +122,11 @@ object Notifications {
       val pending = PendingIntent.getBroadcast(
         context,
         id * 8 + 7,
-        actionIntent(context, id, paneId, url, "", "Reply"),
+        actionIntent(context, id, paneId, url, replyKey, replyLabel),
         PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
       )
       builder.addAction(
-        NotificationCompat.Action.Builder(0, "Reply", pending)
+        NotificationCompat.Action.Builder(0, replyLabel, pending)
           .addRemoteInput(input)
           .setAllowGeneratedReplies(false)
           .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)

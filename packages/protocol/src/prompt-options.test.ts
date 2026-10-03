@@ -21,7 +21,7 @@ describe("extractPrompt", () => {
       options: [
         { key: "1", label: "Yes", selected: true },
         { key: "shift+tab", label: "Yes, allow all edits during this session", selected: false },
-        { key: "esc", label: "No, and tell Claude what to do differently", selected: false },
+        { key: "esc", label: "No, and tell Claude what to do differently", selected: false, input: true },
       ],
     });
   });
@@ -68,5 +68,16 @@ describe("extractPrompt", () => {
     const long = "x".repeat(80);
     const prompt = extractPrompt(`Pick one\n❯ 1. ${long}\n  2. short`);
     expect(prompt.options[0]!.label.length).toBe(48);
+  });
+
+  it("marks the options where you write the answer yourself", () => {
+    const prompt = extractPrompt(
+      ["Which database should we use?", "❯ 1. Postgres", "  2. SQLite", "  3. Type something.", "", "Enter to select · Esc to cancel"].join("\n"),
+    );
+    expect(prompt.options).toEqual([
+      { key: "1", label: "Postgres", selected: true },
+      { key: "2", label: "SQLite", selected: false },
+      { key: "3", label: "Type something.", selected: false, input: true },
+    ]);
   });
 });

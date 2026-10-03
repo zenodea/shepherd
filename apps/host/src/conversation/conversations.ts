@@ -58,7 +58,15 @@ export class Conversations {
     const limit = Math.min(MAX_LIMIT, Math.max(1, params.limit ?? DEFAULT_LIMIT));
     const page = reader.page({ after: params.after, before: params.before, limit });
     const queued = this.queued(agent, harness, path, reader);
-    return { available: true, agent: harness, session: basename(path, ".jsonl"), ...page, ...(queued ? { queued } : {}) };
+    const context = reader.context();
+    return {
+      available: true,
+      agent: harness,
+      session: basename(path, ".jsonl"),
+      ...page,
+      ...(queued ? { queued } : {}),
+      ...(context ? { context } : {}),
+    };
   }
 
   /**

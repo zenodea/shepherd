@@ -5,6 +5,7 @@ import { Fragment, useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { ConnectionProvider, useConnection } from "../connection/connection";
 import { BackgroundNotifications } from "../notifications/BackgroundNotifications";
+import { WidgetUpdater } from "../notifications/WidgetUpdater";
 import { AppLockProvider } from "../security/app-lock";
 import { ThemeProvider, useTheme } from "../ui/ThemeProvider";
 import { colors } from "../ui/theme";
@@ -48,6 +49,7 @@ function App() {
         <StatusBar style={dark ? "light" : "dark"} />
         <StartOnAgents />
         <BackgroundNotifications />
+        <WidgetUpdater />
         <Stack
           // Redraw every screen (keeping the navigation stack) when the theme changes.
           screenLayout={({ children }) => <Fragment key={version}>{children}</Fragment>}

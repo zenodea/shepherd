@@ -2,7 +2,7 @@
 // lines each time. Transcripts can reach hundreds of MB, so a big file is read
 // from its last few MB.
 import { closeSync, openSync, readSync, statSync } from "node:fs";
-import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
+import type { ContextUsage, ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 import type { Draft, Parser } from "./entries.ts";
 
 /** How much of a file to read when first opening it, or after a big jump. */
@@ -73,6 +73,11 @@ export class TranscriptReader {
       closeSync(fd);
     }
     if (this.entries.length > MAX_ENTRIES) this.entries = this.entries.slice(-MAX_ENTRIES);
+  }
+
+  /** How full the agent's context is, from the latest usage it recorded. */
+  context(): ContextUsage | null {
+    return this.parse.context?.() ?? null;
   }
 
   /** The agent's message queue, when its transcript records one. */

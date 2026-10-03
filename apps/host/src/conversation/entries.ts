@@ -1,6 +1,6 @@
 // Turning transcript records into conversation entries: the pieces every
 // harness's parser shares.
-import type { ConversationEntry, QueuedMessage } from "@shepherd/protocol";
+import type { ContextUsage, ConversationEntry, QueuedMessage } from "@shepherd/protocol";
 
 /** An entry before the reader numbers it. */
 export type Draft = ConversationEntry extends infer E ? (E extends ConversationEntry ? Omit<E, "id"> : never) : never;
@@ -10,7 +10,15 @@ export type Draft = ConversationEntry extends infer E ? (E extends ConversationE
  * keep state across lines, such as the agent's message queue when its
  * transcript records one.
  */
-export type Parser = ((record: Record<string, unknown>) => Draft[]) & { queued?: () => QueuedMessage[] };
+export type Parser = ((record: Record<string, unknown>) => Draft[]) & {
+  queued?: () => QueuedMessage[];
+  /** How full the context is, as of the latest usage in the transcript. */
+  context?: () => ContextUsage | null;
+};
+
+export function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
 
 const TEXT_LIMIT = 24_000;
 const INPUT_LIMIT = 2_000;

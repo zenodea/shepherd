@@ -12,6 +12,11 @@ export type PromptOption = {
   key: string;
   label: string;
   selected: boolean;
+  /**
+   * You write this answer yourself ("Type something.", "Other", "No, and
+   * tell Claude what to do differently"): pick it, then type.
+   */
+  input?: boolean;
 };
 
 export type BlockedPrompt = {
@@ -33,6 +38,8 @@ const HINT = /\s*\(([a-z0-9]+(?:\+[a-z0-9]+)*)\)\s*$/i;
 // Only hints that are real herdr key names; "(recommended)" is just text.
 const KEY_NAME = /^(?:[a-z0-9]|esc|escape|enter|tab|space|(?:ctrl|alt|shift)\+[a-z0-9]+)$/i;
 const YES_NO = /[[(]\s*y\s*\/\s*n\s*[\])]/i;
+// Options that ask you to write the answer.
+const TEXT_OPTION = /^(?:type something|type (?:your|an?) (?:own )?(?:answer|response)|other\b|something else|no,? and tell \S+ what to do)/i;
 
 function clean(line: string): string {
   return line.replace(BORDER, "").trimEnd();
@@ -53,6 +60,7 @@ function parseOption(line: string): PromptOption | null {
     key: hint ? hint[1]!.toLowerCase() : digit!,
     label: truncate(label.trim()),
     selected: SELECTED_MARKER.test(line.trim()),
+    ...(TEXT_OPTION.test(label.trim()) ? { input: true } : {}),
   };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationEntry } from "@shepherd/protocol";
-import { conversationRows, countUserMessages, markdownBlocks, queuedRows, userMessageIndex, type Row } from "./conversation-rows";
+import { contextLabel, conversationRows, countUserMessages, groupActivity, markdownBlocks, queuedRows, userMessageIndex, type Row } from "./conversation-rows";
 
 describe("conversationRows", () => {
   it("puts each tool result with its call and keeps results whose call scrolled out of view", () => {
@@ -66,5 +66,44 @@ describe("jumping between your messages", () => {
   it("puts queued messages below the newest message, newest queued at the very bottom", () => {
     const queued = queuedRows([{ text: "then the docs" }, { text: "then the tests" }]);
     expect(queued.map((r) => (r.kind === "queued" ? r.message.text : ""))).toEqual(["then the tests", "then the docs"]);
+  });
+});
+
+describe("folding tool calls", () => {
+  const tool = (id: number, name: string, ok = true): ConversationEntry[] => [
+    { id, kind: "tool", callId: `c${id}`, name, summary: "x" },
+    { id: id + 0.5, kind: "tool_result", callId: `c${id}`, ok, output: "" },
+  ];
+
+  it("folds a run between messages, counting what it did, and leaves the latest run open", () => {
+    const entries: ConversationEntry[] = [
+      { id: 0, kind: "user", text: "go" },
+      ...tool(1, "Read"),
+      { id: 2, kind: "thinking", text: "hmm" },
+      ...tool(3, "Read"),
+      ...tool(4, "Edit", false),
+      { id: 5, kind: "assistant", text: "done that" },
+      ...tool(6, "Bash"),
+      ...tool(7, "Bash"),
+      ...tool(8, "Bash"),
+    ];
+    const rows = groupActivity(conversationRows(entries));
+    expect(rows.map((r) => r.kind)).toEqual(["message", "group", "message", "tool", "tool", "tool"]);
+    expect(rows[1]).toMatchObject({ tools: 3, names: [["Read", 2], ["Edit", 1]], failed: true });
+  });
+
+  it("leaves short runs alone", () => {
+    const rows = groupActivity(conversationRows([...tool(1, "Read"), ...tool(2, "Read"), { id: 3, kind: "assistant", text: "ok" }]));
+    expect(rows.map((r) => r.kind)).toEqual(["tool", "tool", "message"]);
+  });
+});
+
+describe("contextLabel", () => {
+  it("shows a percentage when the window is known, tokens otherwise", () => {
+    expect(contextLabel({ used: 125_278, window: 258_400 })).toEqual({ text: "48% context", high: false });
+    expect(contextLabel({ used: 230_000, window: 258_400 })).toEqual({ text: "89% context", high: true });
+    expect(contextLabel({ used: 125_400, window: null })).toEqual({ text: "125k context", high: false });
+    expect(contextLabel({ used: 1_250_000, window: null })?.text).toBe("1.3M context");
+    expect(contextLabel(null)).toBeNull();
   });
 });

@@ -2,7 +2,8 @@
 // Each line is {timestamp, type, payload}. The same message shows up more than
 // once (as a response_item and as a completed item), so this reads the
 // completed items, plus function calls for the agent tools that only appear there.
-import { clip, clipOutput, contentText, isRecord, str, toolCall, type Draft, type Parser } from "./entries.ts";
+import type { ContextUsage } from "@shepherd/protocol";
+import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "./entries.ts";
 
 function itemText(content: unknown): string {
   if (!Array.isArray(content)) return contentText(content);
@@ -23,7 +24,8 @@ function functionArguments(raw: unknown): unknown {
 
 export function codexParser(): Parser {
   let synthetic = 0;
-  return (record) => {
+  let context: ContextUsage | null = null;
+  const parse = (record: Record<string, unknown>): Draft[] => {
     const at = str(record.timestamp);
     const stamp = at ? { at } : {};
     const payload = record.payload;
@@ -32,6 +34,13 @@ export function codexParser(): Parser {
     if (record.type === "compacted") return [{ kind: "notice", text: "Conversation compacted", ...stamp }];
 
     if (record.type === "event_msg") {
+      // The last call's input is what's in the context; Codex records the window too.
+      if (payload.type === "token_count" && isRecord(payload.info) && isRecord(payload.info.last_token_usage)) {
+        const used = num(payload.info.last_token_usage.input_tokens);
+        const window = num(payload.info.model_context_window) || null;
+        if (used > 0) context = { used, window };
+        return [];
+      }
       if (payload.type === "turn_aborted") return [{ kind: "notice", text: "Interrupted", ...stamp }];
       if (payload.type !== "item_completed" || !isRecord(payload.item)) return [];
       const item = payload.item;
@@ -89,4 +98,5 @@ export function codexParser(): Parser {
     }
     return [];
   };
+  return Object.assign(parse, { context: () => context });
 }

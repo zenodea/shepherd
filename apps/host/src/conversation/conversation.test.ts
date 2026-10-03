@@ -241,3 +241,19 @@ describe("agents' message queues", () => {
     expect(conversations.get(claude("idle"), { paneId: "w1:p1" })).toMatchObject({ queued: [] });
   });
 });
+
+describe("context usage", () => {
+  it("takes the latest usage each agent records", () => {
+    const claude = claudeParser();
+    claude({ type: "assistant", message: { content: [], usage: { input_tokens: 2, cache_creation_input_tokens: 1000, cache_read_input_tokens: 99_000, output_tokens: 50 } } });
+    expect(claude.context!()).toEqual({ used: 100_002, window: null });
+
+    const codex = codexParser();
+    codex({ type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 125_278 }, model_context_window: 258_400 } } });
+    expect(codex.context!()).toEqual({ used: 125_278, window: 258_400 });
+
+    const pi = piParser();
+    pi({ type: "message", message: { role: "assistant", content: [], usage: { input: 2, cacheRead: 400_000, cacheWrite: 1_000, output: 10 } } });
+    expect(pi.context!()).toEqual({ used: 401_002, window: null });
+  });
+});

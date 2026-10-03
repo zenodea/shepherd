@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ConversationEntry, ConversationResult, QueuedMessage } from "@shepherd/protocol";
+import type { ContextUsage, ConversationEntry, ConversationResult, QueuedMessage } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 
 const PAGE = 150;
@@ -19,6 +19,8 @@ type State = {
   first: number;
   /** What the agent itself has queued, as of the last poll. */
   queued: QueuedMessage[];
+  /** How full its context is, as of the last poll. */
+  context: ContextUsage | null;
 };
 
 const EMPTY: State = {
@@ -30,6 +32,7 @@ const EMPTY: State = {
   entries: [],
   first: 0,
   queued: [],
+  context: null,
 };
 
 function merge(older: ConversationEntry[], newer: ConversationEntry[]): ConversationEntry[] {
@@ -94,15 +97,17 @@ export function useConversation(client: HostConnection | null, paneId: string | 
             entries: result.entries,
             first: result.first,
             queued: result.queued ?? [],
+            context: result.context ?? null,
           });
           next = POLL_MS;
         } else {
           const queued = result.queued ?? [];
+          const context = result.context ?? null;
           setState((prev) => {
             if (prev.paneId !== paneId) return prev;
-            const sameQueue = JSON.stringify(prev.queued) === JSON.stringify(queued);
-            if (!result.entries.length && sameQueue) return prev;
-            return { ...prev, entries: result.entries.length ? merge(prev.entries, result.entries) : prev.entries, queued };
+            const same = JSON.stringify([prev.queued, prev.context]) === JSON.stringify([queued, context]);
+            if (!result.entries.length && same) return prev;
+            return { ...prev, entries: result.entries.length ? merge(prev.entries, result.entries) : prev.entries, queued, context };
           });
           next = POLL_MS;
         }

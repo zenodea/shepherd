@@ -249,6 +249,7 @@ export class DemoHost implements HostConnection {
           first: 0,
           last: CONVERSATION.length - 1,
           queued: QUEUED,
+          context: { used: 48_200, window: null },
         } satisfies ConversationResult as T;
       }
       case "shepherd.activity":

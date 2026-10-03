@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
 import { AppRegistry, AppState } from "react-native";
-import { extractPrompt, type AgentInfo, type PaneReadResult, type StatusChange } from "@shepherd/protocol";
+import { extractPrompt, type AgentInfo, type ConversationResult, type PaneReadResult, type StatusChange } from "@shepherd/protocol";
 import Background, { type AnswerEvent } from "../../modules/shepherd-background/src/ShepherdBackgroundModule";
 import { useConnection, useHostState } from "../connection/connection";
 import type { HostConnection, HostState } from "../connection/host-client";
 import { DEMO_ENABLED } from "../connection/demo-host";
 import { useAppLock } from "../security/app-lock";
-import { Cooldown, agentLabel, alertFor, stillOffered, withPrompt } from "./rules";
+import { sendAnswer } from "../agents/answer";
+import { Cooldown, agentLabel, alertFor, excerpt, stillOffered, withPrompt } from "./rules";
 import { NOTIFICATIONS_SUPPORTED, useNotificationsEnabled } from "./setting";
 
 /** How long "Sent “Yes” to claude" and similar stay up. */
@@ -39,6 +40,14 @@ function connectionText(state: HostState): { title: string; text: string } {
   if (blocked) parts.push(`${blocked} need${blocked === 1 ? "s" : ""} you`);
   if (working) parts.push(`${working} working`);
   return { title, text: parts.join(" · ") };
+}
+
+/** The opening of the agent's last reply, from its conversation; null when there's none. */
+async function lastReply(client: HostConnection, paneId: string): Promise<string | null> {
+  const result = await client.call<ConversationResult>("shepherd.conversation", { paneId, limit: 40 });
+  if (!result.available) return null;
+  const last = [...result.entries].reverse().find((e) => e.kind === "assistant");
+  return last && last.kind === "assistant" ? excerpt(last.text) || null : null;
 }
 
 async function readPrompt(client: HostConnection, paneId: string) {
@@ -131,8 +140,20 @@ export function BackgroundNotifications() {
       const alert = alertFor(change, hostName);
       if (!alert || !cooldown.allow(`${change.paneId}:${change.status}`)) return;
       void (async () => {
-        let content = { alert, actions: [] as { key: string; label: string }[] };
+        let content: ReturnType<typeof withPrompt> = { alert, actions: [], write: null };
         if (alert.kind === "blocked") content = withPrompt(alert, await settledPrompt(client, change.paneId).catch(() => null));
+        // Finished: what it said last, so you may not need to open it.
+        if (alert.kind === "done") {
+          const said = await lastReply(client, change.paneId).catch(() => null);
+          if (said) content = { ...content, alert: { ...alert, body: `${said}\n${alert.body}` } };
+        }
+        const name = agentLabel(change.agent, change.paneId);
+        const reply =
+          alert.kind === "done"
+            ? { replyHint: `Message ${name}…` }
+            : content.write
+              ? { replyHint: `Answer ${name}…`, replyKey: content.write.key, replyLabel: content.write.label }
+              : {};
         await native.notify({
           id,
           channel: alert.kind === "blocked" ? "input" : "finished",
@@ -142,8 +163,7 @@ export function BackgroundNotifications() {
           paneId: change.paneId,
           answers: content.actions,
           timeoutMs: 0,
-          // Finished: say what's next from the notification.
-          ...(alert.kind === "done" ? { replyHint: `Message ${agentLabel(change.agent, change.paneId)}…` } : {}),
+          ...reply,
           requireAuth,
         });
       })().catch(() => {});
@@ -172,6 +192,24 @@ export function BackgroundNotifications() {
             timeoutMs: sent ? CONFIRMATION_MS : 0,
           });
         try {
+          if (event.reply != null && event.key) {
+            // An answer you write ("Type something."): pick the option, then type it, if it's still on offer.
+            const text = event.reply.trim();
+            if (!text) return await outcome("Nothing to send.", false);
+            if (agent?.agent_status !== "blocked") return await outcome("It isn't waiting for an answer any more.", false);
+            if (!stillOffered(await readPrompt(client, event.paneId), event)) return await outcome("It's asking something else now. Tap to open it.", false);
+            await sendAnswer(client, event.paneId, event, text);
+            return await native.notify({
+              id: event.notificationId,
+              channel: "input",
+              title: `Answered ${name}`,
+              body: text,
+              url: agentLink(event.paneId, hostId),
+              paneId: event.paneId,
+              answers: [],
+              timeoutMs: CONFIRMATION_MS,
+            });
+          }
           if (event.reply != null) {
             const text = event.reply.trim();
             if (!text) return await outcome("Nothing to send.", false);
@@ -192,7 +230,7 @@ export function BackgroundNotifications() {
           if (agent?.agent_status !== "blocked") return await outcome("It isn't waiting for an answer any more.", false);
           const prompt = await readPrompt(client, event.paneId);
           if (!stillOffered(prompt, event)) return await outcome("It's asking something else now. Tap to open it.", false);
-          await client.call("agent.send_keys", { target: event.paneId, keys: [event.key] });
+          await sendAnswer(client, event.paneId, event);
           await outcome(agent.terminal_title_stripped || agent.cwd?.split("/").pop() || "", true);
         } catch {
           await outcome("Couldn't reach your computer. Tap to open Shepherd.", false);
