@@ -14,6 +14,8 @@ const MAX_PREVIEW = 260;
 const MAX_CACHED = 30;
 /** Images already loaded this session (as data URIs), newest last. */
 const cache = new Map<string, string>();
+/** Images you tapped to load: they stay shown with "Show images" off. */
+const opened = new Set<string>();
 
 async function fetchImage(client: HostConnection, paneId: string, id: string): Promise<string> {
   let data = "";
@@ -37,16 +39,19 @@ function ImageThumb({ image }: { image: ImageRef }) {
   const key = `${ctx?.paneId}:${ctx?.session}:${image.id}`;
   const [loaded, setLoaded] = useState<{ key: string; uri: string } | null>(() => (cache.has(key) ? { key, uri: cache.get(key)! } : null));
   const [failed, setFailed] = useState<string | null>(null);
-  const [tapped, setTapped] = useState(false);
+  const [tapped, setTapped] = useState(() => opened.has(key));
+  const [attempt, setAttempt] = useState(0);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const [viewing, setViewing] = useState(false);
   const inflight = useRef(false);
-  const uri = loaded?.key === key ? loaded.uri : cache.get(key) ?? null;
-  const wanted = Boolean(ctx?.auto) || tapped;
+  const wanted = Boolean(ctx?.auto) || tapped || opened.has(key);
+  // Loaded before but not wanted now (the setting was turned off): show the placeholder.
+  const uri = wanted ? (loaded?.key === key ? loaded.uri : (cache.get(key) ?? null)) : null;
 
   useEffect(() => {
     if (!wanted || uri || inflight.current || !ctx?.client) return;
     inflight.current = true;
+    setFailed(null);
     fetchImage(ctx.client, ctx.paneId, image.id)
       .then((data) => {
         cache.delete(key);
@@ -56,7 +61,7 @@ function ImageThumb({ image }: { image: ImageRef }) {
       })
       .catch((err: Error) => setFailed(err.message))
       .finally(() => (inflight.current = false));
-  }, [wanted, uri, ctx, image.id, key]);
+  }, [wanted, uri, ctx, image.id, key, attempt]);
 
   useEffect(() => {
     if (!uri) return;
@@ -72,9 +77,14 @@ function ImageThumb({ image }: { image: ImageRef }) {
   }, [uri]);
 
   if (!uri) {
-    const label = failed ? "Couldn't load the image" : wanted ? "Loading image…" : `Image · ${kb(image.bytes)}`;
+    const label = failed ? "Couldn't load the image · tap to try again" : wanted ? "Loading image…" : `Image · ${kb(image.bytes)}`;
+    const load = () => {
+      opened.add(key);
+      setTapped(true);
+      setAttempt((a) => a + 1);
+    };
     return (
-      <PressableScale onPress={() => setTapped(true)} disabled={wanted && !failed} style={styles.placeholder} accessibilityRole="button" accessibilityLabel={label}>
+      <PressableScale onPress={load} disabled={wanted && !failed} style={styles.placeholder} accessibilityRole="button" accessibilityLabel={label}>
         <ImageIcon size={15} color={colors.muted} />
         <Text style={styles.placeholderText}>{label}</Text>
       </PressableScale>
