@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -24,7 +24,7 @@ describe("pid file", () => {
     expect(readRunningHost(config)).toBeNull();
   });
 
-  it("ignores a stale pid and leaves another host's file alone", () => {
+  it("ignores a stale pid, or one another program has now, and leaves another host's file alone", () => {
     const config = tempConfig();
     // Larger than any real pid.
     writeFileSync(pidFilePath(config), JSON.stringify({ pid: 2 ** 30, socketPath: "/x", startedAt: "" }));
@@ -32,9 +32,11 @@ describe("pid file", () => {
     clearPidFile(config);
     expect(readRunningHost(config)).toBeNull();
 
+    // Alive, but not a Shepherd host.
     writeFileSync(pidFilePath(config), JSON.stringify({ pid: process.ppid, socketPath: "/x", startedAt: "" }));
+    expect(readRunningHost(config)).toBeNull();
     clearPidFile(config);
-    expect(readRunningHost(config)?.pid).toBe(process.ppid);
+    expect(existsSync(pidFilePath(config))).toBe(true);
   });
 
   it("treats a garbled file as no host", () => {

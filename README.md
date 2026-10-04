@@ -25,7 +25,7 @@
 
 - [herdr](https://herdr.dev) 0.9 or newer, running (just run `herdr`)
 - [Node.js](https://nodejs.org) 22.18 or newer
-- A phone
+- A phone. The prebuilt APK is for Android phones; on an iPhone, run the app in Expo Go (step 4, option C).
 
 ### 2. Install the herdr plugin
 
@@ -48,7 +48,59 @@ This opens the **Shepherd window** in herdr on its Pair screen, with a **pairing
 
 The QR code holds the host's name, every address it can be reached on, and a **one-time pairing code**. The code works once and expires after 10 minutes. When your phone scans it, the host gives that phone its own token, so a photo of the QR code is useless afterwards. Press `p` in the window for a new code.
 
-### The Shepherd window
+**Without the plugin:** run the host from a clone of this repo with `npm run host` (after `npm install`). It prints a pairing QR code in your terminal.
+
+### 4. Get the app on your phone
+
+**Easiest: download the APK** from the [latest release](https://github.com/zenodea/shepherd/releases/latest) on your phone and install it. You may need to allow installing apps from your browser.
+
+**Or build it yourself** from this repo:
+
+```bash
+git clone https://github.com/zenodea/shepherd.git
+cd shepherd
+npm install
+```
+
+**Option A: Build an APK in the cloud (easiest, free Expo account)**
+
+```bash
+npx eas-cli@latest login
+npm run build:apk -w @shepherd/mobile   # first run: creates your EAS project, prints its id and stops
+export EAS_PROJECT_ID=<that id>         # also EAS_OWNER=<org> if the project belongs to an organization
+npm run build:apk -w @shepherd/mobile
+```
+
+When the build finishes, open the link it prints on your phone and install the APK.
+
+**Option B: Build the APK locally** (needs JDK 17 and the Android SDK, e.g. via Android Studio)
+
+```bash
+npm run build:apk:local -w @shepherd/mobile
+adb install apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+```
+
+This APK is signed with the debug key, which is fine for personal use but not for the Play Store.
+
+**Option C: Try it without building (development)**
+
+Install **Expo Go** from the Play Store or App Store, run `npm run app:prod` (or `npm run app` while developing), and scan the QR code **from inside the Expo Go app**. The app doesn't run in a web browser. Notifications need an APK: Expo Go can't run the app's background connection.
+
+If Expo Go can't load the project, your phone probably can't reach your computer at the `exp://…:8081` address Metro prints. This happens on guest, office and university Wi-Fi. If both devices are on Tailscale, use your computer's Tailscale IP instead:
+
+```bash
+REACT_NATIVE_PACKAGER_HOSTNAME=100.x.y.z npm run app
+```
+
+**Just want to look around first?** Run `npm run app:demo` and open it in Expo Go. It's a demo mode with a pretend computer and pretend agents, so you don't need a host.
+
+### 5. Connect
+
+Open the app, tap **Scan QR code**, and point the camera at the QR code from step 3. If you installed the APK, scanning with your phone's own camera app works too.
+
+The app tries every address in the QR code at once and uses whichever answers first. It works at home, on Tailscale or through the relay without you choosing, and it switches over when you change networks. If you can't scan, choose **Enter address and pairing code manually** and use the code under the QR code ("Or enter it by hand"), with an address from the window's Overview. If the app and host are too far apart in version to talk, the app says which one to update.
+
+## The Shepherd window
 
 <p align="center">
   <img src="docs/screenshots/herdr-overview.png" width="49%" alt="The Shepherd window's Overview: Shepherd on with its switch, herdr version, agents, connected phones, and switches for connecting over LAN, Tailscale and the relay" />
@@ -62,9 +114,7 @@ The window has four screens; switch with the letter keys or Tab:
 - **Phones (`d`):** every paired phone, connected ones first with how they're connected (direct or through the relay). Select one and press `x` to revoke it.
 - **Log (`l`):** the host's recent log.
 
-`r` restarts the host from any screen, and `q` or Esc closes the window.
-
-Turning Shepherd **off** stops the host and keeps it stopped: herdr won't start it again until you turn it back on, so no phone can connect.
+`r` restarts the host from any screen, and `q` or Esc closes the window. Turning Shepherd **off** stops the host and keeps it stopped (herdr won't start it again), so no phone can connect.
 
 To open it with a key, add this to herdr's `config.toml` (then `herdr server reload-config`):
 
@@ -82,75 +132,23 @@ command = "shepherd.pair"
 description = "pair a phone"
 ```
 
-`shepherd.restart` restarts the host without opening the window. Outside herdr, `npm run host -- ui` opens the same window in any terminal.
-
-**Without the plugin:** run the host from a clone of this repo with `npm run host` (after `npm install`). It prints a pairing QR code in your terminal.
-
-### 4. Get the app on your phone
-
-**Easiest: download the APK** from the [latest release](https://github.com/zenodea/shepherd/releases/latest) on your phone and install it. You may need to allow installing apps from your browser.
-
-**Or build it yourself** from this repo:
-
-```bash
-git clone https://github.com/zenodea/shepherd.git
-cd shepherd
-npm install
-```
-
-Then pick one of the three options below.
-
-**Option A: Build an APK in the cloud (easiest, free Expo account)**
-
-```bash
-npx eas-cli@latest login
-npm run build:apk -w @shepherd/mobile
-```
-
-The first run asks to create the EAS project. When the build finishes, open the link it prints on your phone and install the APK. You may need to allow installing apps from your browser.
-
-**Option B: Build the APK locally** (needs JDK 17 and the Android SDK, e.g. via Android Studio)
-
-```bash
-npm run build:apk:local -w @shepherd/mobile
-adb install apps/mobile/android/app/build/outputs/apk/release/app-release.apk
-```
-
-This APK is signed with the debug key, which is fine for personal use but not for the Play Store.
-
-**Just want to look around first?** Run `npm run app:demo` and open it in Expo Go. It's a demo mode with a pretend computer and pretend agents, so you don't need a host.
-
-**Option C: Try it without building (development)**
-
-Install **Expo Go** from the Play Store, run `npm run app:prod` (or `npm run app` while developing), and scan the QR code **from inside the Expo Go app**. The app doesn't run in a web browser. Notifications need an APK: Expo Go can't run the app's background connection.
-
-If Expo Go can't load the project, your phone probably can't reach your computer at the `exp://…:8081` address Metro prints. This happens on guest, office and university Wi-Fi. If both devices are on Tailscale, use your computer's Tailscale IP instead:
-
-```bash
-REACT_NATIVE_PACKAGER_HOSTNAME=100.x.y.z npm run app
-```
-
-### 5. Connect
-
-Open the app, tap **Scan QR code**, and point the camera at the QR code from step 3. If you installed the APK, scanning with your phone's own camera app works too.
-
-The app tries every address in the QR code at once and uses whichever answers first. It works at home, on Tailscale or through the relay without you choosing, and it switches over when you change networks. If you can't scan, choose **Enter address and pairing code manually** and use the code under the QR code ("Or enter it by hand"), with an address from the window's Overview.
+`shepherd.restart` restarts the host without opening the window. Outside herdr, `shepherd ui` (see [Host commands](#host-commands)) opens the same window in any terminal.
 
 ## What you can do
 
 - **See every agent at a glance.** Agents that need input come first, with their question and one button per answer. Under each agent, "Last done: 12m ago" says when it last finished a turn.
 - **Send images.** The image button next to the message box sends a photo or screenshot to the agent: it's saved on your computer (in a temporary folder, cleared after a week) and its path goes into your message, for the agent to open.
-- **Read the conversation.** Agents open on their conversation: your messages, their replies and each tool call (tap one to see its output), read from what the agent itself records: Claude Code, Codex, Gemini CLI, OpenCode, Hermes and pi are supported. It scrolls like a chat app however the agent draws its screen, and older messages load as you scroll up. The arrows on the right jump between your own messages, runs of tool calls fold into one line ("12 tool calls · Read ×6, Edit ×4"), and the header shows how full the agent's context is (a percentage for Codex, which records its window; tokens for Claude and pi).
+- **Read the conversation.** Agents open on their conversation (your messages, their replies and each tool call), read from what the agent itself records: Claude Code, Codex, Gemini CLI, OpenCode, Hermes and pi. It scrolls like a chat app, older messages load as you scroll up, runs of tool calls fold into one line, and the header shows how full the agent's context is.
 - **Formatted replies.** Tables, lists, checklists, quotes, headings and code come out formatted, and links open in your browser. Wide tables scroll sideways.
-- **See the images it read.** Screenshots and pictures the agent looked at, and images you pasted, appear in the chat as "Image · 80 KB": tap to load one, then tap it for full screen. There, pinch to zoom into a spot, double-tap to zoom in or out, swipe down to close, and **save** it to your phone's Pictures/Shepherd folder. Turn on **Settings → Show images** to load them as they appear; the agent's **⋯** menu then has **Images**, every image in the conversation grouped under the message of yours it came after. They come from the transcript, a piece at a time, so it works through the relay too.
-- **Follow its subagents.** When Claude Code, Codex, OpenCode, Gemini CLI or Hermes hands work to subagents, each one shows in the chat as a card with its task, type, status and how many steps it's taken, and a pill under the agent's name says how many are running. Tap one to read its own conversation as it works. Codex keeps the instructions it gives its subagents encrypted, so for Codex you see each task's name and everything the subagent then did.
-- **See what it changed.** When the agent's folder has changes, a "4 files · +38 −12" pill appears under its name. Tap it for the files, and a file for its diff: only the changed lines with a little context, one column, wrapped. **Mention in message** puts `@path/to/file` into your message to the agent. On a branch other than main, you can switch between what's not committed yet and the whole branch. In the chat, each edit shows its own +/− and expands into just that edit. All read from git on your computer, read-only.
-- **See what's queued.** Send while the agent is working and it queues the message itself; Shepherd shows it as a dashed "Queued" bubble until the agent picks it up, then as a message where the agent took it in, even in the middle of a turn. That's read from the agent's own records (Claude Code, Codex and OpenCode), so messages you queue at the computer show up too. pi, Gemini CLI and Hermes take queued messages as well, but don't record them anywhere Shepherd can read, so they don't show.
+- **See the images it read.** Images the agent looked at, and ones you pasted, appear in the chat: tap to load, zoom and save to Pictures/Shepherd. **Settings → Show images** loads them as they appear, and the agent's **⋯** menu lists them all.
+- **Follow its subagents.** Subagents (Claude Code, Codex, OpenCode, Gemini CLI, Hermes) show as cards with their task and status; tap one to read its own conversation as it works. Codex encrypts the instructions it gives them, so for Codex you see each task's name and what the subagent did.
+- **See what it changed.** A "4 files · +38 −12" pill under the agent's name opens the changed files and their diffs (uncommitted, or the whole branch), and **Mention in message** puts `@path/to/file` into your message. Read from git, read-only.
+- **See what's queued.** Messages sent while the agent works show as "Queued" until it takes them in (Claude Code, Codex and OpenCode; the others queue too but don't record it).
 - **Watch the live terminal.** Tap the terminal icon to switch. The agent is fitted to your screen as native text. Scroll up for the history, pinch to resize, search, long-press to copy, tap links.
 - **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal. Answers you write yourself ("Type something.", "No, and tell Claude what to do") open a text box. While an agent works, the send button turns into **Stop**. Unsent text is kept per agent until you send it.
-- **Home-screen widget.** Long-press your home screen → Widgets → Shepherd: which agents need you, at a glance. Tap an agent to open it. When one needs you, the widget shows its question with its first two answers as buttons; a tap answers it, if it's still asking the same thing. It stays current while notifications are on (they keep Shepherd connected); otherwise it shows how things were when the app last ran.
-- **Themes.** Twelve colour themes, each with a dark and a light version: Default, Catppuccin, Tokyo Night, Gruvbox, Everforest, Rosé Pine, Zenbones, Night Owl, Dracula, Nord, Kanagawa and GitHub. Pick one in **Settings → Appearance**; it follows your phone's dark mode unless you choose one.
-- **Switch model and effort.** From an agent's ⋯ menu, for Claude Code, Codex and Pi (with Pi, also the provider): pick from the models and effort levels the agent itself offers, for this session only. Shepherd drives the agent's own `/model` command for you, so switching only works while the agent is idle.
+- **Home-screen widget.** Which agents need you, with their question and first two answers as buttons. It stays current while notifications are on.
+- **Themes.** Twelve colour themes (Catppuccin, Tokyo Night, Gruvbox, Nord…), each dark and light, in **Settings → Appearance**.
+- **Switch model and effort** for Claude Code, Codex and pi from the agent's ⋯ menu, while it's idle (it drives the agent's own `/model`).
 - **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project, a fresh git worktree, or any folder in your home folder (pick from recent folders and git repos, browse, or type a path; it gets its own herdr workspace).
 - **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
 - **See what happened.** The activity feed shows what your agents did while you were away, and how long they waited for you.
@@ -177,17 +175,19 @@ With the plugin, the host already runs in the background while herdr does. If it
 If you'd rather have the host supervised by your system (started at login and restarted if it stops, herdr or not), or you don't use the plugin, install it as a service. The plugin leaves the host to the service while one is installed.
 
 ```bash
-npm run host -- service install   # starts now, at every login, and restarts if it stops
-npm run host -- service status
-npm run host -- service logs      # follow the log
-npm run host -- service uninstall
+shepherd service install   # starts now, at every login, and restarts if it stops
+shepherd service status
+shepherd service logs      # follow the log
+shepherd service uninstall
 ```
+
+`shepherd` is the host command; see [Host commands](#host-commands).
 
 On macOS this installs a launchd agent (`~/Library/LaunchAgents/dev.shepherd.host.plist`, logs in `~/Library/Logs/shepherd-host.log`). On Linux it's a systemd user unit (`shepherd-host.service`); run `loginctl enable-linger $USER` to keep it running while you're logged out.
 
 - **Environment:** the service remembers the `PATH` you install it from, so it can find `herdr` and your agent CLIs. It also remembers any `SHEPHERD_*` or `HERDR_SESSION` settings. Re-run `service install` after changing them.
 - **Starting before herdr:** if the service starts before herdr (for example at login), it waits for herdr to come up.
-- **Pairing more phones:** run `npm run host -- pair` in any terminal. The running service picks up the new code immediately.
+- **Pairing more phones:** run `shepherd pair` in any terminal. The running service picks up the new code immediately.
 - **Code changes:** after pulling new Shepherd code, restart the service with `service install`.
 
 ## Using it away from home
@@ -205,7 +205,7 @@ Install [Tailscale](https://tailscale.com) on your computer and phone. The host 
 
 ### Your own relay (no VPN on the phone)
 
-Deploy the relay to your Cloudflare account. The free Workers plan is enough for personal use.
+Deploy the relay to your Cloudflare account from a clone of this repo. The free Workers plan is enough for personal use.
 
 ```bash
 cd apps/relay
@@ -215,8 +215,8 @@ npx wrangler secret put HOST_TOKEN   # paste it
 npm run deploy                       # prints https://shepherd-relay.<you>.workers.dev
 cd ../..
 
-npm run host -- relay https://shepherd-relay.<you>.workers.dev <relay host token>
-herdr plugin action invoke shepherd.restart   # apply (or restart `npm run host`)
+shepherd relay https://shepherd-relay.<you>.workers.dev <relay host token>
+shepherd restart   # apply
 ```
 
 Phones that are already paired learn the relay address the next time they connect, on Wi-Fi or Tailscale. After that they use it automatically whenever your computer isn't reachable directly. New QR codes include it too.
@@ -229,21 +229,27 @@ How it works:
 
 ## Host commands
 
-Run these from your clone of the repo. They share `~/.config/shepherd` with the plugin's host, so after changing a setting, apply it with `herdr plugin action invoke shepherd.restart`.
+Installed as a plugin, there's no clone to run `npm run host` in, so add an alias for the plugin's copy of the host (put it in your shell's rc file):
 
 ```bash
-npm run host                      # run
-npm run host -- pair              # new one-time pairing QR code
-npm run host -- info              # addresses and paired devices
-npm run host -- devices           # list paired phones
-npm run host -- devices revoke <id|all>  # unpair (disconnects immediately)
-npm run host -- relay <url> <tok> # connect through a relay
-npm run host -- relay off         # stop using the relay
-npm run host -- connections tailscale relay   # which ways phones may connect (lan, tailscale, relay)
-npm run host -- status            # is the host running, addresses, devices, recent log
-npm run host -- restart | stop    # restart or stop a host running in the background
-npm run host -- on | off          # turn Shepherd on or off (off: herdr doesn't start it)
-npm run host -- ui                # the Shepherd window (status, pairing, phones, log)
+alias shepherd="node \"$(herdr plugin list --plugin shepherd --json | sed -E 's/.*"plugin_root":"([^"]*)".*/\1/')/apps/host/src/cli.ts\""
+```
+
+From a clone, `npm run host --` does the same (`npm run host -- pair`). Both use `~/.config/shepherd`, so after changing a setting, apply it with `shepherd restart`.
+
+```bash
+shepherd                      # run in the foreground
+shepherd pair                 # new one-time pairing QR code
+shepherd info                 # addresses and paired devices
+shepherd devices              # list paired phones
+shepherd devices revoke <id|all>  # unpair (disconnects immediately)
+shepherd relay <url> <tok>    # connect through a relay
+shepherd relay off            # stop using the relay
+shepherd connections tailscale relay   # which ways phones may connect (lan, tailscale, relay)
+shepherd status               # is the host running, addresses, devices, recent log
+shepherd restart | stop       # restart or stop a host running in the background
+shepherd on | off             # turn Shepherd on or off (off: herdr doesn't start it)
+shepherd ui                   # the Shepherd window (status, pairing, phones, log)
 ```
 
 | Variable | Default | |
@@ -256,11 +262,13 @@ npm run host -- ui                # the Shepherd window (status, pairing, phones
 
 ## Security model
 
-- **Folders:** to start an agent in a new folder, the app can list folder names inside your home folder (never files, never hidden folders, nothing outside it). A paired phone could already run commands, so this adds no new access.
+- **A paired phone is like an SSH key.** It can type into your terminals and open a terminal running any command, in any folder inside your home folder. Revoke lost phones in the window's Phones screen or with `devices revoke`.
+- **Folders:** to start an agent in a new folder, the app can list folder names inside your home folder (never files, never hidden folders, nothing outside it).
 - **Ways in:** choose which of LAN, Tailscale and the relay phones may use, in the Shepherd window (keys 1–3) or with `connections`. With only Tailscale, the host listens on its Tailscale address alone, so nothing is open on other networks; connections arriving on a way that's off are dropped. The relay off means the host never connects to it. Shepherd won't let you turn off the last way in.
-- **Pairing:** each phone gets its own random token (the host stores only a hash). Pairing codes work once and expire after 10 minutes. `devices revoke` cuts a phone off immediately.
+- **Pairing:** each phone gets its own random token (the host stores only a hash). Pairing codes work once and expire after 10 minutes. A QR code pins the host's whole key; a code typed by hand ends with the start of it (`<code>.<16 hex>`), so nothing else on the network can answer first. `devices revoke` cuts a phone off immediately.
 - **End-to-end encryption** on every connection, including through the relay: a Noise NK-style handshake with the host's X25519 key pinned from the QR code, then ChaCha20-Poly1305. The relay only ever sees ciphertext. Built on the audited [@noble](https://paulmillr.com/noble/) libraries (`packages/protocol/src/secure.ts`).
-- **Limited API:** the host forwards only an allowlist of herdr methods (`FORWARDED_METHODS` in `packages/protocol/src/wire.ts`), and starts agents only as installed agent types in existing workspaces. A leaked token can't run shell commands through the API, but it can type into your terminals, so revoke lost phones.
+- **Limited API:** the host forwards only an allowlist of herdr methods (`FORWARDED_METHODS` in `packages/protocol/src/wire.ts`).
+- **Relay:** every host on a relay uses the same `HOST_TOKEN`, so one could take another's place there (it still can't read or answer for your computer). Don't share your relay.
 - **Conversations:** the app asks for an agent's conversation by its pane, never by a file path. The host reads only the transcript that belongs to that agent (in `~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi`, `~/.hermes` or OpenCode's data folder; OpenCode and Hermes keep theirs in a database, which Shepherd opens read-only), which shows what the pane already shows.
 
 ## Development

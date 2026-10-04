@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { networkInterfaces } from "node:os";
-import { parsePairingLink, encodePairingLink } from "@shepherd/protocol";
+import { parseManualCode, parsePairingLink, encodePairingLink } from "@shepherd/protocol";
 import type { HostConfig } from "../system/config.ts";
-import { hostAddresses, pairingInfo, renderQr } from "./pairing.ts";
+import { hostAddresses, manualCode, pairingInfo, renderQr } from "./pairing.ts";
 
 const config: HostConfig = {
   hostId: "abc123",
@@ -55,5 +55,12 @@ describe("pairing QR", () => {
     expect(parsePairingLink(encodePairingLink(info))).toEqual(info);
     const qr = await renderQr(encodePairingLink(info));
     expect(qr.split("\n").length).toBeGreaterThan(10);
+  });
+});
+
+describe("manualCode", () => {
+  it("carries the start of the key the QR code carries, after the code itself", () => {
+    const parsed = parseManualCode(manualCode(config, "p_code"));
+    expect(parsed).toEqual({ token: "p_code", hostKeyPrefix: pairingInfo(config, 7420, "p_code", interfaces).hostKey!.slice(0, 16) });
   });
 });

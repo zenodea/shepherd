@@ -188,6 +188,11 @@ export const LiveTerminal = forwardRef<
     },
   }));
 
+  // History keys count from the bottom, so older lines arriving on top don't move your place.
+  const past = useMemo(
+    () => history.map((line, i): Item => ({ key: `h${history.length - i}`, line, cursorX: null, text: lineText(line), live: false })),
+    [history],
+  );
   // Rows below the last line with content (and the cursor) are blank screen;
   // leaving them out keeps the newest line at the bottom, like a chat.
   const items = useMemo(() => {
@@ -203,10 +208,8 @@ export const LiveTerminal = forwardRef<
       text: lineText(line),
       live: true,
     }));
-    // History keys count from the bottom, so older lines arriving on top don't move your place.
-    const past = history.map((line, i): Item => ({ key: `h${history.length - i}`, line, cursorX: null, text: lineText(line), live: false }));
     return [...past, ...live];
-  }, [history, screen, cursor]);
+  }, [past, screen, cursor]);
 
   // --- search -----------------------------------------------------------------
   const activeQuery = searching ? query.trim() : "";

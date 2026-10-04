@@ -1,6 +1,6 @@
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
-import { encodePairingLink, toHex, type PairingInfo } from "@shepherd/protocol";
+import { encodePairingLink, formatManualCode, toHex, type PairingInfo } from "@shepherd/protocol";
 import { hostCommand, hostKeyPair, type HostConfig } from "../system/config.ts";
 import type { DeviceRegistry } from "./devices.ts";
 import { appRelayUrl } from "../connection/relay-tunnel.ts";
@@ -41,6 +41,11 @@ export function pairingInfo(config: HostConfig, port: number, credential: string
   };
 }
 
+/** The code to type when the QR code can't be scanned, with the start of the host key so the app can check it. */
+export function manualCode(config: HostConfig, code: string): string {
+  return formatManualCode(code, toHex(hostKeyPair(config).publicKey));
+}
+
 export function renderQr(text: string): Promise<string> {
   return QRCode.toString(text, { type: "terminal", small: true, errorCorrectionLevel: "L" });
 }
@@ -62,7 +67,7 @@ export async function printPairing(config: HostConfig, devices: DeviceRegistry, 
   console.log(qr.trimEnd().replace(/^/gm, "  ") + "\n");
   console.log(`  One-time code, valid until ${expiresAt.toLocaleTimeString()}. For another: ${hostCommand("pair")}\n`);
   printAddresses(config, port);
-  console.log(`  Code:      ${code}   (for manual entry)`);
+  console.log(`  Code:      ${manualCode(config, code)}   (for manual entry)`);
   console.log("");
 }
 

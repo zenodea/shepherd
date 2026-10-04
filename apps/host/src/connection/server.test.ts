@@ -3,7 +3,7 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { CLOSE_CODES, generateKeyPair, type ServerMessage } from "@shepherd/protocol";
+import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, generateKeyPair, type ServerMessage } from "@shepherd/protocol";
 import { AgentTracker } from "../herdr/agent-tracker.ts";
 import { HerdrClient, lineReader } from "../herdr/herdr-client.ts";
 import { startLocalServer, type LocalServer } from "./server.ts";
@@ -124,6 +124,18 @@ describe("local server", () => {
     await until(() => c.closeCode() !== null);
     expect(c.closeCode()).toBe(CLOSE_CODES.unauthorized);
     expect(c.messages).toEqual([{ type: "auth.error", code: "invalid", message: expect.any(String) }]);
+  });
+
+  it("tells an app on another protocol version which side to update", async () => {
+    for (const [protocol, update] of [[WIRE_PROTOCOL_VERSION - 1, /phone/], [WIRE_PROTOCOL_VERSION + 1, /computer/]] as const) {
+      const c = await connect(server.port, null);
+      clients.push(c);
+      await until(() => c.hostKey() !== null);
+      c.send({ type: "auth", token: devices.token, device: { name: "x" }, protocol });
+      await until(() => c.closeCode() !== null);
+      expect(c.messages).toEqual([{ type: "auth.error", code: "version", message: expect.stringMatching(update) }]);
+    }
+    await open();
   });
 
   it("reports a phone as connected from auth until it disconnects", async () => {

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UploadParams, UploadResult } from "@shepherd/protocol";
@@ -15,7 +15,7 @@ export class UploadError extends Error {}
 
 /** Images sent from the phone, saved where agents can read them: a temporary folder, cleared after a week. */
 export class Uploads {
-  readonly dir: string;
+  dir: string;
   private pending = new Map<string, { chunks: string[]; size: number; mime: string; at: number }>();
 
   constructor(dir = join(tmpdir(), "shepherd-uploads")) {
@@ -42,11 +42,19 @@ export class Uploads {
     }
     if (!done) return { received: upload.size };
     this.pending.delete(uploadId);
-    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    this.ensureDir();
     this.clean();
     const path = join(this.dir, `${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}-${randomBytes(4).toString("hex")}.${ext}`);
-    writeFileSync(path, Buffer.from(upload.chunks.join(""), "base64"), { mode: 0o600 });
+    writeFileSync(path, Buffer.from(upload.chunks.join(""), "base64"), { mode: 0o600, flag: "wx" });
     return { path };
+  }
+
+  /** The folder, ours alone: in a shared /tmp someone else could have made it first, to read the images or swap in their own. */
+  private ensureDir(): void {
+    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    const stat = lstatSync(this.dir);
+    if (stat.isDirectory() && stat.uid === process.getuid?.() && (stat.mode & 0o022) === 0) return;
+    this.dir = mkdtempSync(join(tmpdir(), "shepherd-uploads-"));
   }
 
   private expire(): void {

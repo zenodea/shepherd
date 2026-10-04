@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -97,6 +97,18 @@ describe("changes in a git repository", () => {
     run(dir, "commit", "-q", "-m", "secret");
     expect(await fileDiff(dir, "secret.txt", "uncommitted")).toMatchObject({ available: false });
     expect(await fileDiff(dir, "../../etc/passwd", "uncommitted")).toMatchObject({ available: false });
+  });
+
+  it("lists links and pipes among new files without opening them", async () => {
+    const dir = repo();
+    symlinkSync("/etc/passwd", join(dir, "link"));
+    execFileSync("mkfifo", [join(dir, "pipe")]);
+    const result = await changes(dir);
+    if (!result.available) throw new Error(result.reason);
+    // The link is listed, but /etc/passwd isn't read through it; git leaves the pipe out.
+    expect(result.files.filter((f) => f.status === "added").map((f) => [f.path, f.additions])).toEqual([["link", 0]]);
+    expect(await fileDiff(dir, "link", "uncommitted")).toMatchObject({ available: true, diff: { path: "link", hunks: [] } });
+    expect(await fileDiff(dir, "pipe", "uncommitted")).toMatchObject({ available: false });
   });
 
   it("falls back to the whole branch when nothing is uncommitted", async () => {

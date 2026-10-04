@@ -1,29 +1,20 @@
 import { useRouter } from "expo-router";
-import { ChevronLeft, Globe, Laptop, Network, QrCode, Smartphone, Trash2, Wifi } from "lucide-react-native";
+import { Globe, Laptop, Network, QrCode, Smartphone, Trash2, Wifi } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { normaliseHostUrl } from "@shepherd/protocol";
+import { MANUAL_CODE_KEY_CHARS, normaliseHostUrl, parseManualCode } from "@shepherd/protocol";
 import { addressHost, addressKind } from "../connection/addresses";
 import { useConnection, useHostState } from "../connection/connection";
 import { Button } from "../ui/Button";
-import { IconButton } from "../ui/IconButton";
 import { ListGroup, ListRow } from "../ui/ListRow";
-import { Divider, Screen } from "../ui/Screen";
-import { colors, fonts, radii, space, statusColors, type, themed } from "../ui/theme";
+import { Divider, Screen, ScreenHeader } from "../ui/Screen";
+import { colors, radii, space, statusColors, type, themed } from "../ui/theme";
 
 export default function HostScreen() {
-  const router = useRouter();
   const { settings } = useConnection();
   return (
     <Screen>
-      {settings ? (
-        <View style={styles.header}>
-          <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-            <ChevronLeft size={22} color={colors.text} />
-          </IconButton>
-          <Text style={styles.headerTitle}>Host</Text>
-        </View>
-      ) : null}
+      {settings ? <ScreenHeader title="Host" /> : null}
       {/* undefined = still loading saved computers: don't flash the pairing page. */}
       {settings === undefined ? (
         <ActivityIndicator style={{ flex: 1 }} color={colors.muted} />
@@ -35,6 +26,8 @@ export default function HostScreen() {
     </Screen>
   );
 }
+
+const FIND_CODE = "In the Shepherd window on your computer, choose Pair and copy the code under the QR code";
 
 function IconCircle({ children }: { children: ReactNode }) {
   return <View style={styles.iconCircle}>{children}</View>;
@@ -121,7 +114,7 @@ function PairedHost() {
           onPress={() =>
             Alert.alert(
               "Forget this computer?",
-              "You'll need to scan a new pairing QR code. To also remove this phone on the host, run `npm run host -- devices revoke <id>`.",
+              "You'll need to scan a new pairing QR code. To also remove this phone from your computer, open the Shepherd window there and revoke it under Phones.",
               [
                 { text: "Cancel", style: "cancel" },
                 { text: "Forget", style: "destructive", onPress: () => void forget().then(() => router.dismissTo("/")) },
@@ -164,10 +157,18 @@ function PairOnboarding() {
       return;
     }
     if (!code.trim()) {
-      Alert.alert("Missing pairing code", "Run `npm run host -- pair` and paste the code it prints.");
+      Alert.alert("Missing pairing code", `${FIND_CODE}.`);
       return;
     }
-    await connect({ urls: [normalised], token: code.trim() });
+    const parsed = parseManualCode(code);
+    if (!parsed) {
+      Alert.alert(
+        "Check the code",
+        `The code ends with a dot and ${MANUAL_CODE_KEY_CHARS} letters and numbers, which prove it came from your computer. If your computer shows a code without them, update Shepherd there.`,
+      );
+      return;
+    }
+    await connect({ urls: [normalised], token: parsed.token, hostKeyPrefix: parsed.hostKeyPrefix });
     router.dismissTo("/");
   };
 
@@ -183,10 +184,8 @@ function PairOnboarding() {
         </View>
 
         <View style={styles.steps}>
-          <Step n={1} title="On your computer, start the host">
-            <Text style={styles.command}>npm run host</Text>
-          </Step>
-          <Step n={2} title="Scan the QR code it prints" />
+          <Step n={1} title="On your computer, open the Shepherd window and choose Pair" />
+          <Step n={2} title="Scan the QR code it shows" />
           <Step n={3} title="Your agents show up here" />
         </View>
 
@@ -211,12 +210,12 @@ function PairOnboarding() {
               style={styles.input}
               value={code}
               onChangeText={setCode}
-              placeholder="Pairing code (p_…)"
+              placeholder="Pairing code"
               placeholderTextColor={colors.subtle}
               autoCapitalize="none"
               autoCorrect={false}
             />
-            <Text style={type.caption}>The code is on the `Code:` line printed by `npm run host -- pair`.</Text>
+            <Text style={type.caption}>{FIND_CODE}, including the part after the dot.</Text>
             <Button title="Pair" variant="secondary" onPress={saveManual} />
           </View>
         ) : null}
@@ -226,8 +225,6 @@ function PairOnboarding() {
 }
 
 const styles = themed(() => StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
-  headerTitle: { fontSize: 17, fontWeight: "600", color: colors.text },
   hero: { alignItems: "center", gap: 8, paddingHorizontal: space.xl, paddingTop: space.lg },
   iconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   statusLine: { flexDirection: "row", alignItems: "center", gap: 7 },
@@ -240,17 +237,6 @@ const styles = themed(() => StyleSheet.create({
   step: { flexDirection: "row", gap: space.md },
   stepNumber: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center" },
   stepNumberText: { fontSize: 13, fontWeight: "600", color: colors.text },
-  command: {
-    fontFamily: fonts.mono,
-    fontSize: 13,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    borderRadius: radii.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    alignSelf: "flex-start",
-    overflow: "hidden",
-  },
   input: {
     backgroundColor: colors.surface,
     borderRadius: radii.md,

@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Image as ImageIcon, RotateCw } from "lucide-react-native";
+import { useLocalSearchParams } from "expo-router";
+import { Image as ImageIcon, RotateCw } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { ImageGroup, ImageRef, ImagesResult } from "@shepherd/protocol";
@@ -7,9 +7,8 @@ import { dayLabel, timeLabel } from "../../agents/activity";
 import { agentName } from "../../agents/agents";
 import { ImagesContext, ImageViewer, useImage } from "../../agents/ConversationImage";
 import { useConnection, useHostState } from "../../connection/connection";
-import { IconButton } from "../../ui/IconButton";
 import { PressableScale } from "../../ui/Pressable";
-import { Screen } from "../../ui/Screen";
+import { Screen, ScreenHeader } from "../../ui/Screen";
 import { colors, space, themed } from "../../ui/theme";
 
 const COLUMNS = 3;
@@ -70,7 +69,6 @@ function Group({ group, size }: { group: ImageGroup; size: number }) {
 
 /** Every image in an agent's conversation, newest first, under the message of yours each came after. */
 export default function ImagesScreen() {
-  const router = useRouter();
   const { paneId } = useLocalSearchParams<{ paneId: string }>();
   const { client } = useConnection();
   const state = useHostState();
@@ -99,20 +97,7 @@ export default function ImagesScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <ChevronLeft size={22} color={colors.text} />
-        </IconButton>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title} numberOfLines={1}>
-            Images
-          </Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {agent ? agentName(agent) : ""}
-            {total ? `${agent ? " · " : ""}${total} in this conversation` : ""}
-          </Text>
-        </View>
-      </View>
+      <ScreenHeader title="Images" meta={[agent ? agentName(agent) : null, total ? `${total} in this conversation` : null].filter(Boolean).join(" · ")} />
       {error || (result && !result.available) ? (
         <Text style={styles.empty}>{error ?? (result && !result.available ? result.reason : "")}</Text>
       ) : !result ? (
@@ -140,8 +125,6 @@ export default function ImagesScreen() {
 
 const styles = themed(() =>
   StyleSheet.create({
-    header: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
-    title: { fontSize: 16, fontWeight: "600", color: colors.text },
     meta: { fontSize: 12.5, color: colors.muted },
     list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, gap: space.xl },
     group: { gap: space.sm },

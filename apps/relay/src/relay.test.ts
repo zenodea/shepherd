@@ -112,6 +112,21 @@ describe("relay", () => {
     await expect(connectApp(base, null).opened).rejects.toThrow("401");
   });
 
+  it("takes the app's token only from the header", async () => {
+    const url = `${base.replace(/^http/, "ws")}${relayPaths.connect(HOST_ID)}?token=${encodeURIComponent(relayCredential(APP_TOKEN))}`;
+    const status = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(url);
+      ws.once("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0));
+      ws.once("open", () => reject(new Error("admitted with a query token")));
+      ws.once("error", reject);
+    });
+    expect(status).toBe(401);
+  });
+
+  it("answers a badly encoded host id with 400", async () => {
+    expect((await fetch(`${base}/hosts/%E0/connect`)).status).toBe(400);
+  });
+
   it("splices an app through to the host session", async () => {
     herdr.handlers["agent.prompt"] = (params) => ({ type: "ok", params });
     const app = connectApp(base, APP_TOKEN);
@@ -172,5 +187,12 @@ describe("relay", () => {
     expect(b.messages.filter((m) => m.type === "pong")).toEqual([{ type: "pong", t: 2 }]);
     a.ws.close();
     b.ws.close();
+  }, 20_000);
+
+  it("tells only admitted apps that the host is offline", async () => {
+    tunnel.stop();
+    await new Promise((r) => setTimeout(r, 300));
+    await expect(connectApp(base, APP_TOKEN).opened).rejects.toThrow("503");
+    await expect(connectApp(base, "wrong").opened).rejects.toThrow("401");
   }, 20_000);
 });

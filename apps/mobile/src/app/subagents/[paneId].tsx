@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Bot, ChevronLeft } from "lucide-react-native";
+import { Bot } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 import type { SubagentsResult } from "@shepherd/protocol";
@@ -7,8 +7,7 @@ import { agentName } from "../../agents/agents";
 import { SubagentRow } from "../../agents/SubagentCard";
 import { sortSubagents } from "../../agents/subagents";
 import { useConnection, useHostState } from "../../connection/connection";
-import { IconButton } from "../../ui/IconButton";
-import { Screen } from "../../ui/Screen";
+import { Screen, ScreenHeader } from "../../ui/Screen";
 import { colors, space, themed } from "../../ui/theme";
 
 const POLL_MS = 2000;
@@ -45,19 +44,12 @@ export default function SubagentsScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <ChevronLeft size={22} color={colors.text} />
-        </IconButton>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Subagents</Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {[agent ? agentName(agent) : null, subagents.length ? `${subagents.length} in this conversation` : null, running ? `${running} running` : null]
-              .filter(Boolean)
-              .join(" · ")}
-          </Text>
-        </View>
-      </View>
+      <ScreenHeader
+        title="Subagents"
+        meta={[agent ? agentName(agent) : null, subagents.length ? `${subagents.length} in this conversation` : null, running ? `${running} running` : null]
+          .filter(Boolean)
+          .join(" · ")}
+      />
       {!result ? (
         <ActivityIndicator style={styles.loading} color={colors.subtle} />
       ) : !result.available ? (
@@ -87,9 +79,6 @@ export default function SubagentsScreen() {
 
 const styles = themed(() =>
   StyleSheet.create({
-    header: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
-    title: { fontSize: 16, fontWeight: "600", color: colors.text },
-    meta: { fontSize: 12.5, color: colors.muted },
     list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, gap: space.sm },
     loading: { marginTop: space.xxl },
     emptyBox: { alignItems: "center", gap: space.md, marginTop: space.xxl },

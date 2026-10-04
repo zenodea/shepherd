@@ -54,9 +54,15 @@ export function fromHex(hex: string, expectedBytes = KEY_BYTES): Uint8Array {
   return hexToBytes(hex.toLowerCase());
 }
 
-// UTF-8 by hand: Hermes (React Native) doesn't reliably provide TextDecoder.
+// Native TextEncoder/TextDecoder where the runtime has them; by hand otherwise,
+// as older Hermes (React Native) builds lack TextDecoder.
+const nativeEncoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
+const nativeDecoder = typeof TextDecoder === "function" ? new TextDecoder() : null;
+
 export function utf8Encode(text: string): Uint8Array {
-  const out: number[] = [];
+  if (nativeEncoder) return nativeEncoder.encode(text);
+  const out = new Uint8Array(text.length * 3);
+  let n = 0;
   for (let i = 0; i < text.length; i++) {
     let code = text.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
@@ -66,15 +72,26 @@ export function utf8Encode(text: string): Uint8Array {
         i++;
       }
     }
-    if (code < 0x80) out.push(code);
-    else if (code < 0x800) out.push(0xc0 | (code >> 6), 0x80 | (code & 63));
-    else if (code < 0x10000) out.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
-    else out.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    if (code < 0x80) out[n++] = code;
+    else if (code < 0x800) {
+      out[n++] = 0xc0 | (code >> 6);
+      out[n++] = 0x80 | (code & 63);
+    } else if (code < 0x10000) {
+      out[n++] = 0xe0 | (code >> 12);
+      out[n++] = 0x80 | ((code >> 6) & 63);
+      out[n++] = 0x80 | (code & 63);
+    } else {
+      out[n++] = 0xf0 | (code >> 18);
+      out[n++] = 0x80 | ((code >> 12) & 63);
+      out[n++] = 0x80 | ((code >> 6) & 63);
+      out[n++] = 0x80 | (code & 63);
+    }
   }
-  return Uint8Array.from(out);
+  return out.slice(0, n);
 }
 
 export function utf8Decode(bytes: Uint8Array): string {
+  if (nativeDecoder) return nativeDecoder.decode(bytes);
   let out = "";
   for (let i = 0; i < bytes.length; ) {
     const b = bytes[i]!;

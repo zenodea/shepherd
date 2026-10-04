@@ -1,7 +1,7 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
 import type { ActivityEntry, ActivityEvent, ActivityParams, ActivityResult, AgentInfo, StatusChange } from "@shepherd/protocol";
 import type { AgentTracker } from "./agent-tracker.ts";
+import { writeJsonAtomic } from "../system/config.ts";
 
 /** How many entries are kept (and saved). */
 export const MAX_ENTRIES = 1000;
@@ -121,10 +121,7 @@ export class ActivityLog {
   private save(): void {
     if (!this.path) return;
     try {
-      mkdirSync(dirname(this.path), { recursive: true });
-      const tmp = `${this.path}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ entries: this.entries }), { mode: 0o600 });
-      renameSync(tmp, this.path);
+      writeJsonAtomic(this.path, { entries: this.entries });
     } catch {
       // the feed is a convenience; never take the host down over it
     }

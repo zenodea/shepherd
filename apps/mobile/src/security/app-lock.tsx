@@ -95,12 +95,16 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({ enabled, setEnabled }), [enabled, setEnabled]);
+  const covered = enabled === undefined || showLock;
   return (
     <AppLockContext.Provider value={value}>
-      {children}
+      {/* Screen readers can't reach the app behind the cover either. */}
+      <View style={styles.app} importantForAccessibility={covered ? "no-hide-descendants" : "auto"} accessibilityElementsHidden={covered}>
+        {children}
+      </View>
       {/* Covers the app (and whatever it was showing) until unlocked; also hides it while the pref loads. */}
-      {enabled === undefined || showLock ? (
-        <View style={styles.cover}>
+      {covered ? (
+        <View style={styles.cover} accessibilityViewIsModal>
           {showLock ? (
             <>
               <View style={styles.icon}>
@@ -123,6 +127,7 @@ export function useAppLock(): AppLockValue {
 }
 
 const styles = themed(() => StyleSheet.create({
+  app: { flex: 1 },
   cover: {
     position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: colors.background,

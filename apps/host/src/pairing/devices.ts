@@ -147,7 +147,14 @@ export class DeviceRegistry extends EventEmitter<RegistryEvents> {
   watch(intervalMs = 1000): void {
     if (this.watching) return;
     this.watching = true;
-    watchFile(this.configPath, { interval: intervalMs }, () => this.reload());
+    watchFile(this.configPath, { interval: intervalMs }, () => {
+      try {
+        this.reload();
+      } catch (err) {
+        // Mid-edit or hand-edited badly: keep the devices we had.
+        console.error(`[devices] couldn't read ${this.configPath}: ${(err as Error).message}`);
+      }
+    });
   }
 
   unwatch(): void {

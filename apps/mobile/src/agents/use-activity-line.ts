@@ -15,7 +15,8 @@ export function useActivityLine(client: HostConnection | null, paneId: string | 
     const read = async () => {
       try {
         const { read } = await client.call<{ read: PaneReadResult }>("agent.read", { target: paneId, source: "visible", format: "text" });
-        if (!cancelled) setLine({ paneId, text: activityLine(read.text) });
+        const text = activityLine(read.text);
+        if (!cancelled) setLine((prev) => (prev?.paneId === paneId && prev.text === text ? prev : { paneId, text }));
       } catch {
         // keep the last one
       }

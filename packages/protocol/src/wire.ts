@@ -347,7 +347,7 @@ export type ClientMessage =
    * one-time pairing code from the host's QR code, which the host exchanges
    * for a device token (returned in `hello.credentials`).
    */
-  | { type: "auth"; token: string; device: { name: string } }
+  | { type: "auth"; token: string; device: { name: string }; /** The app's WIRE_PROTOCOL_VERSION; absent from older apps. */ protocol?: number }
   | { type: "call"; id: string; method: CallMethod; params: Record<string, unknown> }
   /**
    * Without cols/rows the stream uses the pane's current size (nothing is
@@ -379,7 +379,7 @@ export type ServerMessage =
       credentials?: { token: string };
       agents: AgentInfo[];
     }
-  | { type: "auth.error"; code: "invalid" | "expired" | "revoked"; message: string }
+  | { type: "auth.error"; code: "invalid" | "expired" | "revoked" | "version"; message: string }
   | { type: "result"; id: string; result: unknown }
   | { type: "error"; id: string | null; error: { code: string; message: string } }
   | { type: "agents"; agents: AgentInfo[] }
@@ -447,10 +447,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
   switch (msg.type) {
     case "auth": {
-      const { token, device } = msg;
+      const { token, device, protocol } = msg;
       if (typeof token !== "string" || token.length === 0 || token.length > 256) return null;
       const name = isRecord(device) && typeof device.name === "string" ? device.name.replace(/[\u0000-\u001f]/g, "").trim().slice(0, 64) : "";
-      return { type: "auth", token, device: { name: name || "Unnamed device" } };
+      return { type: "auth", token, device: { name: name || "Unnamed device" }, ...(Number.isInteger(protocol) ? { protocol: protocol as number } : {}) };
     }
     case "call": {
       const { id, method, params = {} } = msg;

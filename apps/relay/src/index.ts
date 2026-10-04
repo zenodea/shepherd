@@ -17,8 +17,8 @@ export default {
     const match = ROUTE.exec(url.pathname);
     if (!match) return new Response("not found\n", { status: 404 });
     const [, rawHostId, kind] = match;
-    const hostId = decodeURIComponent(rawHostId!);
-    if (!HOST_ID_PATTERN.test(hostId)) return new Response("bad host id\n", { status: 400 });
+    const hostId = safeDecode(rawHostId!);
+    if (hostId === null || !HOST_ID_PATTERN.test(hostId)) return new Response("bad host id\n", { status: 400 });
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("expected websocket upgrade\n", { status: 426 });
     }
@@ -37,3 +37,11 @@ export default {
     return room.fetch(forwarded);
   },
 } satisfies ExportedHandler<Env>;
+
+function safeDecode(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}

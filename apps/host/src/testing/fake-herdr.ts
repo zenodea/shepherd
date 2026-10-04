@@ -16,6 +16,8 @@ export class FakeHerdr {
   handlers: Record<string, Handler> = {};
   /** Return a herdr error (e.g. `agent_not_ready`) for a method instead of handling it. */
   errorFor: (method: string) => { code: string; message: string } | null = () => null;
+  /** What to do with a subscription: acknowledge it, close the connection, or never answer. */
+  subscribeReply: "ack" | "close" | "hang" = "ack";
   private server: Server;
   private subs: Sub[] = [];
   private dir: string;
@@ -84,6 +86,8 @@ export class FakeHerdr {
         const reply = (body: Record<string, unknown>) => socket.end(JSON.stringify({ id: req.id, ...body }) + "\n");
 
         if (req.method === "events.subscribe") {
+          if (this.subscribeReply === "close") return void socket.end();
+          if (this.subscribeReply === "hang") return;
           this.subs.push({ socket, subscriptions: req.params.subscriptions as Record<string, unknown>[] });
           socket.write(JSON.stringify({ id: req.id, result: { type: "subscription_started" } }) + "\n");
           return;

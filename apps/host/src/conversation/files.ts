@@ -28,14 +28,15 @@ export function jsonlFiles(dir: string): JsonlFile[] {
 }
 
 const HEADER_BYTES = 128 * 1024;
-const headers = new Map<string, Record<string, unknown> | null>();
+const headers = new Map<string, Record<string, unknown>>();
 
-/** The first record of a file, cached: transcripts start with a header that doesn't change. */
+/** The first record of a file, cached: transcripts start with a header that doesn't change (once it's written). */
 export function firstRecord(path: string): Record<string, unknown> | null {
-  if (headers.has(path)) return headers.get(path)!;
+  const cached = headers.get(path);
+  if (cached) return cached;
   const [record = null] = readRecords(path, 0, HEADER_BYTES, 1);
   if (headers.size > 2000) headers.clear();
-  headers.set(path, record);
+  if (record) headers.set(path, record);
   return record;
 }
 

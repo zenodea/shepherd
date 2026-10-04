@@ -19,10 +19,12 @@ export function useKeyboardInset(): { inset: number; visible: boolean } {
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const show = Keyboard.addListener(showEvent, (e) => {
       const keyboard = e.endCoordinates.height;
+      clearTimeout(timer);
       // Give the window a moment to resize, then decide.
-      setTimeout(() => {
+      timer = setTimeout(() => {
         const window = Dimensions.get("window").height;
         const shrunk = Math.max(0, baseHeight.current - window);
         const overlap = Math.max(0, window - e.endCoordinates.screenY);
@@ -31,10 +33,12 @@ export function useKeyboardInset(): { inset: number; visible: boolean } {
       }, Platform.OS === "android" ? 80 : 0);
     });
     const hide = Keyboard.addListener(hideEvent, () => {
+      clearTimeout(timer);
       baseHeight.current = Dimensions.get("window").height;
       setState({ inset: 0, visible: false });
     });
     return () => {
+      clearTimeout(timer);
       show.remove();
       hide.remove();
     };

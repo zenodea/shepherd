@@ -93,7 +93,8 @@ export class TranscriptReader extends EntryLog {
   private readonly makeParser: () => Parser;
   private parse: Parser;
   private offset = 0;
-  private partial: Buffer = Buffer.alloc(0);
+  /** An unfinished last line, in the pieces it was read in: joined once it ends, however long it gets. */
+  private partial: Buffer[] = [];
   private ino = -1;
 
   constructor(path: string, makeParser: () => Parser) {
@@ -123,7 +124,7 @@ export class TranscriptReader extends EntryLog {
     if (stat.size - this.offset > TAIL_BYTES) {
       const starting = this.offset === 0;
       this.offset = stat.size - TAIL_BYTES;
-      this.partial = Buffer.alloc(0);
+      this.partial = [];
       skipPartialLine = true;
       this.push({ kind: "notice", text: starting ? "Earlier messages are too far back to show here" : "Some messages were skipped" });
     }
@@ -135,16 +136,14 @@ export class TranscriptReader extends EntryLog {
         const read = readSync(fd, buffer, 0, buffer.length, this.offset);
         if (read === 0) break;
         this.offset += read;
-        let data = Buffer.concat([this.partial, buffer.subarray(0, read)]);
-        if (skipPartialLine) {
-          const nl = data.indexOf(NEWLINE);
-          if (nl === -1) {
-            this.partial = Buffer.alloc(0);
-            continue;
-          }
-          data = data.subarray(nl + 1);
-          skipPartialLine = false;
+        const chunk = buffer.subarray(0, read);
+        const ended = chunk.indexOf(NEWLINE);
+        if (ended === -1) {
+          if (!skipPartialLine) this.partial.push(chunk);
+          continue;
         }
+        const data = skipPartialLine ? chunk.subarray(ended + 1) : Buffer.concat([...this.partial, chunk]);
+        skipPartialLine = false;
         // Where `data` starts in the file, so each record knows its own offset.
         const base = this.offset - data.length;
         let start = 0;
@@ -153,7 +152,7 @@ export class TranscriptReader extends EntryLog {
           start = nl + 1;
         }
         // Keep an unfinished last line for next time.
-        this.partial = Buffer.from(data.subarray(start));
+        this.partial = start < data.length ? [Buffer.from(data.subarray(start))] : [];
       }
     } finally {
       closeSync(fd);
@@ -194,7 +193,7 @@ export class TranscriptReader extends EntryLog {
   private reset(ino: number): void {
     this.ino = ino;
     this.offset = 0;
-    this.partial = Buffer.alloc(0);
+    this.partial = [];
     this.entries = [];
     this.parse = this.makeParser();
   }

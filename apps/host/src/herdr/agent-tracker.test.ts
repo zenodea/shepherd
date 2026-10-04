@@ -87,4 +87,14 @@ describe("AgentTracker", () => {
     await until(() => changes.length === 1, 4000);
     expect(changes[0]).toMatchObject({ status: "done", previous: "working" });
   });
+
+  it("retries a subscription herdr never acknowledged", async () => {
+    herdr.agents = [fakeAgent("w1:p1", "working")];
+    herdr.subscribeReply = "hang";
+    await tracker.start();
+    expect(tracker.list()).toEqual([]);
+    herdr.subscribeReply = "ack";
+    await until(() => herdr.subscriptionsFor("pane.agent_status_changed").length === 1, 4000);
+    expect(tracker.get("w1:p1")).not.toBeNull();
+  });
 });

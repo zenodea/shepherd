@@ -1,14 +1,13 @@
 // The Shepherd window: a full-screen view of the host for a herdr plugin pane
 // (or any terminal). Overview, pairing with the QR code, paired phones, log.
-import { existsSync, readFileSync } from "node:fs";
 import { encodePairingLink } from "@shepherd/protocol";
 import { DeviceRegistry, type Device } from "../pairing/devices.ts";
-import { hostAddresses, pairingInfo, renderQr, type HostAddress } from "../pairing/pairing.ts";
+import { hostAddresses, manualCode, pairingInfo, renderQr, type HostAddress } from "../pairing/pairing.ts";
 import { loadConfig, type HostConfig } from "../system/config.ts";
 import { readRunningHost, restartHost, setConnections, turnOff, turnOn, type RunningHost } from "../system/daemon.ts";
 import { ROUTE_LABELS, ROUTES, routesOf, withRoute, type Route, type Routes } from "../connection/routes.ts";
 import { readHostStatus, type ConnectedPhone, type HostStatus } from "../system/host-status.ts";
-import { Service } from "../system/service.ts";
+import { Service, logTail } from "../system/service.ts";
 import { duration, frame, pad, screen, style, visibleLength, when } from "./ansi.ts";
 
 export const SCREENS = ["overview", "pair", "phones", "log"] as const;
@@ -220,12 +219,8 @@ export function render(view: ViewState, data: WindowData, cols: number, rows: nu
 }
 
 const LOG_LINES = 200;
-
-function tail(path: string): string[] {
-  if (!existsSync(path)) return [];
-  const text = readFileSync(path, "utf8");
-  return text.slice(-64 * 1024).trimEnd().split("\n").slice(-LOG_LINES);
-}
+/** How often to ask the service manager and re-read the config, which is slower than the rest. */
+const SLOW_REFRESH_MS = 5000;
 
 /** Run the window until the person closes it. */
 export async function runWindow(initial: Screen = "overview"): Promise<void> {
@@ -236,10 +231,12 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
   const out = process.stdout;
   const input = process.stdin;
 
+  let svc = service.status();
+  let slowAt = Date.now();
+
   const load = (): WindowData => {
     const running = readRunningHost(config.configPath);
     const status = readHostStatus(config.configPath, running?.pid ?? null);
-    const svc = service.status();
     return {
       name: config.name,
       running,
@@ -250,7 +247,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       addresses: status?.addresses ?? hostAddresses(config, config.port),
       routes: routesOf(config),
       relayConfigured: Boolean(config.relayUrl && config.relayHostToken),
-      log: tail(svc.logFile),
+      log: logTail(svc.logFile, LOG_LINES),
       logFile: svc.logFile,
     };
   };
@@ -270,9 +267,14 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
     }, 4000);
     draw();
   };
-  const refresh = () => {
+  /** `full`: after changing something, so the config and service are read again now. */
+  const refresh = (full = false) => {
     view.now = Date.now();
-    config = loadConfig();
+    if (full || view.now - slowAt >= SLOW_REFRESH_MS) {
+      config = loadConfig();
+      svc = service.status();
+      slowAt = view.now;
+    }
     data = load();
     view.selected = Math.min(view.selected, Math.max(0, data.devices.length - 1));
     draw();
@@ -286,7 +288,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       const port = data.status?.port ?? config.port;
       if (hostAddresses(config, port).length === 0) throw new Error("No reachable address: set SHEPHERD_BIND or configure a relay.");
       const qr = (await renderQr(encodePairingLink(pairingInfo(config as HostConfig, port, code)))).trimEnd().split("\n");
-      view.pairing = { qr, code, expiresAt: expiresAt.getTime() };
+      view.pairing = { qr, code: manualCode(config, code), expiresAt: expiresAt.getTime() };
     } catch (err) {
       view.pairing = { error: (err as Error).message };
     }
@@ -322,7 +324,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       flash((err as Error).message, "error");
     }
     busy = false;
-    setTimeout(refresh, 1500);
+    setTimeout(() => refresh(true), 1500);
   };
   const toggleShepherd = async () => {
     if (busy) return;
@@ -333,8 +335,8 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       flash((err as Error).message, "error");
     }
     busy = false;
-    refresh();
-    setTimeout(refresh, 1500);
+    refresh(true);
+    setTimeout(() => refresh(true), 1500);
   };
   const toggleRoute = async (route: Route) => {
     if (busy) return;
@@ -348,8 +350,8 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       flash((err as Error).message, "error");
     }
     busy = false;
-    refresh();
-    setTimeout(refresh, 1500);
+    refresh(true);
+    setTimeout(() => refresh(true), 1500);
   };
   const close = () => {
     devices.unwatch();
@@ -418,7 +420,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
   input.on("data", (chunk: string) => onKey(chunk));
   out.on("resize", draw);
   process.on("SIGTERM", close);
-  setInterval(refresh, 1000);
+  setInterval(() => refresh(), 1000);
   if (view.screen === "pair") void newPairing();
   draw();
   await new Promise(() => {});

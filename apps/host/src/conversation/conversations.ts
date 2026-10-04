@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import type {
   AgentInfo,
   ConversationEntry,
@@ -26,13 +26,20 @@ const IMAGE_CHUNK = 256 * 1024;
 
 type Unavailable = { available: false; reason: string };
 type Session = { vendor: Vendor; transcript: string };
+type Progress = ReturnType<ConversationReader["progress"]>;
+/** A reader and when it was opened: entry ids count from each reader, so a new one means a new session for the app. */
+type OpenReader = { reader: ConversationReader; epoch: string };
+
+const START = Date.now().toString(36);
+let opened = 0;
 
 const unavailable = (reason: string): Unavailable => ({ available: false, reason });
 
 export class Conversations {
   private readonly vendors: readonly Vendor[];
   private located = new Map<string, { at: number; path: string | null }>();
-  private readers = new Map<string, ConversationReader>();
+  private readers = new Map<string, OpenReader>();
+  private progressCache = new Map<string, { stamp: string; progress: Progress }>();
   private subagentLists = new Map<string, { at: number; sources: SubagentSource[]; described: Subagent[] | null }>();
   private imageCache = new Map<string, FoundImage>();
 
@@ -53,8 +60,9 @@ export class Conversations {
     const source = params.subagent ? sources.find((s) => s.id === params.subagent) : undefined;
     if (params.subagent && !source) return unavailable("That subagent isn't in this conversation.");
 
-    const reader = source ? this.reader(source.transcript, source.open) : this.reader(transcript, () => vendor.open(transcript));
-    if (!reader) return unavailable("Couldn't read this agent's conversation.");
+    const open = source ? this.reader(source.transcript, source.open) : this.reader(transcript, () => vendor.open(transcript));
+    if (!open) return unavailable("Couldn't read this agent's conversation.");
+    const { reader, epoch } = open;
     const limit = Math.min(MAX_LIMIT, Math.max(1, params.limit ?? DEFAULT_LIMIT));
     const page = reader.page({ after: params.after, before: params.before, limit });
     const busy = agent?.agent_status === "working" || agent?.agent_status === "blocked";
@@ -63,7 +71,7 @@ export class Conversations {
     return {
       available: true,
       agent: vendor.id,
-      session: sessionName(transcript) + (source ? `/${source.id}` : ""),
+      session: `${sessionName(transcript)}${source ? `/${source.id}` : ""}~${epoch}`,
       ...page,
       entries: page.entries.map((entry) => linkSubagent(entry, sources)),
       ...(queued ? { queued } : {}),
@@ -88,9 +96,9 @@ export class Conversations {
   images(agent: AgentInfo | null): ImagesResult {
     const session = this.session(agent);
     if ("reason" in session) return session;
-    const reader = this.reader(session.transcript, () => session.vendor.open(session.transcript));
-    if (!reader) return unavailable("Couldn't read this agent's conversation.");
-    return { available: true, session: sessionName(session.transcript), groups: reader.imageGroups() };
+    const open = this.reader(session.transcript, () => session.vendor.open(session.transcript));
+    if (!open) return unavailable("Couldn't read this agent's conversation.");
+    return { available: true, session: sessionName(session.transcript), groups: open.reader.imageGroups() };
   }
 
   /** One image from a transcript, in chunks of base64. */
@@ -103,8 +111,8 @@ export class Conversations {
     const key = `${transcript}@${params.id}`;
     let image = this.imageCache.get(key);
     if (!image) {
-      const reader = source ? this.reader(source.transcript, source.open) : this.reader(transcript, () => session.vendor.open(transcript));
-      image = reader?.image(params.id) ?? undefined;
+      const open = source ? this.reader(source.transcript, source.open) : this.reader(transcript, () => session.vendor.open(transcript));
+      image = open?.reader.image(params.id) ?? undefined;
       if (!image) return unavailable("That image isn't in the conversation any more.");
       this.imageCache.set(key, image);
       if (this.imageCache.size > 4) this.imageCache.delete(this.imageCache.keys().next().value!);
@@ -131,14 +139,14 @@ export class Conversations {
     return path;
   }
 
-  private reader(transcript: string, open: () => ConversationReader): ConversationReader | null {
+  private reader(transcript: string, open: () => ConversationReader): OpenReader | null {
     let reader = this.readers.get(transcript);
     if (reader) this.readers.delete(transcript);
-    else reader = open();
+    else reader = { reader: open(), epoch: `${START}.${++opened}` };
     this.readers.set(transcript, reader);
     if (this.readers.size > MAX_READERS) this.readers.delete(this.readers.keys().next().value!);
     try {
-      reader.refresh();
+      reader.reader.refresh();
       return reader;
     } catch {
       this.readers.delete(transcript);
@@ -165,7 +173,7 @@ export class Conversations {
   }
 
   private describe(source: SubagentSource): Subagent {
-    const progress = this.reader(source.transcript, source.open)?.progress();
+    const progress = this.progress(source);
     const latest = progress?.latest;
     const status = source.status();
     return {
@@ -179,6 +187,28 @@ export class Conversations {
       toolCalls: progress?.toolCalls ?? 0,
       doing: status === "running" && latest ? [latest.name, latest.summary].filter(Boolean).join(" ") : null,
     };
+  }
+
+  /** A subagent's progress, read again only when its file changed: a reader per subagent every poll would push the main one out. */
+  private progress(source: SubagentSource): Progress | null {
+    const stamp = fileStamp(source.transcript);
+    const cached = this.progressCache.get(source.transcript);
+    if (stamp && cached?.stamp === stamp) return cached.progress;
+    const progress = this.reader(source.transcript, source.open)?.reader.progress() ?? null;
+    if (this.progressCache.size > 2000) this.progressCache.clear();
+    if (stamp && progress) this.progressCache.set(source.transcript, { stamp, progress });
+    return progress;
+  }
+}
+
+/** Changes whenever the file does; null for a conversation in a database, which is always read again. */
+function fileStamp(transcript: string): string | null {
+  if (transcript.includes("#")) return null;
+  try {
+    const { mtimeMs, size } = statSync(transcript);
+    return `${mtimeMs}:${size}`;
+  } catch {
+    return null;
   }
 }
 

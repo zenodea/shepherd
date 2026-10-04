@@ -11,7 +11,7 @@ import { useChanges } from "../../agents/use-changes";
 import { useConnection, useHostState } from "../../connection/connection";
 import { IconButton } from "../../ui/IconButton";
 import { PressableScale } from "../../ui/Pressable";
-import { Screen } from "../../ui/Screen";
+import { Screen, ScreenHeader } from "../../ui/Screen";
 import { colors, fonts, space, themed } from "../../ui/theme";
 
 const split = (path: string) => {
@@ -185,27 +185,12 @@ function FileChanges({ paneId, path, mode }: { paneId: string; path: string; mod
 
 /** What the agent changed: the list of files, or (with `path`) one file's diff. */
 export default function ChangesScreen() {
-  const router = useRouter();
   const { paneId, path, mode } = useLocalSearchParams<{ paneId: string; path?: string; mode?: ChangesMode }>();
   const [listMode, setListMode] = useState<ChangesMode | undefined>(undefined);
   const { name, dir } = split(path ?? "");
   return (
     <Screen>
-      <View style={styles.header}>
-        <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <ChevronLeft size={22} color={colors.text} />
-        </IconButton>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title} numberOfLines={1}>
-            {path ? name : "Changes"}
-          </Text>
-          {path && dir ? (
-            <Text style={styles.dir} numberOfLines={1}>
-              {dir}
-            </Text>
-          ) : null}
-        </View>
-      </View>
+      <ScreenHeader title={path ? name : "Changes"} meta={path && dir ? <Text style={styles.dir}>{dir}</Text> : null} />
       {path ? <FileChanges paneId={paneId} path={path} mode={mode ?? "uncommitted"} /> : <ChangesList paneId={paneId} mode={listMode} onMode={setListMode} />}
     </Screen>
   );
@@ -213,8 +198,6 @@ export default function ChangesScreen() {
 
 const styles = themed(() =>
   StyleSheet.create({
-    header: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
-    title: { fontSize: 16, fontWeight: "600", color: colors.text },
     summary: { paddingHorizontal: space.lg, paddingBottom: space.md, gap: 6 },
     summaryText: { fontSize: 13, color: colors.muted },
     totals: { flexDirection: "row", alignItems: "center" },

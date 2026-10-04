@@ -7,6 +7,7 @@ import {
   relayCredential,
   sealJson,
   toHex,
+  WIRE_PROTOCOL_VERSION,
   type AgentInfo,
   type CallMethod,
   type ClientMessage,
@@ -35,6 +36,8 @@ export type ConnectionSettings = {
    * encryption pin the first key they see.
    */
   hostKey?: string;
+  /** From a typed pairing code: the start of the host's key, checked until the full key is pinned. */
+  hostKeyPrefix?: string;
 };
 
 /** Keep at most this many addresses (the host's current ones first). */
@@ -93,12 +96,22 @@ type HeaderWebSocket = new (url: string, protocols: string[] | undefined, option
 
 const AUTH_ERRORS: Record<number, string> = {
   [CLOSE_CODES.unauthorized]: "This phone isn't paired with the host. Scan a pairing QR code.",
-  [CLOSE_CODES.pairingExpired]: "That pairing QR code has expired or was already used. Run `npm run host -- pair` for a new one.",
+  [CLOSE_CODES.pairingExpired]: "That pairing QR code has expired or was already used. Open the Shepherd window on your computer and choose Pair for a new one.",
   [CLOSE_CODES.revoked]: "This phone was removed on the host. Scan a new pairing QR code.",
 };
 
 const HOST_KEY_CHANGED =
   "The host's identity key doesn't match the one from pairing, so Shepherd refused to connect. If you reinstalled the host, scan a new pairing QR code.";
+
+const NOT_YOUR_HOST = "Something other than your computer answered. Check the address and code.";
+
+/** Why the host and this app can't talk, or null when they speak the same protocol. */
+function versionError(hostProtocol: number): string | null {
+  if (hostProtocol === WIRE_PROTOCOL_VERSION) return null;
+  return hostProtocol > WIRE_PROTOCOL_VERSION
+    ? "Your computer runs a newer Shepherd. Update the Shepherd app on your phone."
+    : "Your computer runs an older Shepherd. Update Shepherd on your computer.";
+}
 
 /**
  * The relay gates connections on `relayCredential(token)` (a hash); the real
@@ -287,6 +300,7 @@ export class HostClient {
 
   /** Dial every address at once; the first to send `hello` wins, the rest are closed. */
   private open(): void {
+    for (const ws of this.attemptSockets) if (ws !== this.ws) ws.close();
     const attempt = ++this.attempt;
     this.openedAt = Date.now();
     this.setState({ status: "connecting", error: null });
@@ -325,9 +339,16 @@ export class HostClient {
         if (!ciphers) {
           const ready = typeof event.data === "string" ? parseHostHello(event.data) : null;
           if (!ready) return ws.close();
-          if (this.settings.hostKey && ready.e2e.hostKey !== this.settings.hostKey) {
+          const { hostKey, hostKeyPrefix } = this.settings;
+          const refusal =
+            hostKey && ready.e2e.hostKey !== hostKey
+              ? HOST_KEY_CHANGED
+              : !hostKey && hostKeyPrefix && !ready.e2e.hostKey.startsWith(hostKeyPrefix)
+                ? NOT_YOUR_HOST
+                : versionError(ready.protocol);
+          if (refusal) {
             unauthorized = true;
-            authError = HOST_KEY_CHANGED;
+            authError = refusal;
             return ws.close();
           }
           try {
@@ -335,7 +356,7 @@ export class HostClient {
             ciphers = handshake.ciphers;
             offeredHostKey = ready.e2e.hostKey;
             ws.send(JSON.stringify({ type: "handshake", ephemeral: toHex(handshake.ephemeral) }));
-            ws.send(sealJson(ciphers.send, { type: "auth", token: this.settings.token, device: { name: this.deviceName } }));
+            ws.send(sealJson(ciphers.send, { type: "auth", token: this.settings.token, device: { name: this.deviceName }, protocol: WIRE_PROTOCOL_VERSION }));
           } catch {
             ws.close();
           }
@@ -357,6 +378,8 @@ export class HostClient {
             return;
           }
           if (msg.type === "auth.error") {
+            // The host closes the connection next; don't retry.
+            unauthorized = true;
             authError = msg.message;
             return;
           }
@@ -364,7 +387,7 @@ export class HostClient {
           clearTimeout(timeout);
           this.ws = ws;
           this.ciphers = ciphers;
-          if (!this.settings.hostKey && offeredHostKey) this.settings = { ...this.settings, hostKey: offeredHostKey };
+          if (!this.settings.hostKey && offeredHostKey) this.settings = { ...this.settings, hostKey: offeredHostKey, hostKeyPrefix: undefined };
           for (const other of sockets) if (other !== ws) other.close();
           this.attemptSockets = [ws];
           this.setState({ activeUrl: url });

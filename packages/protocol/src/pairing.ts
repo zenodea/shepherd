@@ -98,3 +98,22 @@ export function normaliseHostUrl(input: string): string {
   const path = rawPath === "" || rawPath === "/" ? "/connect" : rawPath;
   return `${scheme}://${host}${path}`;
 }
+
+/**
+ * Hex characters of the host key carried in a typed pairing code, so the app can
+ * tell the computer that made the code from anything else answering first.
+ * 64 bits: too many to grind a matching key within a code's lifetime.
+ */
+export const MANUAL_CODE_KEY_CHARS = 16;
+
+/** The code people type when they can't scan: `<pairing code>.<start of the host key>`. */
+export function formatManualCode(code: string, hostKey: string): string {
+  return `${code}.${hostKey.slice(0, MANUAL_CODE_KEY_CHARS)}`;
+}
+
+/** Splits a typed code into its token and host-key prefix; null when the check part is missing. */
+export function parseManualCode(text: string): { token: string; hostKeyPrefix: string } | null {
+  const match = new RegExp(`^(\\S+)\\.([0-9a-f]{${MANUAL_CODE_KEY_CHARS}})$`, "i").exec(text.trim());
+  if (!match) return null;
+  return { token: match[1]!, hostKeyPrefix: match[2]!.toLowerCase() };
+}

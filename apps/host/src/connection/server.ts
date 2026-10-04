@@ -87,7 +87,7 @@ export function attachSession(ws: WebSocket, deps: SessionDeps, via: "direct" | 
     } catch {
       return closeWith(CLOSE_CODES.insecure, "decryption failed");
     }
-    void session?.handle(text);
+    session?.handle(text).catch((err: unknown) => console.error(`[session] ${err instanceof Error ? err.stack : String(err)}`));
   });
   ws.on("close", () => {
     clearTimeout(handshakeTimer);

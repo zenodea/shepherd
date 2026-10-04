@@ -1,11 +1,12 @@
 // Run the host as a detached process, for the herdr plugin's startup hook.
 // A pid file next to the config lets every way of starting the host (a
 // terminal, the plugin, the service) see whether one is already running.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROUTE_LABELS, ROUTES, type Routes } from "../connection/routes.ts";
+import { isAlive } from "../conversation/panes.ts";
 import { readStoredConfig, saveStoredConfig, setDisabled } from "./config.ts";
 import { Service, serviceSpec } from "./service.ts";
 
@@ -15,21 +16,35 @@ export function pidFilePath(configPath: string): string {
   return join(dirname(configPath), "host.pid");
 }
 
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // EPERM: the process exists but belongs to someone else.
-    return (err as NodeJS.ErrnoException).code === "EPERM";
+let isHostProcess = false;
+let knownHost = 0;
+
+/** Whether `pid` runs `cli.ts [serve]`: after a crash its pid may belong to something else by now. */
+function isHost(pid: number): boolean {
+  if (pid === process.pid) return isHostProcess;
+  if (!isAlive(pid)) {
+    if (pid === knownHost) knownHost = 0;
+    return false;
   }
+  if (pid === knownHost) return true;
+  try {
+    const command =
+      process.platform === "linux"
+        ? readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ")
+        : execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
+    if (!/cli\.ts(\s+serve\b|\s*$)/.test(command)) return false;
+  } catch {
+    return false;
+  }
+  knownHost = pid;
+  return true;
 }
 
 /** The running host, or null when there is none (a stale pid file is ignored). */
 export function readRunningHost(configPath: string): RunningHost | null {
   try {
     const host = JSON.parse(readFileSync(pidFilePath(configPath), "utf8")) as RunningHost;
-    return Number.isInteger(host.pid) && isAlive(host.pid) ? host : null;
+    return Number.isInteger(host.pid) && isHost(host.pid) ? host : null;
   } catch {
     return null;
   }
@@ -39,10 +54,12 @@ export function writePidFile(configPath: string, socketPath: string): void {
   const host: RunningHost = { pid: process.pid, socketPath, startedAt: new Date().toISOString() };
   mkdirSync(dirname(configPath), { recursive: true, mode: 0o700 });
   writeFileSync(pidFilePath(configPath), JSON.stringify(host) + "\n");
+  isHostProcess = true;
 }
 
 /** Remove the pid file if it is still this process's. */
 export function clearPidFile(configPath: string): void {
+  isHostProcess = false;
   try {
     const host = JSON.parse(readFileSync(pidFilePath(configPath), "utf8")) as RunningHost;
     if (host.pid === process.pid) rmSync(pidFilePath(configPath), { force: true });

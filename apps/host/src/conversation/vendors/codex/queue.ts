@@ -1,10 +1,9 @@
 // Codex keeps the messages you queue while it works in a SQLite database
 // (~/.codex/queue_1.sqlite), one row per message per thread. Read it, never
 // write: the queue is Codex's.
-import { existsSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import type { QueuedMessage } from "@shepherd/protocol";
 import { clip, isRecord } from "../../entries.ts";
+import { json, query } from "../../sqlite.ts";
 
 /** The thread id at the end of a rollout file's name: rollout-<time>-<thread id>.jsonl */
 export function codexThreadId(rolloutPath: string): string | null {
@@ -30,46 +29,15 @@ export function queuedText(payload: unknown): string {
   return parts.join("\n").trim();
 }
 
-export class CodexQueue {
-  private readonly path: string;
-  private db: DatabaseSync | null = null;
-
-  constructor(path: string) {
-    this.path = path;
-  }
-
-  read(threadId: string): QueuedMessage[] {
-    try {
-      if (!this.db) {
-        if (!existsSync(this.path)) return [];
-        this.db = new DatabaseSync(this.path, { readOnly: true });
-      }
-      const rows = this.db
-        .prepare("SELECT payload_json, created_at_ms FROM queued_items WHERE thread_id = ? ORDER BY queue_order")
-        .all(threadId) as { payload_json: string; created_at_ms: number }[];
-      return rows.flatMap((row) => {
-        let payload: unknown;
-        try {
-          payload = JSON.parse(row.payload_json);
-        } catch {
-          return [];
-        }
-        const text = queuedText(payload);
-        return text ? [{ text: clip(text, 2_000), at: new Date(row.created_at_ms).toISOString() }] : [];
-      });
-    } catch {
-      // Locked, mid-migration or a different schema: no queue rather than an error.
-      this.close();
-      return [];
-    }
-  }
-
-  close(): void {
-    try {
-      this.db?.close();
-    } catch {
-      // already closed
-    }
-    this.db = null;
-  }
+/** The messages queued on a thread; none when the database is missing, locked or shaped differently. */
+export function codexQueue(path: string, threadId: string): QueuedMessage[] {
+  const rows = query<{ payload_json: string; created_at_ms: number }>(
+    path,
+    "SELECT payload_json, created_at_ms FROM queued_items WHERE thread_id = ? ORDER BY queue_order",
+    threadId,
+  );
+  return rows.flatMap((row) => {
+    const text = queuedText(json(row.payload_json));
+    return text ? [{ text: clip(text, 2_000), at: new Date(row.created_at_ms).toISOString() }] : [];
+  });
 }

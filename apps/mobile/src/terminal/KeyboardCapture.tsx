@@ -29,6 +29,7 @@ export const KeyboardCapture = forwardRef<KeyboardCaptureHandle, { onKeys: (data
       <TextInput
         ref={input}
         style={styles.hidden}
+        importantForAccessibility="no"
         value={value}
         autoCorrect={false}
         autoCapitalize="none"

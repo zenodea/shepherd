@@ -13,6 +13,8 @@ const LIFECYCLE_SUBSCRIPTIONS = [
 
 const REFRESH_DEBOUNCE_MS = 150;
 const MAX_RETRY_MS = 30_000;
+/** After a failed read or status subscription while herdr is otherwise reachable. */
+const REFRESH_RETRY_MS = 3000;
 
 type TrackerEvents = {
   agents: [AgentInfo[]];
@@ -109,11 +111,16 @@ export class AgentTracker extends EventEmitter<TrackerEvents> {
     if (this.stopped) return;
     const delay = this.retryMs;
     this.retryMs = Math.min(this.retryMs * 2, MAX_RETRY_MS);
-    setTimeout(() => void this.connect(), delay);
+    setTimeout(() => void (this.stopped || this.connect()), delay);
+  }
+
+  /** Try a failed refresh again later; while disconnected, reconnecting refreshes anyway. */
+  private retryRefresh(): void {
+    setTimeout(() => this.lifecycle && this.scheduleRefresh(), REFRESH_RETRY_MS);
   }
 
   private scheduleRefresh(): void {
-    if (this.refreshTimer) return;
+    if (this.refreshTimer || this.stopped) return;
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = null;
       void this.refresh();
@@ -127,6 +134,7 @@ export class AgentTracker extends EventEmitter<TrackerEvents> {
       agents = result.agents;
     } catch (err) {
       this.emit("error", err instanceof Error ? err : new Error(String(err)));
+      this.retryRefresh();
       return;
     }
     this.apply(agents);
@@ -170,11 +178,18 @@ export class AgentTracker extends EventEmitter<TrackerEvents> {
         return;
       }
       this.statusSub = sub;
+      void sub.closed.then(() => {
+        if (this.statusSub !== sub) return;
+        this.statusSub = null;
+        this.statusPaneKey = "";
+        this.retryRefresh();
+      });
       // Catch transitions that happened while the subscription was being set up.
       this.scheduleRefresh();
     } catch (err) {
       this.statusPaneKey = "";
       this.emit("error", err instanceof Error ? err : new Error(String(err)));
+      this.retryRefresh();
     }
   }
 

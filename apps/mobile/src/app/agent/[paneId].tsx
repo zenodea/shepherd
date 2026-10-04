@@ -1,29 +1,12 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import {
-  ArrowDown,
-  ArrowUp,
-  Bot,
-  ChevronLeft,
-  Cpu,
-  Ellipsis,
-  ImagePlus,
-  Images,
-  Keyboard as KeyboardIcon,
-  MessageSquareText,
-  Search,
-  Sparkles,
-  Square,
-  SquareTerminal,
-  X,
-} from "lucide-react-native";
+import { ArrowDown, Bot, Cpu, Ellipsis, Images, MessageSquareText, Search, Sparkles, SquareTerminal } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { Alert, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
 import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
-import { withImages } from "../../agents/attachment-message";
-import { useAttachments } from "../../agents/attachments";
+import { Composer } from "../../agents/Composer";
 import { stillSending, type Sending } from "../../agents/sending";
 import { ImagesContext } from "../../agents/ConversationImage";
 import { SubagentsContext } from "../../agents/SubagentCard";
@@ -31,7 +14,6 @@ import { subagentsPill } from "../../agents/subagents";
 import { useImagesShown } from "../../agents/image-setting";
 import { Conversation, type ConversationHandle } from "../../agents/Conversation";
 import { useConversation } from "../../agents/use-conversation";
-import { getDraft, saveDraft, useDraftRevision, useDraftsReady } from "../../agents/drafts";
 import { Counts } from "../../agents/Counts";
 import { useChanges } from "../../agents/use-changes";
 import { useActivityLine } from "../../agents/use-activity-line";
@@ -47,17 +29,21 @@ import { loadPref, savePref } from "../../connection/prefs";
 import { useKeyboardInset } from "../../connection/use-keyboard-inset";
 import { KeyboardCapture, type KeyboardCaptureHandle } from "../../terminal/KeyboardCapture";
 import { DEFAULT_FONT_SIZE, LiveTerminal, clampFontSize, type LiveTerminalHandle } from "../../terminal/LiveTerminal";
+import { lineText } from "../../terminal/line-marks";
 import { ActionSheet } from "../../ui/ActionSheet";
+import { ConnectionBanner } from "../../ui/ConnectionBanner";
 import { IconButton } from "../../ui/IconButton";
 import { PressableScale } from "../../ui/Pressable";
-import { Banner, Screen } from "../../ui/Screen";
+import { Screen, ScreenHeader } from "../../ui/Screen";
 import { StatusIndicator } from "../../ui/StatusIndicator";
 import { ModelSheet } from "../../agents/ModelSheet";
-import { colors, fonts, space, statusColors, statusLabels, themed } from "../../ui/theme";
+import { colors, space, statusColors, statusLabels, themed } from "../../ui/theme";
 
+/** Reopening a closed terminal stream: wait this long, doubling each time it closes again. */
 const REOPEN_MS = 1500;
-/** react-native-web renders a multiline input as a two-row textarea unless told otherwise. */
-const WEB_ONE_ROW = Platform.OS === "web" ? ({ rows: 1 } as object) : {};
+const MAX_REOPEN_MS = 30_000;
+/** Closes that reopening won't fix: the pane is gone, or the host has too many streams open. */
+const FINAL_CLOSE = /too many open terminals|not found|pane.*(closed|gone)/i;
 const SCROLLBACK_LINES = 3000;
 /** A sent message that never showed up in the conversation (an agent whose queue isn't visible) stops showing after this. */
 const OPTIMISTIC_MS = 60_000;
@@ -70,45 +56,28 @@ const HANDOFF_MS = 400;
 /** Refresh the scrollback above the live screen when it's older than this and you scroll up. */
 const SCROLLBACK_STALE_MS = 4000;
 
-/** Quick keys (herdr key names), grouped like Superset's bar. */
-const QUICK_KEYS: { label: string; name: string; keys: string[]; confirm?: string }[][] = [
-  [
-    { label: "esc", name: "Escape", keys: ["esc"] },
-    { label: "↵", name: "Enter", keys: ["enter"] },
-    { label: "tab", name: "Tab", keys: ["tab"] },
-    { label: "⇧tab", name: "Shift Tab", keys: ["shift+tab"] },
-  ],
-  [
-    { label: "↑", name: "Up arrow", keys: ["up"] },
-    { label: "↓", name: "Down arrow", keys: ["down"] },
-    { label: "←", name: "Left arrow", keys: ["left"] },
-    { label: "→", name: "Right arrow", keys: ["right"] },
-  ],
-  [{ label: "^C", name: "Control C", keys: ["ctrl+c"], confirm: "Send Ctrl-C?" }],
-];
-
 /** Plain text of a styled line, for matching history against the live screen. */
-function lineText(line: StyledLine): string {
-  return line.map((span) => span[0]).join("").trim();
-}
+const plainText = (line: StyledLine) => lineText(line).trim();
 
 /**
- * Cut the part of a transcript that's already on the live screen: find where
- * the screen's first lines appear (last occurrence) and keep what's above.
+ * Where a transcript reaches what's already on the live screen: the last place
+ * the screen's first lines appear. What's above it is history.
  */
-function withoutLiveOverlap(history: StyledLine[], historyText: string[], screen: StyledLine[]): StyledLine[] {
-  const probes = screen.map(lineText).filter((t) => t.length >= 6).slice(0, 8);
+function liveOverlap(historyText: string[], screen: StyledLine[]): number {
+  const probes = screen.map(plainText).filter((t) => t.length >= 6).slice(0, 8);
   for (const probe of probes) {
     const key = probe.slice(0, 40);
     for (let i = historyText.length - 1; i >= 0; i--) {
-      if (historyText[i]!.startsWith(key)) return history.slice(0, i);
+      if (historyText[i]!.startsWith(key)) return i;
     }
   }
-  return history;
+  return historyText.length;
 }
 
 type LiveScreen = { paneId: string | null; rows: StyledLine[]; cursor: TerminalLines["cursor"] | null };
 const NO_LINES: StyledLine[] = [];
+/** A message you sent, with the pane it went to. */
+type Outgoing = Sending & { paneId: string };
 
 export default function TerminalScreen() {
   const { paneId, host: linkedHost } = useLocalSearchParams<{ paneId: string; host?: string }>();
@@ -162,21 +131,7 @@ export default function TerminalScreen() {
     },
   });
 
-  const [draft, setDraft] = useState("");
-  // Unsent text is kept per agent: switching agents or leaving keeps it.
   const draftKey = `${settings?.id ?? "none"}:${paneId}`;
-  const draftsReady = useDraftsReady();
-  const draftRevision = useDraftRevision(draftKey);
-  const [draftOf, setDraftOf] = useState<{ key: string; revision: number } | null>(null);
-  if (draftsReady && (draftOf?.key !== draftKey || draftOf.revision !== draftRevision)) {
-    setDraftOf({ key: draftKey, revision: draftRevision });
-    setDraft(getDraft(draftKey));
-  }
-  const changeDraft = (text: string) => {
-    setDraft(text);
-    saveDraft(draftKey, text);
-  };
-  const [sending, setSending] = useState(false);
   const [closedReason, setClosedReason] = useState<string | null>(null);
   const [epoch, setEpoch] = useState(0);
   const [newSheet, setNewSheet] = useState(false);
@@ -240,18 +195,22 @@ export default function TerminalScreen() {
   const transcriptOk = hasTranscript && transcriptState.ok;
   const scrollbackMeta = useRef<{ at: number; rows: number } | null>(null);
   // A transcript runs up to what's on screen now; show that part only once.
-  const scrollbackText = useMemo(() => scrollback.map(lineText), [scrollback]);
-  const history = useMemo(
-    () => (transcriptOk ? withoutLiveOverlap(scrollback, scrollbackText, screen.rows) : scrollback),
-    [transcriptOk, scrollback, scrollbackText, screen.rows],
+  // Cut where it overlaps (an index, so a new frame at the same place keeps the same history).
+  const scrollbackText = useMemo(() => scrollback.map(plainText), [scrollback]);
+  const cut = useMemo(
+    () => (transcriptOk ? liveOverlap(scrollbackText, screen.rows) : scrollbackText.length),
+    [transcriptOk, scrollbackText, screen.rows],
   );
+  const history = useMemo(() => (cut === scrollback.length ? scrollback : scrollback.slice(0, cut)), [scrollback, cut]);
 
   const live = useRef<LiveTerminalHandle>(null);
   const conversationView = useRef<ConversationHandle>(null);
-  const attachments = useAttachments(client);
-  const [outgoing, setOutgoing] = useState<Sending[]>([]);
+  const [outgoing, setOutgoing] = useState<Outgoing[]>([]);
   const outgoingIds = useRef(0);
-  const shownOutgoing = useMemo(() => stillSending(outgoing, conversation.entries, conversation.queued), [outgoing, conversation.entries, conversation.queued]);
+  const shownOutgoing = useMemo(
+    () => stillSending(outgoing.filter((s) => s.paneId === paneId), conversation.entries, conversation.queued),
+    [outgoing, paneId, conversation.entries, conversation.queued],
+  );
   const subagentLinks = useMemo(
     () => ({
       byId: new Map(conversation.subagents.map((s) => [s.id, s])),
@@ -347,6 +306,7 @@ export default function TerminalScreen() {
   // Open the stream: the host renders styled lines at the phone's size.
   const cols = liveSize?.cols;
   const rows = liveSize?.rows;
+  const reopenMs = useRef(REOPEN_MS);
   useEffect(() => {
     if (!client || !paneId || !online || chat) return;
     if (!cols || !rows || needsTranscript) return;
@@ -356,7 +316,9 @@ export default function TerminalScreen() {
     const onClosed = (reason: string) => {
       stream.current = null;
       setClosedReason(reason);
-      if (reason !== "disconnected") reopen = setTimeout(() => setEpoch((e) => e + 1), REOPEN_MS);
+      if (reason === "disconnected" || FINAL_CLOSE.test(reason)) return;
+      reopen = setTimeout(() => setEpoch((e) => e + 1), reopenMs.current);
+      reopenMs.current = Math.min(reopenMs.current * 2, MAX_REOPEN_MS);
     };
 
     const handle = client.openTerminal(
@@ -364,6 +326,7 @@ export default function TerminalScreen() {
       { mode: "control", cols, rows, render: "lines" },
       {
         onLines: (update) => {
+          reopenMs.current = REOPEN_MS;
           setClosedReason(null);
           setScreen((prev) => {
             const next = update.full || prev.paneId !== paneId ? [] : prev.rows.slice(0, update.height);
@@ -422,11 +385,9 @@ export default function TerminalScreen() {
     else await go();
   };
 
-  const submit = async () => {
-    const text = agent ? withImages(draft.trim(), attachments.attachments) : draft.trim();
-    if (!client || !paneId || !text || attachments.uploading) return;
-    setSending(true);
-    const optimistic = { id: String(++outgoingIds.current), text, after: conversation.entries.at(-1)?.id ?? -1 };
+  const send = async (text: string): Promise<boolean> => {
+    if (!client || !paneId) return false;
+    const optimistic = { id: String(++outgoingIds.current), paneId, text, after: conversation.entries.at(-1)?.id ?? -1 };
     if (agent && chat) {
       setOutgoing((list) => [...list, optimistic]);
       conversationView.current?.scrollToBottom();
@@ -435,10 +396,9 @@ export default function TerminalScreen() {
     try {
       if (agent) await client.call("agent.prompt", { target: paneId, text });
       else await client.call("pane.send_input", { pane_id: paneId, text, keys: ["enter"] });
-      changeDraft("");
-      attachments.clear();
       setTimeout(forget, OPTIMISTIC_MS);
       toLive();
+      return true;
     } catch (err) {
       forget();
       // herdr won't type a message into an agent that's waiting for an answer: it would become the answer.
@@ -447,8 +407,7 @@ export default function TerminalScreen() {
       } else {
         Alert.alert("Couldn't send", (err as Error).message);
       }
-    } finally {
-      setSending(false);
+      return false;
     }
   };
 
@@ -462,7 +421,6 @@ export default function TerminalScreen() {
   };
 
   const title = agent ? (agentTitle(agent) ?? agentName(agent)) : (pane?.terminal_title_stripped ?? pane?.title ?? "Terminal");
-  const canSend = (draft.trim().length > 0 || attachments.ready) && !attachments.uploading && !sending;
   const usage = isAgent ? contextLabel(conversation.context) : null;
   const { changes } = useChanges(client, isAgent ? paneId : null, online, agentStatus);
   const changed = changes?.available && changes.files.length > 0 ? changes : null;
@@ -470,45 +428,38 @@ export default function TerminalScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <ChevronLeft size={22} color={colors.text} />
-        </IconButton>
-        <View style={styles.headerText}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          <View style={styles.subline}>
-            {agent ? <StatusIndicator status={agent.agent_status} size={7} /> : null}
-            <Text style={styles.sublineText} numberOfLines={1}>
-              {agent ? (
-                <>
-                  <Text style={{ color: agent.agent_status === "idle" ? colors.subtle : statusColors[agent.agent_status] }}>
-                    {statusLabels[agent.agent_status]}
-                  </Text>
-                  {`  ·  ${agentName(agent)}  ·  ${projectOf(agent)}`}
-                  {usage ? <Text style={usage.high ? { color: statusColors.blocked } : undefined}>{`  ·  ${usage.text}`}</Text> : null}
-                </>
-              ) : (
-                `Shell  ·  ${pane?.cwd?.split("/").filter(Boolean).pop() ?? paneId}`
-              )}
-            </Text>
-          </View>
-        </View>
-        {chatAvailable ? (
-          <IconButton label={chat ? "Show the terminal" : "Show the conversation"} onPress={switchView} filled={false}>
-            {chat ? <SquareTerminal size={18} color={colors.muted} /> : <MessageSquareText size={18} color={colors.muted} />}
-          </IconButton>
-        ) : null}
-        {chat ? null : (
-          <IconButton label="Find in terminal" onPress={() => setSearching((s) => !s)} filled={false}>
-            <Search size={18} color={searching ? colors.text : colors.muted} />
-          </IconButton>
-        )}
-        <IconButton label="More" onPress={() => workspaceId && actions.show(paneId!, workspaceId, agent)} filled={false}>
-          <Ellipsis size={19} color={colors.muted} />
-        </IconButton>
-      </View>
+      <ScreenHeader
+        title={title}
+        metaIcon={agent ? <StatusIndicator status={agent.agent_status} size={7} /> : null}
+        meta={
+          agent ? (
+            <>
+              <Text style={{ color: agent.agent_status === "idle" ? colors.subtle : statusColors[agent.agent_status] }}>{statusLabels[agent.agent_status]}</Text>
+              {`  ·  ${agentName(agent)}  ·  ${projectOf(agent)}`}
+              {usage ? <Text style={usage.high ? { color: statusColors.blocked } : undefined}>{`  ·  ${usage.text}`}</Text> : null}
+            </>
+          ) : (
+            `Shell  ·  ${pane?.cwd?.split("/").filter(Boolean).pop() ?? paneId}`
+          )
+        }
+        right={
+          <>
+            {chatAvailable ? (
+              <IconButton label={chat ? "Show the terminal" : "Show the conversation"} onPress={switchView} filled={false}>
+                {chat ? <SquareTerminal size={18} color={colors.muted} /> : <MessageSquareText size={18} color={colors.muted} />}
+              </IconButton>
+            ) : null}
+            {chat ? null : (
+              <IconButton label="Find in terminal" onPress={() => setSearching((s) => !s)} filled={false}>
+                <Search size={18} color={searching ? colors.text : colors.muted} />
+              </IconButton>
+            )}
+            <IconButton label="More" onPress={() => workspaceId && actions.show(paneId!, workspaceId, agent)} filled={false}>
+              <Ellipsis size={19} color={colors.muted} />
+            </IconButton>
+          </>
+        }
+      />
 
       {changed || subagentsLabel ? (
         <View style={styles.pills}>
@@ -516,7 +467,6 @@ export default function TerminalScreen() {
             <PressableScale
               onPress={() => router.push({ pathname: "/changes/[paneId]", params: { paneId: paneId! } })}
               style={styles.pill}
-              accessibilityRole="button"
               accessibilityLabel={`${changed.files.length + (changed.omitted ?? 0)} changed files`}
             >
               <Text style={[styles.changesText, styles.pillFixed]}>
@@ -534,7 +484,6 @@ export default function TerminalScreen() {
             <PressableScale
               onPress={() => router.push({ pathname: "/subagents/[paneId]", params: { paneId: paneId! } })}
               style={[styles.pill, styles.pillSecond]}
-              accessibilityRole="button"
               accessibilityLabel={subagentsLabel}
             >
               <Bot size={13} color={colors.muted} />
@@ -545,7 +494,7 @@ export default function TerminalScreen() {
       ) : null}
       <View style={styles.headerLine} />
 
-      {!online ? <Banner>{state.status === "connecting" ? "Connecting…" : "Can't reach your computer. Retrying…"}</Banner> : null}
+      <ConnectionBanner />
 
       <View style={{ flex: 1, paddingBottom: keyboard.inset }}>
         {chat ? (
@@ -561,7 +510,7 @@ export default function TerminalScreen() {
                 activity={activity}
                 atStart={conversation.atStart}
                 loadingOlder={conversation.loadingOlder}
-                onLoadOlder={() => void conversation.loadOlder()}
+                onLoadOlder={conversation.loadOlder}
               />
             </ImagesContext.Provider>
           </SubagentsContext.Provider>
@@ -610,89 +559,24 @@ export default function TerminalScreen() {
                 setClosedReason(null);
                 setAtBottom(true);
                 scrollbackMeta.current = null;
+                reopenMs.current = REOPEN_MS;
                 router.setParams({ paneId: tab.paneId });
               }}
               onNew={() => setNewSheet(true)}
             />
           )}
 
-          <View style={styles.keys}>
-            {chat ? null : (
-              <PressableScale
-                onPress={toggleTyping}
-                style={[styles.key, styles.typeKey, typing && styles.typeKeyActive]}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: typing }}
-                accessibilityLabel="Type straight into the terminal"
-              >
-                <KeyboardIcon size={16} color={typing ? colors.onPrimary : colors.text} />
-              </PressableScale>
-            )}
-            {QUICK_KEYS.map((group, gi) => (
-              // A divider between groups, and after ⌨ (which the chat view doesn't have).
-              <View key={gi} style={[styles.keyGroup, (gi > 0 || !chat) && styles.keyGroupDivider]}>
-                {group.map((k) => (
-                  <PressableScale
-                    key={k.label}
-                    onPress={() => sendKeys(k.keys, k.confirm)}
-                    style={styles.key}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Send ${k.name}`}
-                  >
-                    <Text style={styles.keyLabel} maxFontSizeMultiplier={1.3}>
-                      {k.label}
-                    </Text>
-                  </PressableScale>
-                ))}
-              </View>
-            ))}
-          </View>
-
-          {!typing && attachments.attachments.length ? (
-            <ScrollView horizontal style={styles.attachments} contentContainerStyle={styles.attachmentsInner} keyboardShouldPersistTaps="handled">
-              {attachments.attachments.map((a) => (
-                <View key={a.id} style={[styles.attachment, a.state === "failed" && styles.attachmentFailed]}>
-                  <Image source={{ uri: a.uri }} style={styles.attachmentImage} />
-                  {a.state === "uploading" ? <ActivityIndicator style={styles.attachmentOverlay} color="#FFFFFF" /> : null}
-                  <PressableScale onPress={() => attachments.remove(a.id)} style={styles.attachmentRemove} accessibilityRole="button" accessibilityLabel="Remove image">
-                    <X size={12} color="#FFFFFF" />
-                  </PressableScale>
-                </View>
-              ))}
-            </ScrollView>
-          ) : null}
-          {!typing ? (
-            <View style={[styles.composer, agent && styles.composerWithAttach]}>
-              {agent ? (
-                <PressableScale onPress={() => void attachments.add()} style={styles.attach} accessibilityRole="button" accessibilityLabel="Add an image">
-                  <ImagePlus size={19} color={colors.muted} />
-                </PressableScale>
-              ) : null}
-              <TextInput
-                {...WEB_ONE_ROW}
-                style={styles.input}
-                value={draft}
-                onChangeText={changeDraft}
-                placeholder={agent ? `Message ${agentName(agent)}…` : "Run a command…"}
-                placeholderTextColor={colors.subtle}
-                accessibilityLabel={agent ? `Message ${agentName(agent)}` : "Command to run"}
-                multiline
-              />
-              {/* Separate keys: Android draws a restyled stop button wrong, so each is its own view. */}
-              {canSend || sending ? (
-                <PressableScale key="send" onPress={submit} disabled={!canSend} style={styles.send} accessibilityRole="button" accessibilityLabel="Send">
-                  <ArrowUp size={18} color={colors.onPrimary} strokeWidth={2.5} />
-                </PressableScale>
-              ) : agent?.agent_status === "working" ? (
-                // Esc interrupts Claude Code, Codex and pi alike.
-                <PressableScale key="stop" onPress={() => void sendKeys(["esc"])} style={styles.stop} accessibilityRole="button" accessibilityLabel={`Stop ${agentName(agent)}`}>
-                  <Square size={13} color={colors.text} fill={colors.text} />
-                </PressableScale>
-              ) : null}
-            </View>
-          ) : (
-            <Text style={styles.typingHint}>Typing into the terminal · tap ⌨ to stop</Text>
-          )}
+          <Composer
+            key={draftKey}
+            client={client}
+            agent={agent}
+            draftKey={draftKey}
+            chat={chat}
+            typing={typing}
+            onToggleTyping={toggleTyping}
+            onKeys={(keys, confirm) => void sendKeys(keys, confirm)}
+            onSend={send}
+          />
         </View>
       </View>
 
@@ -722,11 +606,6 @@ export default function TerminalScreen() {
 }
 
 const styles = themed(() => StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
-  headerText: { flex: 1, gap: 3, marginLeft: 4 },
-  title: { fontSize: 16, fontWeight: "600", color: colors.text },
-  subline: { flexDirection: "row", alignItems: "center", gap: 7 },
-  sublineText: { fontSize: 12.5, color: colors.muted, flexShrink: 1 },
   terminal: { flex: 1, backgroundColor: colors.terminal },
   toBottom: {
     position: "absolute",
@@ -753,58 +632,6 @@ const styles = themed(() => StyleSheet.create({
   loadingText: { fontSize: 12, color: colors.muted },
   notice: { position: "absolute", bottom: 10, left: 12, right: 12, textAlign: "center", fontSize: 12, color: colors.muted },
   bottom: { backgroundColor: colors.background, gap: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.hairline },
-  keys: {
-    flexDirection: "row",
-    alignSelf: "stretch",
-    marginHorizontal: 12,
-    backgroundColor: colors.raised,
-    borderRadius: 11,
-    height: 36,
-    alignItems: "center",
-    paddingHorizontal: 3,
-  },
-  keyGroup: { flexDirection: "row", alignItems: "center", flexGrow: 1, justifyContent: "space-around" },
-  keyGroupDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderColor: colors.edge },
-  key: { minWidth: 30, height: 30, paddingHorizontal: 5, alignItems: "center", justifyContent: "center", borderRadius: 7 },
-  typeKey: { marginRight: 3, width: 34 },
-  typeKeyActive: { backgroundColor: colors.primary },
-  keyLabel: { fontFamily: fonts.mono, fontSize: 13, color: colors.text },
-  composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    marginHorizontal: 12,
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    paddingLeft: 16,
-    // 6 + the 34pt button + 6 = 46: on one line the button sits in the exact middle of the rounded end.
-    paddingRight: 6,
-    paddingVertical: 6,
-    minHeight: 46,
-  },
-  // One line is exactly as tall as the button (20 + 7 + 7), so the two line up.
-  input: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 15,
-    // No lineHeight: Android applies it to typed text but not to the placeholder, which then sits a pixel off.
-    maxHeight: 120,
-    paddingTop: 8,
-    paddingBottom: 8,
-    textAlignVertical: "top",
-    includeFontPadding: false,
-  },
-  send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  composerWithAttach: { paddingLeft: 6 },
-  attach: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  attachments: { flexGrow: 0, marginHorizontal: 12, marginBottom: 8 },
-  attachmentsInner: { gap: 8 },
-  attachment: { width: 56, height: 56, borderRadius: 12, overflow: "hidden", backgroundColor: colors.raised },
-  attachmentFailed: { borderWidth: 2, borderColor: colors.danger },
-  attachmentImage: { width: 56, height: 56 },
-  attachmentOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.35)" },
-  attachmentRemove: { position: "absolute", top: 3, right: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
   // Matches the line above the composer at the bottom.
   headerLine: { height: StyleSheet.hairlineWidth, backgroundColor: colors.hairline },
   pills: { flexDirection: "row", gap: 6, marginHorizontal: space.md, marginBottom: 6 },
@@ -824,15 +651,4 @@ const styles = themed(() => StyleSheet.create({
   pillBranch: { marginLeft: 8 },
   // Both pills stay on one line: the changes pill (its branch name) gives way first.
   pillSecond: { flexShrink: 0 },
-  stop: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  typingHint: { fontSize: 12.5, color: colors.muted, textAlign: "center", paddingVertical: 12 },
 }));

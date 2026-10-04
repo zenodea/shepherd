@@ -19,21 +19,12 @@ import { Markdown } from "./Markdown";
  */
 const GrowContext = createContext<((delta: number) => void) | null>(null);
 
-/** A view's height straight from the committed layout (new architecture and web), or null where that isn't available. */
-function heightNow(view: View | null): number | null {
-  const rect = (view as unknown as { getBoundingClientRect?: () => { height: number } } | null)?.getBoundingClientRect?.();
-  return rect && rect.height > 0 ? rect.height : null;
-}
-
 function Expandable({ title, children, defaultOpen = false }: { title: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const grow = useContext(GrowContext);
   const box = useRef<View>(null);
-  const height = useRef(0);
   /** Height before a tap, until the list has been scrolled to make up for the change. */
   const before = useRef<number | null>(null);
-  /** The fallback: correct once the new height is reported (a frame late, so it shows). */
-  const lateFix = useRef(false);
 
   // Right after the opened (or closed) row is committed, before it's drawn: read its new
   // height and scroll by the difference. The scroll reaches Android in the same batch as
@@ -42,24 +33,15 @@ function Expandable({ title, children, defaultOpen = false }: { title: React.Rea
     const was = before.current;
     if (was === null) return;
     before.current = null;
-    const now = heightNow(box.current);
-    if (now === null) lateFix.current = true;
-    else if (now !== was) grow?.(now - was);
+    const now = box.current?.getBoundingClientRect().height;
+    if (now !== undefined && now !== was) grow?.(now - was);
   }, [open, grow]);
 
   return (
-    <View
-      ref={box}
-      onLayout={(e) => {
-        const h = e.nativeEvent.layout.height;
-        if (lateFix.current && height.current && h !== height.current) grow?.(h - height.current);
-        lateFix.current = false;
-        height.current = h;
-      }}
-    >
+    <View ref={box}>
       <PressableScale
         onPress={() => {
-          before.current = heightNow(box.current) ?? height.current;
+          before.current = box.current?.getBoundingClientRect().height ?? null;
           setOpen((o) => !o);
         }}
         style={styles.expandHead}
@@ -240,6 +222,8 @@ function ToBottom({ visible, onPress }: { visible: boolean; onPress: () => void 
 }
 
 const NONE: { id: string; text: string }[] = [];
+const keyOf = (row: Row) => row.key;
+const renderRow = ({ item }: { item: Row }) => <RowView row={item} />;
 
 export type ConversationHandle = { scrollToBottom: () => void };
 
@@ -263,7 +247,7 @@ type Props = {
 };
 
 /** An agent's conversation as native, smoothly scrolling messages, newest at the bottom. */
-export const Conversation = forwardRef<ConversationHandle, Props>(function Conversation(
+export const Conversation = memo(forwardRef<ConversationHandle, Props>(function Conversation(
   { entries, queued, sending = NONE, ready, working, activity, atStart, loadingOlder, onLoadOlder },
   ref,
 ) {
@@ -351,8 +335,8 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
           ref={list}
           inverted
           data={rows}
-          keyExtractor={(r) => r.key}
-          renderItem={({ item }) => <RowView row={item} />}
+          keyExtractor={keyOf}
+          renderItem={renderRow}
           contentContainerStyle={styles.content}
           onEndReached={atStart ? undefined : onLoadOlder}
           onEndReachedThreshold={0.6}
@@ -391,7 +375,7 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
               <Text style={styles.notice}>Start of the conversation</Text>
             ) : null
           }
-          ListEmptyComponent={<Text style={[styles.notice, styles.flipped]}>No messages yet.</Text>}
+          ListEmptyComponent={<Text style={styles.notice}>No messages yet.</Text>}
           keyboardShouldPersistTaps="handled"
         />
       </GrowContext.Provider>
@@ -409,7 +393,7 @@ export const Conversation = forwardRef<ConversationHandle, Props>(function Conve
       </Appear>
     </View>
   );
-});
+}));
 
 const styles = themed(() =>
   StyleSheet.create({
@@ -425,7 +409,6 @@ const styles = themed(() =>
       paddingVertical: space.md,
       gap: space.md,
     },
-    flipped: { transform: [{ scaleY: -1 }] },
     userRow: { alignItems: "flex-end" },
     userBubble: {
       maxWidth: "88%",

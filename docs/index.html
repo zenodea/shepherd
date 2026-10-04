@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0B1422">
 <meta property="og:title" content="Shepherd">
 <meta property="og:description" content="See which herdr agents need you, read their terminal, and answer from your phone.">
-<meta property="og:image" content="screenshots/agents.png">
+<meta property="og:image" content="https://shepherd.dea.dev/screenshots/agents.png">
 <link rel="icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -386,14 +386,14 @@ h2 .dim { color: var(--subtle); }
 /* ---------- screenshot fan ---------- */
 .fan-sec { padding-bottom: clamp(60px, 8vw, 110px); }
 .routes-pick { display: grid; grid-template-columns: minmax(0, 1.25fr) 1fr; gap: 28px; align-items: center; margin-top: 34px; }
-.routes-pick img { width: 100%; border-radius: 14px; box-shadow: 0 30px 60px -30px rgba(0,0,0,.8); }
+.routes-pick img { width: 100%; height: auto; border-radius: 14px; box-shadow: 0 30px 60px -30px rgba(0,0,0,.8); }
 .routes-pick p { color: var(--muted); font-size: 16px; line-height: 1.55; margin: 0; }
 .routes-pick b { color: var(--ink); }
 .fan-sec .head { text-align: center; max-width: 720px; margin: 0 auto; }
 .fan-sec .head .body { margin: 0 auto; }
 .fan { position: relative; height: 560px; margin-top: 56px; }
 .fan img {
-  position: absolute; left: 50%; top: 0; width: 250px; margin-left: -125px; border-radius: 26px;
+  position: absolute; left: 50%; top: 0; width: 250px; height: auto; margin-left: -125px; border-radius: 26px;
   box-shadow: 0 40px 80px -30px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.05);
   will-change: transform; transform-origin: 50% 90%;
 }
@@ -482,7 +482,7 @@ footer .links a:hover { color: var(--ink); }
 
 <header class="nav" id="nav">
   <div class="wrap">
-    <a class="brand" href="#top"><img src="icon.png" alt="">Shepherd</a>
+    <a class="brand" href="#top"><img src="icon.png" width="256" height="256" alt="">Shepherd</a>
     <nav>
       <a href="#terminal">App</a>
       <a href="#reach">Connecting</a>
@@ -623,7 +623,7 @@ footer .links a:hover { color: var(--ink); }
       <div class="cbox"><h4>what your phone sees</h4><div class="plain" id="plain">&nbsp;</div></div>
     </div>
     <div class="routes-pick fade">
-      <img src="screenshots/herdr-overview.png" alt="The Shepherd window in herdr: switches for connecting over LAN, Tailscale and the relay, with LAN off" loading="lazy">
+      <img src="screenshots/herdr-overview.png" width="1620" height="968" alt="The Shepherd window in herdr: switches for connecting over LAN, Tailscale and the relay, with LAN off" loading="lazy">
       <p>Turn any of them off in the Shepherd window in herdr. With only Tailscale on, nothing is reachable from other networks.</p>
     </div>
     <p class="sec-note fade">End-to-end encrypted on every route, relay included (Noise handshake, ChaCha20-Poly1305). The relay is a Cloudflare Worker on your own account.</p>
@@ -662,12 +662,12 @@ footer .links a:hover { color: var(--ink); }
       <h2 class="rv">The app.</h2>
     </div>
     <div class="fan" id="fan">
-      <img src="screenshots/activity.png" alt="Activity feed of what agents did" loading="lazy">
-      <img src="screenshots/new.png" alt="Starting an agent, a shell or a worktree, picked from dropdowns" loading="lazy">
-      <img src="screenshots/agents.png" alt="Agent list, with the agent that needs input first and when each was last done" loading="lazy">
-      <img src="screenshots/chat.png" alt="An agent's conversation with an image it read, a formatted table and a checklist" loading="lazy">
-      <img src="screenshots/terminal.png" alt="An agent's live terminal with answer chips, tabs and quick keys" loading="lazy">
-      <img src="screenshots/settings.png" alt="Settings with paired computers, theme, images and app lock" loading="lazy">
+      <img src="screenshots/activity.png" width="752" height="1472" alt="Activity feed of what agents did" loading="lazy">
+      <img src="screenshots/new.png" width="752" height="1472" alt="Starting an agent, a shell or a worktree, picked from dropdowns" loading="lazy">
+      <img src="screenshots/agents.png" width="752" height="1472" alt="Agent list, with the agent that needs input first and when each was last done" loading="lazy">
+      <img src="screenshots/chat.png" width="752" height="1472" alt="An agent's conversation with an image it read, a formatted table and a checklist" loading="lazy">
+      <img src="screenshots/terminal.png" width="752" height="1472" alt="An agent's live terminal with answer chips, tabs and quick keys" loading="lazy">
+      <img src="screenshots/settings.png" width="752" height="1472" alt="Settings with paired computers, theme, images and app lock" loading="lazy">
     </div>
     <div class="feats fade">
       <div><b>Activity</b>What happened while you were away.</div>

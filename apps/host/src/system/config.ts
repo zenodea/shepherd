@@ -120,12 +120,16 @@ export function loadOrCreateStoredConfig(path: string): StoredConfig {
 }
 
 /** Atomic write (temp file + rename), readable only by the owner. */
-export function saveStoredConfig(path: string, config: StoredConfig): void {
+export function writeJsonAtomic(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const tmp = `${path}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+  writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
   chmodSync(tmp, 0o600);
   renameSync(tmp, path);
+}
+
+export function saveStoredConfig(path: string, config: StoredConfig): void {
+  writeJsonAtomic(path, config);
 }
 
 /** Stored config overlaid with environment overrides. */

@@ -1,10 +1,11 @@
 // OpenCode: SQLite at <data>/opencode/opencode.db. A session's messages are
 // rows of `message`, their text, reasoning and tool calls rows of `part`;
 // subagents are child sessions (parent_id).
-import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentInfo, ContextUsage, FileDiff, ImageRef, QueuedMessage, SubagentStatus } from "@shepherd/protocol";
 import { addedFile, parseUnifiedDiff } from "../../../changes/diff.ts";
+import { real } from "../../../herdr/folders.ts";
 import { clip, clipOutput, isRecord, num, str, toolCall } from "../../entries.ts";
 import { cwdsOf } from "../../files.ts";
 import type { FoundImage } from "../../images.ts";
@@ -28,14 +29,6 @@ function databasePath(data: string, named: string | undefined): string | null {
   const newest = names.map((n) => join(data, n)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
   return newest ?? null;
 }
-
-const realpath = (path: string) => {
-  try {
-    return realpathSync(path);
-  } catch {
-    return path;
-  }
-};
 
 const iso = (ms: unknown) => (typeof ms === "number" ? new Date(ms).toISOString() : undefined);
 
@@ -70,22 +63,28 @@ function messageDrafts(message: Row & Record<string, unknown>, parts: Part[]): K
     const found = images(parts);
     return text || found.length ? [{ key: message.id, kind: "user", text: clip(text || "[image]"), ...stamp, ...(found.length ? { images: found } : {}) }] : [];
   }
+  // An entry keeps the version first seen, so each part waits until it's finished.
+  const replied = isRecord(message.time) && Boolean(message.time.completed);
   const out: KeyedDraft[] = [];
   for (const p of parts) {
     const time = isRecord(p.time) ? p.time : {};
     const partAt = iso(time.start) ?? at;
     const partStamp = partAt ? { at: partAt } : {};
     const text = (str(p.text) ?? "").trim();
-    if (p.type === "reasoning" && text && time.end) out.push({ key: p.id, kind: "thinking", text: clip(text), ...partStamp });
-    if (p.type === "text" && text && !p.synthetic) out.push({ key: p.id, kind: "assistant", text: clip(text), ...partStamp });
+    const written = Boolean(time.end) || replied;
+    if (p.type === "reasoning" && text && written) out.push({ key: p.id, kind: "thinking", text: clip(text), ...partStamp });
+    if (p.type === "text" && text && written && !p.synthetic) out.push({ key: p.id, kind: "assistant", text: clip(text), ...partStamp });
     if (p.type !== "tool" || !isRecord(p.state)) continue;
     const state = p.state;
+    const finished = state.status === "completed" || state.status === "error";
+    // A running subagent's `task` call shows at once, so the subagent can be opened from it.
+    if (!finished && !(state.status === "running" && p.tool === "task")) continue;
     const callId = str(p.callID) ?? p.id;
     const input = isRecord(state.input) ? state.input : {};
     const metadata = isRecord(state.metadata) ? state.metadata : {};
     const tool = str(p.tool) ?? "tool";
     out.push({ key: p.id, ...toolCall(callId, tool, input, partAt, editDiff(tool, input, metadata)) });
-    if (state.status === "completed" || state.status === "error") {
+    if (finished) {
       const output = state.status === "error" ? (str(state.error) ?? "") : (str(state.output) ?? "");
       out.push({ key: `${p.id}:result`, kind: "tool_result", callId, ok: state.status === "completed", output: clipOutput(output), ...partStamp });
     }
@@ -129,7 +128,11 @@ export function opencode({ data, cache, db: named }: { data: string; cache: stri
       load: () => {
         const { messages, parts } = conversation(transcript);
         const byMessage = new Map<string, Part[]>();
-        for (const p of parts) byMessage.set(p.message, [...(byMessage.get(p.message) ?? []), p]);
+        for (const p of parts) {
+          const list = byMessage.get(p.message);
+          if (list) list.push(p);
+          else byMessage.set(p.message, [p]);
+        }
         // While a reply is being written, messages sent after it wait their turn: queued, not part of the conversation yet.
         const latest = [...messages].reverse().find((m) => m.role === "assistant");
         const busySince = latest && isRecord(latest.time) && !latest.time.completed ? num(latest.time.created) : Infinity;
@@ -165,7 +168,7 @@ export function opencode({ data, cache, db: named }: { data: string; cache: stri
     if (!path) return null;
     for (const cwd of cwdsOf(agent)) {
       const sql = "SELECT id FROM session WHERE directory = ? AND parent_id IS NULL ORDER BY time_updated DESC, id DESC LIMIT 1";
-      const [row] = [...query<{ id: string }>(path, sql, realpath(cwd)), ...query<{ id: string }>(path, sql, cwd)];
+      const [row] = [...query<{ id: string }>(path, sql, real(cwd)), ...query<{ id: string }>(path, sql, cwd)];
       if (row) return inDatabase(path, row.id);
     }
     return null;

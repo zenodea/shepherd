@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Folder, FolderPlus, FolderSearch, GitBranch, SquareTerminal } from "lucide-react-native";
+import { Folder, FolderPlus, FolderSearch, GitBranch, SquareTerminal } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,9 +10,8 @@ import { useConnection, useHostState } from "../connection/connection";
 import { HostCallError } from "../connection/host-client";
 import { AgentMark } from "../ui/AgentMark";
 import { Button } from "../ui/Button";
-import { IconButton } from "../ui/IconButton";
 import { ListGroup, ListRow } from "../ui/ListRow";
-import { Divider, Screen } from "../ui/Screen";
+import { Divider, Screen, ScreenHeader } from "../ui/Screen";
 import { Select } from "../ui/Select";
 import { colors, fonts, space, type, themed } from "../ui/theme";
 import { Toggle } from "../ui/Toggle";
@@ -87,12 +86,7 @@ export default function NewAgentScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <ChevronLeft size={22} color={colors.text} />
-        </IconButton>
-        <Text style={styles.headerTitle}>New</Text>
-      </View>
+      <ScreenHeader title="New" />
 
       {error ? (
         <Text style={[type.body, styles.message, { color: colors.danger }]}>{error}</Text>
@@ -196,8 +190,6 @@ export default function NewAgentScreen() {
 }
 
 const styles = themed(() => StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
-  headerTitle: { fontSize: 17, fontWeight: "600", color: colors.text },
   message: { padding: space.xl, textAlign: "center" },
   groupLabel: { ...type.sub, paddingHorizontal: space.lg + 4, paddingBottom: 8 },
   input: {

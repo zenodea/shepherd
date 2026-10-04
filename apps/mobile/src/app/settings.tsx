@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { BatteryCharging, Bell, BellOff, Check, ChevronLeft, Fingerprint, Image as ImageIcon, Laptop, LockOpen, QrCode } from "lucide-react-native";
+import { BatteryCharging, Bell, BellOff, Check, Fingerprint, Image as ImageIcon, Laptop, LockOpen, QrCode } from "lucide-react-native";
 import { setImagesShown, useImagesShown } from "../agents/image-setting";
 import { setAnswerUnlocked, useAnswerUnlocked } from "../notifications/lock-screen-setting";
 import { useEffect, useState } from "react";
@@ -10,9 +10,8 @@ import { useConnection } from "../connection/connection";
 import { PressableScale } from "../ui/Pressable";
 import { useTheme } from "../ui/ThemeProvider";
 import { RELOCK_AFTER_MS, useAppLock } from "../security/app-lock";
-import { IconButton } from "../ui/IconButton";
 import { ListGroup, ListRow } from "../ui/ListRow";
-import { Divider, Screen } from "../ui/Screen";
+import { Divider, Screen, ScreenHeader } from "../ui/Screen";
 import { Select } from "../ui/Select";
 import { Toggle } from "../ui/Toggle";
 import { THEMES, colors, radii, space, type, themed, type Palette, type ThemeMode } from "../ui/theme";
@@ -59,12 +58,7 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <ChevronLeft size={22} color={colors.text} />
-        </IconButton>
-        <Text style={styles.headerTitle}>Settings</Text>
-      </View>
+      <ScreenHeader title="Settings" />
       <ScrollView contentContainerStyle={{ paddingBottom: space.xxl * 2, gap: space.lg, paddingTop: space.sm }}>
         <View>
           <Text style={styles.groupLabel}>Computers</Text>
@@ -88,7 +82,7 @@ export default function SettingsScreen() {
             <ListRow
               icon={<QrCode size={19} color={colors.muted} />}
               title="Add a computer"
-              detail="Scan the QR code from npm run host"
+              detail="Scan the QR code in the Shepherd window on your computer"
               onPress={() => router.push("/scan")}
             />
           </ListGroup>
@@ -225,8 +219,6 @@ function Swatch({ palette }: { palette: Palette }) {
 }
 
 const styles = themed(() => StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
-  headerTitle: { fontSize: 17, fontWeight: "600", color: colors.text },
   groupLabel: { ...type.sub, paddingHorizontal: space.lg + 4, paddingBottom: 8 },
   modes: { flexDirection: "row", marginHorizontal: space.lg, marginBottom: space.sm, padding: 3, gap: 3, borderRadius: radii.md, backgroundColor: colors.surface },
   mode: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: radii.sm },

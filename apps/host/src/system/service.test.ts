@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { LAUNCHD_LABEL, Service, launchdPlist, serviceSpec, systemdUnit } from "./service.ts";
+import { LAUNCHD_LABEL, Service, launchdPlist, logTail, serviceSpec, systemdUnit, trimLog } from "./service.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -91,5 +91,21 @@ describe.skipIf(process.platform !== "darwin")("Service on macOS", () => {
     expect(existsSync(plist)).toBe(false);
     expect(service.status()).toMatchObject({ installed: false, running: false, detail: "not loaded" });
     expect(service.uninstall()).toBe(false);
+  });
+});
+
+describe("the log", () => {
+  it("reads only its end, and trims it in place to whole lines", () => {
+    const path = join(tempHome(), "host.log");
+    expect(logTail(path, 5)).toEqual([]);
+    writeFileSync(path, Array.from({ length: 3000 }, (_, i) => `line ${i}`).join("\n") + "\n");
+    expect(logTail(path, 2)).toEqual(["line 2998", "line 2999"]);
+    expect(logTail(path, 5000, 100).length).toBeLessThan(15);
+
+    trimLog(path, 20_000, 10_000);
+    const kept = readFileSync(path, "utf8");
+    expect(kept.length).toBeLessThanOrEqual(10_000);
+    expect(kept).toMatch(/^line \d+\n/);
+    expect(kept.endsWith("line 2999\n")).toBe(true);
   });
 });

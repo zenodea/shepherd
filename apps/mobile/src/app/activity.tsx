@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ChevronLeft, RotateCcw, SquareTerminal } from "lucide-react-native";
+import { RotateCcw, SquareTerminal } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { SectionList, StyleSheet, Text, View } from "react-native";
 import type { ActivityEntry } from "@shepherd/protocol";
@@ -9,9 +9,8 @@ import { useActivity } from "../agents/use-activity";
 import { useConnection, useHostState } from "../connection/connection";
 import { ActionSheet } from "../ui/ActionSheet";
 import { AgentMark } from "../ui/AgentMark";
-import { IconButton } from "../ui/IconButton";
 import { PressableScale } from "../ui/Pressable";
-import { Screen } from "../ui/Screen";
+import { Screen, ScreenHeader } from "../ui/Screen";
 import { colors, radii, space, statusColors, type, themed } from "../ui/theme";
 
 const eventColor = (event: ActivityEntry["event"]): string | undefined =>
@@ -43,12 +42,7 @@ export default function ActivityScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <ChevronLeft size={22} color={colors.text} />
-        </IconButton>
-        <Text style={styles.headerTitle}>Activity</Text>
-      </View>
+      <ScreenHeader title="Activity" />
       <SectionList
         sections={sections}
         keyExtractor={(e) => String(e.id)}
@@ -156,8 +150,6 @@ function Row({ entry, took, unseen, live, onPress }: { entry: ActivityEntry; too
 }
 
 const styles = themed(() => StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm },
-  headerTitle: { fontSize: 17, fontWeight: "600", color: colors.text },
   summary: { marginHorizontal: space.lg, marginTop: space.sm, padding: 14, gap: 4, borderRadius: radii.lg, backgroundColor: colors.surface },
   day: { ...type.sub, paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.xs },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: 10 },

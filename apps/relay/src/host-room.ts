@@ -46,16 +46,19 @@ export class HostRoom extends DurableObject<Env> {
   }
 
   private async acceptClient(request: Request): Promise<Response> {
-    const control = this.ctx.getWebSockets("control")[0];
+    // Gate on the hashes the host registered (they outlive its connection), so
+    // only an admitted app learns whether the host is online. The host then
+    // checks the token again itself. A host that never registered is offline to everyone.
     const allowed = await this.ctx.storage.get<string[]>(CLIENT_TOKEN_HASHES_KEY);
-    if (!control || !allowed) return new Response("host offline\n", { status: 503 });
-
-    // Gate on the hashes the host registered; the host then checks the token again itself.
+    if (!allowed) return new Response("host offline\n", { status: 503 });
     const presented = bearerToken(request);
     const hash = presented ? await sha256Hex(presented) : null;
     let admitted = false;
     for (const candidate of allowed) if (hash && hashesEqual(hash, candidate)) admitted = true;
     if (!admitted) return new Response("unauthorized\n", { status: 401 });
+
+    const control = this.ctx.getWebSockets("control")[0];
+    if (!control) return new Response("host offline\n", { status: 503 });
 
     const pending = this.ctx.getWebSockets("client").filter((ws) => {
       const att = attachment(ws);

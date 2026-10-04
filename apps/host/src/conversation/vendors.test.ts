@@ -123,6 +123,37 @@ describe("OpenCode", () => {
   });
 });
 
+describe("OpenCode parts that change", () => {
+  it("shows a reply and a tool call once they're finished, not as first seen", () => {
+    const h = homes();
+    const db = join(h.opencode.data, "opencode.db");
+    sqlite(
+      db,
+      `CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT, title TEXT, time_created INTEGER, time_updated INTEGER);
+       CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);
+       CREATE TABLE part (id TEXT, message_id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);`,
+      [
+        ["INSERT INTO session VALUES (?, ?, ?, ?, ?, ?)", ["ses_main", null, "/work/app", "Fix", 1000, Date.now()]],
+        ["INSERT INTO message VALUES (?, ?, ?, ?, ?)", ["msg_1", "ses_main", 1000, 1000, JSON.stringify({ role: "assistant", time: { created: 1000 } })]],
+        ["INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)", ["prt_1", "msg_1", "ses_main", 1, 1, JSON.stringify({ type: "tool", callID: "c1", tool: "bash", state: { status: "pending", input: {} } })]],
+        ["INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)", ["prt_2", "msg_1", "ses_main", 1, 1, JSON.stringify({ type: "text", text: "Hel", time: { start: 1 } })]],
+      ],
+    );
+    const conversations = new Conversations(defaultVendors(h));
+    const read = () => {
+      const result = conversations.get(agent("opencode", "working"), { paneId: "w1:p1" });
+      if (!result.available) throw new Error(result.reason);
+      return result.entries;
+    };
+    expect(read()).toEqual([]);
+    const update = new DatabaseSync(db);
+    update.prepare("UPDATE part SET data = ?, time_updated = 2 WHERE id = 'prt_1'").run(JSON.stringify({ type: "tool", callID: "c1", tool: "bash", state: { status: "completed", input: { command: "npm test" }, output: "ok" } }));
+    update.prepare("UPDATE part SET data = ?, time_updated = 2 WHERE id = 'prt_2'").run(JSON.stringify({ type: "text", text: "Hello, all done.", time: { start: 1, end: 2 } }));
+    update.close();
+    expect(read()).toMatchObject([{ kind: "tool", name: "bash", summary: "npm test" }, { kind: "tool_result", ok: true }, { kind: "assistant", text: "Hello, all done." }]);
+  });
+});
+
 describe("Hermes", () => {
   it("reads the session for the pane's folder from Hermes's database", () => {
     const h = homes();

@@ -1,7 +1,7 @@
 // Run the host in the background: a launchd agent on macOS, a systemd user
 // unit on Linux. Both start it at login and restart it if it exits.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, ftruncateSync, mkdirSync, openSync, readSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,45 @@ export function serviceSpec(env: NodeJS.ProcessEnv = process.env, home = homedir
     env: picked,
     logFile: process.platform === "darwin" ? join(home, "Library", "Logs", "shepherd-host.log") : join(home, ".local", "state", "shepherd", "host.log"),
   };
+}
+
+/** The last lines of a log, reading only its last `bytes`. */
+export function logTail(path: string, lines: number, bytes = 64 * 1024): string[] {
+  try {
+    const fd = openSync(path, "r");
+    try {
+      const size = fstatSync(fd).size;
+      const start = Math.max(0, size - bytes);
+      const buffer = Buffer.alloc(size - start);
+      const text = buffer.subarray(0, readSync(fd, buffer, 0, buffer.length, start)).toString("utf8").trimEnd();
+      // From the middle of the file, the first line is only part of one.
+      return text ? text.split("\n").slice(start > 0 ? 1 : 0).slice(-lines) : [];
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return [];
+  }
+}
+
+/** Keep only the end of a log that has grown past `max`, in place: whoever has it open keeps appending to it. */
+export function trimLog(path: string, max = 2 * 1024 * 1024, keep = 1024 * 1024): void {
+  try {
+    const fd = openSync(path, "r+");
+    try {
+      const size = fstatSync(fd).size;
+      if (size <= max) return;
+      const tail = Buffer.alloc(keep);
+      const read = readSync(fd, tail, 0, keep, size - keep);
+      const from = tail.indexOf(0x0a) + 1;
+      writeSync(fd, tail, from, read - from, 0);
+      ftruncateSync(fd, read - from);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    // no log yet, or not ours to trim
+  }
 }
 
 function xml(value: string): string {

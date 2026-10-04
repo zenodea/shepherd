@@ -16,7 +16,8 @@ import { AgentMark } from "../ui/AgentMark";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { PressableScale } from "../ui/Pressable";
-import { Banner, Screen, SectionHeader } from "../ui/Screen";
+import { ConnectionBanner } from "../ui/ConnectionBanner";
+import { Screen, SectionHeader } from "../ui/Screen";
 import { StatusIndicator } from "../ui/StatusIndicator";
 import { colors, radii, space, statusColors, statusLabels, statusRank, type, themed } from "../ui/theme";
 
@@ -105,7 +106,7 @@ export default function AgentsScreen() {
         ) : null}
       </View>
 
-      <ConnectionBanner />
+      <ConnectionBanner pairHint="Tap the host name to pair." />
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: space.xxl * 2 }}
@@ -175,7 +176,7 @@ export default function AgentsScreen() {
             separated: true,
             icon: <QrCode size={19} color={colors.text} />,
             title: "Add a computer",
-            detail: "Scan the QR code from npm run host on another computer",
+            detail: "Scan the QR code in the Shepherd window on another computer",
             onPress: () => router.push("/scan"),
           },
         ]}
@@ -285,14 +286,6 @@ function BlockedCard({
       )}
     </View>
   );
-}
-
-function ConnectionBanner() {
-  const state = useHostState();
-  if (state.status === "online") return null;
-  if (state.status === "unauthorized") return <Banner tone="danger">{state.error ?? "Not paired."} Tap the host name to pair.</Banner>;
-  if (state.status === "connecting") return <Banner>Connecting…</Banner>;
-  return <Banner>Can&apos;t reach your computer. Retrying…</Banner>;
 }
 
 const styles = themed(() => StyleSheet.create({

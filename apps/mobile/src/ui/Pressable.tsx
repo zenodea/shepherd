@@ -39,7 +39,9 @@ export function PressableScale({ style, children, haptic = true, highlight = tru
 
   return (
     <AnimatedPressable
+      accessibilityRole="button"
       {...rest}
+      accessibilityState={{ disabled: !!disabled, ...rest.accessibilityState }}
       disabled={disabled}
       style={[style, { transform: [{ scale }], opacity: disabled ? 0.45 : 1 }, highlight && { overflow: "hidden" }]}
       onPressIn={(e) => {

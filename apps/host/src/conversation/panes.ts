@@ -6,6 +6,7 @@ export function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (err) {
+    // EPERM: the process exists but belongs to someone else.
     return (err as NodeJS.ErrnoException).code === "EPERM";
   }
 }

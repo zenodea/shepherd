@@ -33,7 +33,7 @@ function parseSettings(raw: string | null): ConnectionSettings | null {
     const parsed = JSON.parse(raw) as Partial<ConnectionSettings> & { url?: string };
     // v0 stored a single `url`.
     const urls = parsed.urls ?? (parsed.url ? [parsed.url] : []);
-    return urls.length > 0 && parsed.token ? { name: parsed.name, urls, token: parsed.token, hostKey: parsed.hostKey } : null;
+    return urls.length > 0 && parsed.token ? { name: parsed.name, urls, token: parsed.token, hostKey: parsed.hostKey, hostKeyPrefix: parsed.hostKeyPrefix } : null;
   } catch {
     return null;
   }

@@ -19,7 +19,8 @@ const isDir = (path: string) => {
   }
 };
 
-const real = (path: string) => {
+/** The path with links resolved, or as given when it can't be. */
+export const real = (path: string) => {
   try {
     return realpathSync(path);
   } catch {

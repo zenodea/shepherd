@@ -1,10 +1,9 @@
 const encoder = new TextEncoder();
 
-/** Bearer header, or `?token=` for clients (WebViews) that can't set headers. */
+/** The Bearer header only: a token in the URL would end up in logs. */
 export function bearerToken(request: Request): string | null {
   const auth = request.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length).trim();
-  return new URL(request.url).searchParams.get("token");
+  return auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : null;
 }
 
 export async function sha256Hex(value: string): Promise<string> {

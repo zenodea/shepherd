@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AgentInfo, AgentStatus } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 
@@ -43,7 +43,10 @@ export function useWorkspaceTabs(client: HostConnection | null, workspaceId: str
     const load = () =>
       client
         .call<{ snapshot: Snapshot }>("session.snapshot")
-        .then((r) => !cancelled && setSnapshot(r.snapshot))
+        .then((r) => {
+          // Mostly unchanged: keep the same object so nothing re-renders.
+          if (!cancelled) setSnapshot((prev) => (JSON.stringify(prev) === JSON.stringify(r.snapshot) ? prev : r.snapshot));
+        })
         .catch(() => {});
     void load();
     const timer = setInterval(load, REFRESH_MS);
@@ -53,7 +56,12 @@ export function useWorkspaceTabs(client: HostConnection | null, workspaceId: str
     };
   }, [client, workspaceId]);
 
-  if (!snapshot || !workspaceId) return { tabs: [] as WorkspaceTab[], workspaceLabel: null as string | null, panes: [] as SnapshotPane[] };
+  return useMemo(() => (snapshot && workspaceId ? tabsOf(snapshot, workspaceId, agents) : EMPTY), [snapshot, workspaceId, agents]);
+}
+
+const EMPTY = { tabs: [] as WorkspaceTab[], workspaceLabel: null as string | null, panes: [] as SnapshotPane[] };
+
+function tabsOf(snapshot: Snapshot, workspaceId: string, agents: AgentInfo[]): typeof EMPTY {
   const tabs = snapshot.tabs
     .filter((t) => t.workspace_id === workspaceId)
     .sort((a, b) => a.number - b.number)

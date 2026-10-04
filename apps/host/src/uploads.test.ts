@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -24,6 +24,18 @@ describe("uploads", () => {
     expect(result.path.endsWith(".png")).toBe(true);
     expect(readFileSync(result.path)).toEqual(png);
     expect(statSync(result.path).mode & 0o777).toBe(0o600);
+  });
+
+  it("uses a private folder instead of one others can write to", () => {
+    const u = uploads();
+    mkdirSync(u.dir, { mode: 0o777 });
+    chmodSync(u.dir, 0o777);
+    const shared = u.dir;
+    const result = u.receive({ uploadId: "abcdefgh2", mime: "image/png", data: "iVBORw0KGgo=", done: true });
+    dirs.push(u.dir);
+    if (!("path" in result)) throw new Error("not saved");
+    expect(result.path.startsWith(shared + "/")).toBe(false);
+    expect(statSync(u.dir).mode & 0o777).toBe(0o700);
   });
 
   it("refuses what isn't an image, bad ids and bad data", () => {

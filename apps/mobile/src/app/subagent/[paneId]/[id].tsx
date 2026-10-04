@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import type { QueuedMessage } from "@shepherd/protocol";
 import { Conversation } from "../../../agents/Conversation";
 import { ImagesContext } from "../../../agents/ConversationImage";
 import { useImagesShown } from "../../../agents/image-setting";
@@ -9,9 +9,11 @@ import { SubagentsContext } from "../../../agents/SubagentCard";
 import { subagentStatusColor, subagentStatusLabel, subagentTime } from "../../../agents/subagents";
 import { useConversation } from "../../../agents/use-conversation";
 import { useConnection, useHostState } from "../../../connection/connection";
-import { Banner, Screen } from "../../../ui/Screen";
-import { IconButton } from "../../../ui/IconButton";
+import { ConnectionBanner } from "../../../ui/ConnectionBanner";
+import { Screen, ScreenHeader } from "../../../ui/Screen";
 import { colors, space, themed } from "../../../ui/theme";
+
+const NO_QUEUE: QueuedMessage[] = [];
 
 /** A subagent's own conversation: what it was asked, each step, and what it reported back. Read-only. */
 export default function SubagentScreen() {
@@ -40,23 +42,18 @@ export default function SubagentScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <ChevronLeft size={22} color={colors.text} />
-        </IconButton>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title} numberOfLines={1}>
-            {subagent?.name ?? "Subagent"}
-          </Text>
-          {subagent ? (
-            <Text style={styles.meta} numberOfLines={1}>
+      <ScreenHeader
+        title={subagent?.name ?? "Subagent"}
+        meta={
+          subagent ? (
+            <>
               <Text style={{ color: subagentStatusColor(subagent.status) }}>{subagentStatusLabel[subagent.status]}</Text>
               {details ? `  ·  ${details}` : ""}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-      {!online ? <Banner>{state.status === "connecting" ? "Connecting…" : "Can't reach your computer. Retrying…"}</Banner> : null}
+            </>
+          ) : null
+        }
+      />
+      <ConnectionBanner />
       {conversation.available === false ? (
         <Text style={styles.empty}>{conversation.reason}</Text>
       ) : (
@@ -65,13 +62,13 @@ export default function SubagentScreen() {
             <ImagesContext.Provider value={images}>
               <Conversation
                 entries={conversation.entries}
-                queued={[]}
+                queued={NO_QUEUE}
                 ready={conversation.available === true}
                 working={subagent?.status === "running"}
                 activity={subagent?.status === "running" ? subagent.doing : null}
                 atStart={conversation.atStart}
                 loadingOlder={conversation.loadingOlder}
-                onLoadOlder={() => void conversation.loadOlder()}
+                onLoadOlder={conversation.loadOlder}
               />
             </ImagesContext.Provider>
           </SubagentsContext.Provider>
@@ -83,9 +80,6 @@ export default function SubagentScreen() {
 
 const styles = themed(() =>
   StyleSheet.create({
-    header: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.sm },
-    title: { fontSize: 16, fontWeight: "600", color: colors.text },
-    meta: { fontSize: 12.5, color: colors.muted },
     empty: { fontSize: 14, lineHeight: 20, color: colors.muted, textAlign: "center", padding: space.lg },
   }),
 );

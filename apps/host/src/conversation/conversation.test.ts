@@ -7,6 +7,7 @@ import { fakeAgent } from "../testing/fake-herdr.ts";
 import { Conversations, conversationParams } from "./conversations.ts";
 import { toolSummary } from "./entries.ts";
 import { TranscriptReader } from "./reader.ts";
+import type { Vendor } from "./vendor.ts";
 import { claude } from "./vendors/claude/index.ts";
 import { claudeParser, claudeProjectDir } from "./vendors/claude/parser.ts";
 import { codex } from "./vendors/codex/index.ts";
@@ -150,6 +151,14 @@ describe("TranscriptReader", () => {
     reader.refresh();
     expect(reader.page({ limit: 10 }).entries).toMatchObject([{ id: 2, text: "fresh" }]);
   });
+
+  it("reads a line longer than one read", () => {
+    const path = join(tempDir(), "s.jsonl");
+    writeFileSync(path, jsonl([user("x".repeat(3 * 1024 * 1024)), user("after")]));
+    const reader = new TranscriptReader(path, claudeParser);
+    reader.refresh();
+    expect(reader.page({ limit: 10 }).entries.map((e) => ("text" in e ? e.text.slice(0, 5) : ""))).toEqual(["xxxxx", "after"]);
+  });
 });
 
 describe("finding transcripts", () => {
@@ -191,11 +200,27 @@ describe("finding transcripts", () => {
     const dir = claudeDir(h);
     write(join(dir, "s1.jsonl"), [{ type: "user", message: { content: "hello" } }], 1000);
     const conversations = new Conversations(defaultVendors(h));
-    expect(conversations.get(agent("claude"), { paneId: "w1:p1" })).toMatchObject({ available: true, agent: "claude", session: "s1", first: 0, last: 0 });
+    expect(conversations.get(agent("claude"), { paneId: "w1:p1" })).toMatchObject({ available: true, agent: "claude", session: expect.stringMatching(/^s1~/), first: 0, last: 0 });
     expect(conversations.get(null, { paneId: "w1:p1" })).toMatchObject({ available: false });
     expect(conversations.get(agent("aider"), { paneId: "w1:p1" })).toMatchObject({ available: false, reason: expect.stringContaining("aider") });
     // A fresh session that hasn't written anything yet: empty, so the app still offers the chat view.
     expect(conversations.get(agent("pi"), { paneId: "w1:p1" })).toMatchObject({ available: true, session: "", entries: [] });
+  });
+
+  it("names a new session when a transcript's reader is opened again, so the app starts over", () => {
+    const dir = tempDir();
+    const fake: Vendor = { id: "fake", locate: (a) => join(dir, `${a.pane_id.replace(":", "_")}.jsonl`), open: (t) => new TranscriptReader(t, claudeParser) };
+    const pane = (i: number) => fakeAgent(`w${i}:p1`, "idle", { agent: "fake" });
+    for (let i = 0; i < 40; i++) writeFileSync(fake.locate(pane(i))!, jsonl([{ type: "user", message: { content: "hi" } }]));
+    const conversations = new Conversations([fake]);
+    const session = () => {
+      const result = conversations.get(pane(0), { paneId: "w0:p1", after: 0 });
+      return result.available ? result.session : null;
+    };
+    const first = session();
+    expect(session()).toBe(first);
+    for (let i = 1; i < 40; i++) conversations.get(pane(i), { paneId: `w${i}:p1` });
+    expect(session()).not.toBe(first);
   });
 
   it("validates the app's parameters", () => {
@@ -223,7 +248,7 @@ describe("agents' message queues", () => {
 
   it("reads Codex's queue database by thread, whatever shape the message has", async () => {
     const { DatabaseSync } = await import("node:sqlite");
-    const { CodexQueue, codexThreadId, queuedText } = await import("./vendors/codex/queue.ts");
+    const { codexQueue, codexThreadId, queuedText } = await import("./vendors/codex/queue.ts");
     const path = join(tempDir(), "queue_1.sqlite");
     const db = new DatabaseSync(path);
     db.exec(`CREATE TABLE queued_items (id TEXT PRIMARY KEY NOT NULL, thread_id TEXT NOT NULL, payload_json TEXT NOT NULL,
@@ -235,12 +260,10 @@ describe("agents' message queues", () => {
     insert.run("c", "another-thread", JSON.stringify({ text: "not this one" }), 1, 1000, 1000);
     db.close();
 
-    const queue = new CodexQueue(path);
-    expect(queue.read(thread).map((m) => m.text)).toEqual(["first\n[image]", "second"]);
-    expect(new CodexQueue(join(tempDir(), "missing.sqlite")).read(thread)).toEqual([]);
+    expect(codexQueue(path, thread).map((m) => m.text)).toEqual(["first\n[image]", "second"]);
+    expect(codexQueue(join(tempDir(), "missing.sqlite"), thread)).toEqual([]);
     expect(codexThreadId(`/s/2026/10/02/rollout-2026-10-02T12-00-00-${thread}.jsonl`)).toBe(thread);
     expect(queuedText({ deep: { nested: [{ text: "a" }, { text: "b" }] } })).toBe("a\nb");
-    queue.close();
   });
 
   it("shows a queue only while the agent is busy", () => {
@@ -423,7 +446,7 @@ describe("subagents", () => {
     expect(main.entries.find((e) => e.kind === "tool")).toMatchObject({ name: "Agent", subagent: "a1" });
 
     const own = conversations.get(working("claude"), { paneId: "w1:p1", subagent: "a1" });
-    expect(own).toMatchObject({ available: true, session: "main/a1", entries: [{ kind: "user", text: "Look at the transcript formats" }, { kind: "tool", name: "Read" }, { kind: "tool", name: "SubagentHandback" }] });
+    expect(own).toMatchObject({ available: true, session: expect.stringMatching(/^main\/a1~/), entries: [{ kind: "user", text: "Look at the transcript formats" }, { kind: "tool", name: "Read" }, { kind: "tool", name: "SubagentHandback" }] });
     expect(conversations.get(working("claude"), { paneId: "w1:p1", subagent: "nope" })).toMatchObject({ available: false });
   });
 

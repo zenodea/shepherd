@@ -175,6 +175,21 @@ describe("HostClient", () => {
     await until(() => client!.getState().status === "online", 5000);
   });
 
+  it("checks a typed code's key prefix, then pins the full key", async () => {
+    const key = toHex(deps.hostKey.publicKey);
+    client = new HostClient({ urls: [good], token: devices.token, hostKeyPrefix: toHex(generateKeyPair().publicKey).slice(0, 16) });
+    client.start();
+    await until(() => client!.getState().status === "unauthorized", 5000);
+    expect(client.getState().error).toMatch(/Something other than your computer/);
+    client.stop();
+
+    const saved: ConnectionSettings[] = [];
+    client = new HostClient({ urls: [good], token: devices.token, hostKeyPrefix: key.slice(0, 16) }, { onSettingsChange: (s) => saved.push(s) });
+    client.start();
+    await until(() => client!.getState().status === "online", 5000);
+    expect(saved.at(-1)).toMatchObject({ hostKey: key, hostKeyPrefix: undefined });
+  });
+
   it("reconnects after the host drops the connection", async () => {
     client = new HostClient({ urls: [good], token: devices.token });
     client.start();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodePairingLink, normaliseHostUrl, parsePairingLink } from "./pairing.ts";
+import { encodePairingLink, formatManualCode, normaliseHostUrl, parseManualCode, parsePairingLink } from "./pairing.ts";
 
 const info = {
   name: "Zeno's MacBook",
@@ -67,5 +67,20 @@ describe("normaliseHostUrl", () => {
     expect(() => normaliseHostUrl("ftp://host")).toThrow();
     expect(() => normaliseHostUrl("")).toThrow();
     expect(() => normaliseHostUrl("two words")).toThrow();
+  });
+});
+
+describe("manual pairing code", () => {
+  const hostKey = "ab".repeat(32);
+
+  it("carries the start of the host key after the code", () => {
+    const typed = formatManualCode("p_Ab-c_9", hostKey);
+    expect(typed).toBe("p_Ab-c_9.abababababababab");
+    expect(parseManualCode(" p_Ab-c_9.ABABABABABABABAB ")).toEqual({ token: "p_Ab-c_9", hostKeyPrefix: "abababababababab" });
+  });
+
+  it("rejects a code without its check part", () => {
+    expect(parseManualCode("p_Ab-c_9")).toBeNull();
+    expect(parseManualCode("p_Ab-c_9.abab")).toBeNull();
   });
 });

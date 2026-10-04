@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { extractPrompt, toHex, type PaneReadResult, type TerminalMode } from "@shepherd/protocol";
+import type { TerminalMode } from "@shepherd/protocol";
 import { AgentTracker } from "./herdr/agent-tracker.ts";
 import {
   hostCommand,
@@ -15,12 +14,12 @@ import { DeviceRegistry } from "./pairing/devices.ts";
 import { HerdrClient } from "./herdr/herdr-client.ts";
 import { ActivityLog } from "./herdr/activity-log.ts";
 import { Launcher } from "./herdr/launcher.ts";
-import { hostAddresses, printDevices, printHostInfo, printPairing, renderQr } from "./pairing/pairing.ts";
+import { hostAddresses, printDevices, printHostInfo, printPairing } from "./pairing/pairing.ts";
 import { RelayTunnel, appRelayUrl } from "./connection/relay-tunnel.ts";
 import { ROUTE_LABELS, ROUTES, accepts, checkRoutes, listenAddress, routesOf, type Route, type Routes } from "./connection/routes.ts";
 import { startLocalServer, type LocalServer } from "./connection/server.ts";
 import type { SessionDeps } from "./connection/session.ts";
-import { Service, serviceSpec } from "./system/service.ts";
+import { Service, logTail, serviceSpec, trimLog } from "./system/service.ts";
 import { HostStatusWriter } from "./system/host-status.ts";
 import { Conversations } from "./conversation/conversations.ts";
 import { Uploads } from "./uploads.ts";
@@ -32,7 +31,7 @@ import { SCREENS, runWindow, type Screen } from "./ui/window.ts";
 import { clearPidFile, readRunningHost, restartHost, setConnections, startDetached, stopRunningHost, turnOff, turnOn, writePidFile } from "./system/daemon.ts";
 import { TerminalStream } from "./herdr/terminal-stream.ts";
 
-const USAGE = `shepherd-host — bridge your herdr agents to the shepherd app
+const USAGE = `Shepherd host — bridge your herdr agents to the Shepherd mobile app
 
 Usage (from the repo root):
   npm run host                             Run the host; prints a pairing QR code
@@ -90,6 +89,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     console.error(`A host is already running (pid ${running.pid}), perhaps started by the herdr plugin. Stop it with: ${hostCommand("stop")}`);
     process.exit(1);
   }
+  trimLog(serviceSpec().logFile);
   const herdr = new HerdrClient(config.socketPath);
   const herdrVersion = await waitForHerdr(herdr, config.socketPath);
 
@@ -156,7 +156,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   deps.presence = status;
   tracker.on("agents", () => status.update({ agents: agentCounts() }));
   tracker.on("status", () => status.update({ agents: agentCounts() }));
-  console.log(`shepherd-host connected to herdr ${herdrVersion}, tracking ${tracker.list().length} agent(s).`);
+  console.log(`Shepherd host connected to herdr ${herdrVersion}, tracking ${tracker.list().length} agent(s).`);
   // A QR code is only useful to a person at a terminal, not in a service log.
   if (process.stdout.isTTY) await printPairing(config, devices, server.port);
   else console.log(`Pair a phone with: ${hostCommand("pair")}`);
@@ -341,8 +341,8 @@ function statusCommand(): void {
   }
   if (service.installed) console.log(`  Service:   ${service.detail}`);
   printHostInfo(config, new DeviceRegistry(config.configPath));
-  if (existsSync(service.logFile)) {
-    const lines = readFileSync(service.logFile, "utf8").trimEnd().split("\n").slice(-12);
+  const lines = logTail(service.logFile, 12);
+  if (lines.length) {
     console.log(`  Recent log (${service.logFile}):`);
     for (const line of lines) console.log(`    ${line}`);
     console.log("");

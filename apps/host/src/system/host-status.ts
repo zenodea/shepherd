@@ -1,9 +1,10 @@
 // What the running host is doing right now, for the Shepherd window in herdr:
 // which phones are connected and the relay. The host writes it
 // next to its config whenever something changes; the window reads it.
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { HostAddress } from "../pairing/pairing.ts";
+import { writeJsonAtomic } from "./config.ts";
 
 export type ConnectedPhone = { deviceId: string; via: "direct" | "relay"; since: string };
 
@@ -81,9 +82,11 @@ export class HostStatusWriter {
 
   private write(): void {
     this.status = { ...this.status, phones: [...this.phones.values()], updatedAt: new Date().toISOString() };
-    mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
-    const tmp = `${this.path}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.status, null, 2) + "\n", { mode: 0o600 });
-    renameSync(tmp, this.path);
+    try {
+      writeJsonAtomic(this.path, this.status);
+    } catch (err) {
+      // Only the Shepherd window reads it: never take the host down over it.
+      console.error(`[status] couldn't write ${this.path}: ${(err as Error).message}`);
+    }
   }
 }

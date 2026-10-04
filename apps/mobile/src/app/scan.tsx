@@ -8,7 +8,7 @@ import { parsePairingLink } from "@shepherd/protocol";
 import { usePairing } from "../connection/use-pairing";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
-import { colors, type, themed } from "../ui/theme";
+import { colors, fonts, type, themed } from "../ui/theme";
 
 export default function ScanScreen() {
   const router = useRouter();
@@ -31,7 +31,7 @@ export default function ScanScreen() {
       <View style={[styles.fill, styles.center]}>
         <Text style={[type.title, { textAlign: "center" }]}>Camera access</Text>
         <Text style={[type.body, { color: colors.muted, textAlign: "center" }]}>
-          shepherd uses the camera to scan the QR code printed by <Text style={styles.mono}>npm run host</Text>.
+          Shepherd uses the camera to scan the QR code under <Text style={styles.mono}>Pair</Text> in the Shepherd window on your computer.
         </Text>
         <Button
           title={permission.canAskAgain ? "Allow camera" : "Open settings"}
@@ -62,7 +62,7 @@ export default function ScanScreen() {
       />
       <View style={styles.overlay} pointerEvents="none">
         <View style={styles.frame} />
-        <Text style={styles.overlayText}>{message ?? "Point at the QR code from shepherd-host"}</Text>
+        <Text style={styles.overlayText}>{message ?? "Point at the QR code in the Shepherd window"}</Text>
       </View>
       {closeButton}
     </View>
@@ -73,7 +73,7 @@ const styles = themed(() => StyleSheet.create({
   close: { position: "absolute", left: 16, backgroundColor: "rgba(28,28,28,0.85)" },
   fill: { flex: 1, backgroundColor: "#000" },
   center: { alignItems: "center", justifyContent: "center", padding: 32, gap: 12, backgroundColor: colors.background },
-  mono: { fontFamily: "monospace", color: colors.text },
+  mono: { fontFamily: fonts.mono, color: colors.text },
   overlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", gap: 24 },
   frame: { width: 250, height: 250, borderWidth: 2, borderColor: "rgba(255,255,255,0.85)", borderRadius: 28 },
   overlayText: {

@@ -111,8 +111,15 @@ export class AppSession {
     if (this.closed) return;
     const msg = parseClientMessage(raw);
     if (!this.device) {
-      if (msg?.type === "auth") this.authenticate(msg.token, msg.device.name);
-      else this.reject("invalid", "authenticate first", CLOSE_CODES.unauthorized);
+      if (msg?.type !== "auth") this.reject("invalid", "authenticate first", CLOSE_CODES.unauthorized);
+      // Apps from before the version was sent leave it out: let them in.
+      else if (msg.protocol !== undefined && msg.protocol !== WIRE_PROTOCOL_VERSION) {
+        const message =
+          msg.protocol < WIRE_PROTOCOL_VERSION
+            ? "Update the Shepherd app on your phone: this computer runs a newer Shepherd."
+            : "Update Shepherd on your computer: the app on your phone is newer.";
+        this.reject("version", message, CLOSE_CODES.unauthorized);
+      } else this.authenticate(msg.token, msg.device.name);
       return;
     }
     if (!msg) {
@@ -172,7 +179,7 @@ export class AppSession {
     return log ? agents.map((a) => ({ ...a, last_done_at: log.lastFinished(a.pane_id) })) : agents;
   }
 
-  private reject(code: "invalid" | "expired" | "revoked", message: string, closeCode: number): void {
+  private reject(code: Extract<ServerMessage, { type: "auth.error" }>["code"], message: string, closeCode: number): void {
     this.send({ type: "auth.error", code, message });
     this.transport.close(closeCode, code);
     this.close();
@@ -266,33 +273,36 @@ export class AppSession {
       }
     }
     if (method === "shepherd.model" || method === "shepherd.set_model") return this.model(method, params);
-    if (method === "shepherd.subagents") {
-      if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.subagents needs a paneId"));
-      if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
-      return Promise.resolve(this.deps.conversations.subagents(this.deps.tracker.get(params.paneId) ?? null));
-    }
-    if (method === "shepherd.images") {
-      if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.images needs a paneId"));
-      if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
-      return Promise.resolve(this.deps.conversations.images(this.deps.tracker.get(params.paneId) ?? null));
-    }
-    if (method === "shepherd.image") {
-      const parsed = imageParams(params, isPaneId);
-      if (!parsed) return Promise.reject(new LaunchError("invalid_params", "shepherd.image needs a paneId and an image id"));
-      if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
-      return Promise.resolve(this.deps.conversations.image(this.deps.tracker.get(parsed.paneId) ?? null, parsed));
-    }
-    if (method === "shepherd.conversation") {
-      const parsed = conversationParams(params, isPaneId);
-      if (!parsed) return Promise.reject(new LaunchError("invalid_params", "shepherd.conversation needs a paneId and whole-number after, before and limit"));
-      if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
-      return Promise.resolve(this.deps.conversations.get(this.deps.tracker.get(parsed.paneId) ?? null, parsed));
-    }
+    const conversation = this.conversationCall(method, params);
+    if (conversation) return conversation;
     const launcher = this.deps.launcher;
     if (!launcher) return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
     if (method === "shepherd.projects") return launcher.projects();
     if (method === "shepherd.folders") return launcher.listFolders((params as { path?: string }).path);
     return launcher.start(params as StartAgentParams);
+  }
+
+  /** The `shepherd.*` methods that read the agent's conversation; null for any other method. */
+  private conversationCall(method: CallMethod, params: Record<string, unknown>): Promise<unknown> | null {
+    const run = <P extends { paneId: string }>(parsed: P | null, usage: string, read: (c: Conversations, agent: AgentInfo | null, p: P) => unknown) => {
+      if (!parsed) return Promise.reject(new LaunchError("invalid_params", usage));
+      const conversations = this.deps.conversations;
+      if (!conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
+      return Promise.resolve(read(conversations, this.deps.tracker.get(parsed.paneId) ?? null, parsed));
+    };
+    const pane = isPaneId(params.paneId) ? { paneId: params.paneId } : null;
+    switch (method) {
+      case "shepherd.subagents":
+        return run(pane, "shepherd.subagents needs a paneId", (c, agent) => c.subagents(agent));
+      case "shepherd.images":
+        return run(pane, "shepherd.images needs a paneId", (c, agent) => c.images(agent));
+      case "shepherd.image":
+        return run(imageParams(params, isPaneId), "shepherd.image needs a paneId and an image id", (c, agent, p) => c.image(agent, p));
+      case "shepherd.conversation":
+        return run(conversationParams(params, isPaneId), "shepherd.conversation needs a paneId and whole-number after, before and limit", (c, agent, p) => c.get(agent, p));
+      default:
+        return null;
+    }
   }
 
   private async model(method: "shepherd.model" | "shepherd.set_model", params: Record<string, unknown>): Promise<unknown> {

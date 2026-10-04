@@ -51,7 +51,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "shepherd uses the camera to scan the pairing QR code shown by shepherd-host.",
+          "cameraPermission": "Shepherd uses the camera to scan the pairing QR code shown on your computer.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
@@ -76,11 +76,7 @@
     },
     "backgroundColor": "#0A0A0A",
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "5e1b3bd4-8d7f-4c7e-b5d2-08ca0da37cab"
-      }
-    },
-    "owner": "zenodea"
+      "router": {}
+    }
   }
 }

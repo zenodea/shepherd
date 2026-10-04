@@ -6,7 +6,7 @@ import { cwdsOf, firstRecord, jsonlFiles, lastRecords, modifiedAt, recentDayDirs
 import { TAIL_BYTES, TranscriptReader } from "../../reader.ts";
 import { STALE_MS, type SubagentSource, type Vendor } from "../../vendor.ts";
 import { codexParser } from "./parser.ts";
-import { CodexQueue, codexThreadId } from "./queue.ts";
+import { codexQueue, codexThreadId } from "./queue.ts";
 
 const DAYS = 7;
 
@@ -48,7 +48,7 @@ function ownWork(parse: Parser, agentPath: string): Parser {
 
 export function codex({ home }: { home: string }): Vendor {
   const sessions = join(home, "sessions");
-  const queue = new CodexQueue(join(home, "queue_1.sqlite"));
+  const queuePath = join(home, "queue_1.sqlite");
   const recentFiles = () => recentDayDirs(sessions, DAYS).flatMap(jsonlFiles);
 
   const locate = (agent: AgentInfo): string | null => {
@@ -114,7 +114,7 @@ export function codex({ home }: { home: string }): Vendor {
     open: (transcript) => new TranscriptReader(transcript, codexParser),
     queued: (transcript) => {
       const thread = codexThreadId(transcript);
-      return thread ? queue.read(thread) : [];
+      return thread ? codexQueue(queuePath, thread) : [];
     },
     subagents,
   };

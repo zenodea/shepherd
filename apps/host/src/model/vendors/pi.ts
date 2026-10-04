@@ -4,7 +4,6 @@
 import { execFile } from "node:child_process";
 import { choiceId, type ModelChoice } from "@shepherd/protocol";
 import { ModelError, sameModel, type ModelMenu, type ModelVendor } from "../models.ts";
-import type { PaneScreen } from "../screen.ts";
 
 const PROMPT = ">";
 const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"];

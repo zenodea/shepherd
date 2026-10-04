@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CipherState,
   SecureChannelError,
@@ -96,6 +96,21 @@ describe("utf8", () => {
     const text = "plain · café · 日本語 · 🐑🧑‍💻";
     expect(utf8Decode(utf8Encode(text))).toBe(text);
     expect(utf8Encode(text)).toEqual(new TextEncoder().encode(text));
+  });
+
+  it("encodes and decodes by hand where TextEncoder/TextDecoder are missing", async () => {
+    const text = "plain · café · 日本語 · 🐑🧑‍💻";
+    const expected = new TextEncoder().encode(text);
+    vi.stubGlobal("TextEncoder", undefined);
+    vi.stubGlobal("TextDecoder", undefined);
+    vi.resetModules();
+    try {
+      const byHand = await import("./secure.ts");
+      expect(byHand.utf8Encode(text)).toEqual(expected);
+      expect(byHand.utf8Decode(expected)).toBe(text);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

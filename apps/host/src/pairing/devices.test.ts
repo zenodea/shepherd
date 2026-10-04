@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { relayCredential } from "@shepherd/protocol";
 import { loadOrCreateStoredConfig } from "../system/config.ts";
 import { DeviceRegistry, PAIRING_TTL_MS, hashToken } from "./devices.ts";
@@ -117,6 +117,21 @@ describe("DeviceRegistry", () => {
     await until(() => changed, 3000);
     expect(host.get(paired.device.id)).toBeNull();
     host.unwatch();
+  });
+
+  it("keeps the devices it knows when the file is half-written", async () => {
+    const path = freshConfig();
+    const host = new DeviceRegistry(path);
+    const paired = host.authenticate(host.createPairing().code, "phone");
+    if (!paired.ok) throw new Error();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    host.watch(20);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    writeFileSync(path, "{ not json");
+    await until(() => errors.mock.calls.length > 0, 3000);
+    expect(host.get(paired.device.id)).not.toBeNull();
+    host.unwatch();
+    errors.mockRestore();
   });
 });
 

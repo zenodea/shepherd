@@ -1,6 +1,7 @@
 import { createConnection, type Socket } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import type { HerdrPushedEvent, HerdrResponse } from "@shepherd/protocol";
 
 export function defaultSocketPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -21,9 +22,11 @@ export class HerdrRequestError extends Error {
 
 /** Splits a byte stream into newline-delimited JSON values. */
 export function lineReader(onLine: (line: string) => void): (chunk: Buffer | string) => void {
+  // Keeps a character split between two chunks whole.
+  const decoder = new StringDecoder("utf8");
   let buffer = "";
   return (chunk) => {
-    buffer += chunk.toString();
+    buffer += typeof chunk === "string" ? chunk : decoder.write(chunk);
     let newline: number;
     while ((newline = buffer.indexOf("\n")) !== -1) {
       const line = buffer.slice(0, newline).trim();
@@ -98,7 +101,7 @@ export class HerdrClient {
   /**
    * Open a long-lived `events.subscribe` stream. Resolves once herdr
    * acknowledges the subscription, so callers can snapshot state afterwards
-   * without missing events.
+   * without missing events; rejects if it closes or doesn't answer first.
    */
   subscribe(subscriptions: Record<string, unknown>[], onEvent: (event: HerdrPushedEvent) => void): Promise<Subscription> {
     return new Promise((resolve, reject) => {
@@ -106,10 +109,18 @@ export class HerdrClient {
       let acknowledged = false;
       let resolveClosed!: () => void;
       const closed = new Promise<void>((r) => (resolveClosed = r));
+      const fail = (err: Error) => {
+        if (acknowledged) return;
+        clearTimeout(timer);
+        conn.destroy();
+        reject(err);
+      };
+      const timer = setTimeout(() => fail(new HerdrRequestError("timeout", `herdr events.subscribe timed out after ${this.timeoutMs}ms`)), this.timeoutMs);
 
       conn.on(
         "data",
         lineReader((line) => {
+          if (conn.destroyed) return;
           let msg: Record<string, unknown>;
           try {
             msg = JSON.parse(line);
@@ -119,21 +130,21 @@ export class HerdrClient {
           if (!acknowledged) {
             if ("error" in msg) {
               const err = msg.error as { code: string; message: string };
-              conn.destroy();
-              reject(new HerdrRequestError(err.code, err.message));
-              return;
+              return fail(new HerdrRequestError(err.code, err.message));
             }
             acknowledged = true;
+            clearTimeout(timer);
             resolve({ close: () => conn.destroy(), closed });
             return;
           }
           if (typeof msg.event === "string") onEvent(msg as unknown as HerdrPushedEvent);
         }),
       );
-      conn.on("error", (err) => {
-        if (!acknowledged) reject(err);
+      conn.on("error", fail);
+      conn.on("close", () => {
+        fail(new HerdrRequestError("disconnected", "herdr closed the connection during events.subscribe"));
+        resolveClosed();
       });
-      conn.on("close", () => resolveClosed());
       conn.on("connect", () => {
         conn.write(JSON.stringify({ id: "shepherd:sub", method: "events.subscribe", params: { subscriptions } }) + "\n");
       });

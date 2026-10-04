@@ -12,6 +12,16 @@ describe("lineReader", () => {
     feed(":2}\n");
     expect(lines).toEqual(['{"a":1}', '{"b":2}']);
   });
+
+  it("keeps a character split between chunks whole", () => {
+    const lines: string[] = [];
+    const feed = lineReader((l) => lines.push(l));
+    const bytes = Buffer.from('{"t":"café ✓"}\n');
+    const split = bytes.indexOf(Buffer.from("✓")) + 1;
+    feed(bytes.subarray(0, split));
+    feed(bytes.subarray(split));
+    expect(lines).toEqual(['{"t":"café ✓"}']);
+  });
 });
 
 describe("defaultSocketPath", () => {
@@ -75,5 +85,12 @@ describe("HerdrClient", () => {
     });
     sub.close();
     await sub.closed;
+  });
+
+  it("rejects a subscription closed or left unanswered before it's acknowledged", async () => {
+    herdr.subscribeReply = "close";
+    await expect(client.subscribe([], () => {})).rejects.toMatchObject({ code: "disconnected" });
+    herdr.subscribeReply = "hang";
+    await expect(client.subscribe([], () => {})).rejects.toMatchObject({ code: "timeout" });
   });
 });
