@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, CornerLeftUp, Folder as FolderIcon, GitBranch, X } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, CornerLeftUp, Folder as FolderIcon, FolderPlus, GitBranch, X } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,6 +37,8 @@ export function FolderPicker({ client, visible, onClose, onPick }: { client: Hos
   const [result, setResult] = useState<FoldersResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
+  // The name for a new folder in the one shown; null when not making one.
+  const [newName, setNewName] = useState<string | null>(null);
 
   const load = useCallback(
     (path: string | undefined) => {
@@ -45,6 +47,7 @@ export function FolderPicker({ client, visible, onClose, onPick }: { client: Hos
         .call<FoldersResult>("shepherd.folders", path ? { path } : {})
         .then((r) => {
           setError(null);
+          setNewName(null);
           setResult(r);
           setAt(path);
         })
@@ -62,6 +65,14 @@ export function FolderPicker({ client, visible, onClose, onPick }: { client: Hos
     onClose();
   };
   const atHome = at === undefined;
+  const make = () => {
+    const name = newName?.trim();
+    if (!client || !result || !name) return;
+    client
+      .call<Folder>("shepherd.make_folder", { path: result.path, name })
+      .then((f) => pick(f.path))
+      .catch((err: Error) => setError(err.message));
+  };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
@@ -127,8 +138,33 @@ export function FolderPicker({ client, visible, onClose, onPick }: { client: Hos
                     <ListRow icon={<CornerLeftUp size={18} color={colors.muted} />} title="Up one folder" chevron={false} onPress={() => load(result.parent ?? undefined)} />
                   </ListGroup>
                 ) : null}
+                <View style={!atHome && result.parent ? { marginTop: space.sm } : undefined}>
+                  {newName === null ? (
+                    <ListGroup>
+                      <ListRow icon={<FolderPlus size={18} color={colors.muted} />} title="New folder here" chevron={false} onPress={() => setNewName("")} />
+                    </ListGroup>
+                  ) : (
+                    <View style={styles.typeRow}>
+                      <TextInput
+                        style={styles.input}
+                        value={newName}
+                        onChangeText={setNewName}
+                        placeholder="Folder name"
+                        placeholderTextColor={colors.subtle}
+                        autoFocus
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        onSubmitEditing={make}
+                        returnKeyType="done"
+                      />
+                      <IconButton label="Create the folder and use it" onPress={make}>
+                        <ChevronRight size={20} color={colors.text} />
+                      </IconButton>
+                    </View>
+                  )}
+                </View>
                 {result.folders.length ? (
-                  <View style={!atHome && result.parent ? { marginTop: space.sm } : undefined}>
+                  <View style={{ marginTop: space.sm }}>
                     <FolderRows folders={result.folders} onOpen={(f) => load(f.path)} />
                   </View>
                 ) : (

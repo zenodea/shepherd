@@ -80,4 +80,63 @@ describe("extractPrompt", () => {
       { key: "3", label: "Type something.", selected: false, input: true },
     ]);
   });
+
+  it("offers to open a question Codex asked while it keeps working, never Esc", () => {
+    const prompt = extractPrompt(
+      [
+        "• Working (11m 10s • esc to interrupt)",
+        "",
+        "• Queued follow-up inputs",
+        "  ? 1 question",
+        "    shift+← to answer",
+        "",
+        "› Ask Codex to do anything",
+        "",
+        "  GPT-6-Astra high · ~/.herdr/worktrees/bundle · Review and improve branch",
+        "  ← for agents · ? for shortcuts",
+      ].join("\n"),
+    );
+    expect(prompt).toEqual({
+      lines: ["A question is waiting."],
+      options: [{ key: "shift+left", label: "Show the question", selected: false }],
+      noCancel: true,
+    });
+  });
+
+  it("reads Codex's open question, with Skip instead of Esc", () => {
+    const prompt = extractPrompt(
+      ["• Queued follow-up inputs", "  Pick a colour", "  › 1. Red", "    2. Blue", "    3. Other", "  enter submit   ctrl+] skip   shift+→ main prompt"].join("\n"),
+    );
+    expect(prompt.lines.at(-1)).toBe("Pick a colour");
+    expect(prompt.options).toEqual([
+      { key: "1", label: "Red", selected: true },
+      { key: "2", label: "Blue", selected: false },
+      { key: "3", label: "Other", selected: false, input: true },
+      { key: "ctrl+]", label: "Skip", selected: false },
+    ]);
+    expect(prompt.noCancel).toBe(true);
+  });
+
+  it("answers pi's ask_user_question dialog with arrows from the highlighted row, then Enter", () => {
+    const prompt = extractPrompt(
+      [
+        "  Cache",
+        " Which database should the cache use?",
+        "❯ 1. Redis",
+        "     An in-memory key-value store optimized for fast caching with rich data structures.",
+        "  2. Memcached",
+        "     A lightweight, high-performance in-memory cache for simple key-value storage.",
+        "  3. Postgres",
+        "     A durable relational database that can double as a cache with persistence guarantees.",
+        "  4. SQLite",
+        "     An embedded, file-based database suitable for a local, zero-setup cache.",
+        "  5. Type something.",
+        "─".repeat(40),
+        " Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel · Ctrl+] to collapse",
+      ].join("\n"),
+    );
+    expect(prompt.lines.slice(-2)).toEqual(["Cache", "Which database should the cache use?"]);
+    expect(prompt.options.map((o) => o.key)).toEqual(["enter", "down enter", "down down enter", "down down down enter", "down down down down"]);
+    expect(prompt.options.at(-1)).toMatchObject({ label: "Type something.", input: true });
+  });
 });

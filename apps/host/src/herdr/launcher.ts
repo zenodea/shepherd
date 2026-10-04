@@ -1,7 +1,7 @@
 import { accessSync, constants } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { basename, delimiter, join } from "node:path";
-import { TERMINAL_KIND, type FoldersResult, type Project, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@shepherd/protocol";
+import { TERMINAL_KIND, type Folder, type FoldersResult, type Project, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@shepherd/protocol";
 import { FolderError, Folders } from "./folders.ts";
 import { HerdrRequestError, type HerdrClient } from "./herdr-client.ts";
 
@@ -86,6 +86,16 @@ export class Launcher {
     const open = (snapshot?.panes ?? []).map((p) => p.cwd).filter((c): c is string => typeof c === "string");
     try {
       return this.folders.list(path, [...this.recentCwds(), ...open]);
+    } catch (err) {
+      if (err instanceof FolderError) throw new LaunchError("invalid_folder", err.message);
+      throw err;
+    }
+  }
+
+  makeFolder(params: { path?: unknown; name?: unknown }): Folder {
+    if (typeof params.path !== "string" || typeof params.name !== "string") throw new LaunchError("invalid_params", "shepherd.make_folder needs a path and a name");
+    try {
+      return this.folders.make(params.path, params.name);
     } catch (err) {
       if (err instanceof FolderError) throw new LaunchError("invalid_folder", err.message);
       throw err;

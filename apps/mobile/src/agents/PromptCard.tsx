@@ -10,6 +10,9 @@ import { sendAnswer } from "./answer";
 function keyLabel(key: string): string {
   if (key === "esc") return "esc";
   if (key === "shift+tab") return "⇧tab";
+  if (key === "shift+left") return "⇧←";
+  // Arrow presses then Enter (pi's dialog): the keys say nothing to a person.
+  if (/^(?:(?:up|down) )*(?:up|down|enter)$/.test(key)) return "›";
   return key;
 }
 
@@ -68,7 +71,7 @@ function WriteAnswer({ option, onSend, onCancel }: { option: Option; onSend: (te
 }
 
 function withEsc(prompt: BlockedPrompt): Option[] {
-  return prompt.options.some((o) => o.key === "esc") ? prompt.options : [...prompt.options, { key: "esc", label: "Cancel", selected: false }];
+  return prompt.noCancel || prompt.options.some((o) => o.key === "esc") ? prompt.options : [...prompt.options, { key: "esc", label: "Cancel", selected: false }];
 }
 
 /** What a blocked agent is asking, with one button per answer (agent list). */

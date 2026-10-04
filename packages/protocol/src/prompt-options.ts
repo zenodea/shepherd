@@ -8,7 +8,7 @@
 //    3. No, and tell Claude what to do differently (esc)
 
 export type PromptOption = {
-  /** herdr key-combo string that picks this option. */
+  /** herdr key-combo string that picks this option; several, space-separated, pressed in turn. */
   key: string;
   label: string;
   selected: boolean;
@@ -23,9 +23,11 @@ export type BlockedPrompt = {
   /** A few lines of context: the question, or the last lines on screen. */
   lines: string[];
   options: PromptOption[];
+  /** Esc would stop the agent here (Codex while it works): don't offer it as a way out. */
+  noCancel?: boolean;
 };
 
-const TAIL_LINES = 16;
+const TAIL_LINES = 24;
 const CONTEXT_LINES = 3;
 const MAX_LABEL = 48;
 
@@ -40,6 +42,16 @@ const KEY_NAME = /^(?:[a-z0-9]|esc|escape|enter|tab|space|(?:ctrl|alt|shift)\+[a
 const YES_NO = /[[(]\s*y\s*\/\s*n\s*[\])]/i;
 // Options that ask you to write the answer.
 const TEXT_OPTION = /^(?:type something|type (?:your|an?) (?:own )?(?:answer|response)|other\b|something else|no,? and tell \S+ what to do)/i;
+// Codex asks while it keeps working: "? 1 question" / "shift+← to answer" until you open it…
+const FOLDED_QUESTION = /^shift\+(?:←|left) to answer$/i;
+const QUESTION_COUNT = /^\?\s*(\d+) questions?$/;
+// …then a numbered list over "enter submit   ctrl+] skip   shift+→ main prompt".
+const SKIP_HINT = /\bctrl\+\] skip\b/;
+// pi's ask_user_question dialog ("Enter to select · ↑/↓ to navigate · n to add notes · …")
+// ignores digits: an answer is arrow presses from the highlighted row, then Enter.
+const ARROWS_ONLY = /↑\/↓ to navigate.*\bn to add notes\b/;
+// Lines an option's description can take before the run of options counts as over.
+const OPTION_GAP = 4;
 
 function clean(line: string): string {
   return line.replace(BORDER, "").trimEnd();
@@ -68,12 +80,31 @@ function parseOption(line: string): PromptOption | null {
   };
 }
 
+/** Keys as arrow presses from the highlighted option; Enter picks it, or for a write-your-own row, focusing it opens the text box. */
+function byArrows(options: PromptOption[]): PromptOption[] {
+  const from = Math.max(0, options.findIndex((o) => o.selected));
+  return options.map((option, i) => {
+    const moves: string[] = Array(Math.abs(i - from)).fill(i > from ? "down" : "up");
+    return { ...option, key: [...moves, ...(option.input ? [] : ["enter"])].join(" ") };
+  });
+}
+
 export function extractPrompt(screen: string): BlockedPrompt {
   const tail = screen
     .split("\n")
     .map(clean)
     .filter((line, i, all) => line.length > 0 || (i > 0 && all[i - 1]!.length > 0))
     .slice(-TAIL_LINES);
+
+  const folded = tail.findIndex((l) => FOLDED_QUESTION.test(l.trim()));
+  if (folded !== -1) {
+    const count = Number(QUESTION_COUNT.exec(tail[folded - 1]?.trim() ?? "")?.[1] ?? 1);
+    return {
+      lines: [count > 1 ? `${count} questions are waiting.` : "A question is waiting."],
+      options: [{ key: "shift+left", label: "Show the question", selected: false }],
+      noCancel: true,
+    };
+  }
 
   // Find the last run of numbered options (allowing wrapped/blank lines between them).
   let end = -1;
@@ -86,7 +117,7 @@ export function extractPrompt(screen: string): BlockedPrompt {
 
   if (end !== -1) {
     let start = end;
-    for (let i = end - 1; i >= 0 && end - i <= 8; i--) {
+    for (let i = end - 1; i >= 0 && start - i <= OPTION_GAP; i--) {
       if (parseOption(tail[i]!)) start = i;
     }
     const options: PromptOption[] = [];
@@ -100,6 +131,11 @@ export function extractPrompt(screen: string): BlockedPrompt {
     }
     if (options.length >= 2) {
       const question = tail.slice(0, start).filter((l) => l.trim().length > 0).slice(-CONTEXT_LINES);
+      const below = tail.slice(end + 1);
+      if (below.some((l) => SKIP_HINT.test(l))) {
+        return { lines: question, options: [...options, { key: "ctrl+]", label: "Skip", selected: false }], noCancel: true };
+      }
+      if (below.some((l) => ARROWS_ONLY.test(l))) return { lines: question, options: byArrows(options) };
       return { lines: question, options };
     }
   }

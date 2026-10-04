@@ -497,12 +497,50 @@ describe("subagents", () => {
     });
   });
 
+  it("finds pi subagents by their parent session, names them by their task, and links the Agent call that reported their id", () => {
+    const h = homes();
+    const piDir = join(h.pi, "sessions", piSessionDir("/work/app"));
+    mkdirSync(piDir, { recursive: true });
+    const main = join(piDir, "main.jsonl");
+    const message = (role: string, content: unknown, extra = {}) => ({ type: "message", timestamp: at, message: { role, content, ...extra } });
+    writeFileSync(
+      main,
+      jsonl([
+        { type: "session", id: "m", timestamp: "2026-10-02T11:00:00.000Z", cwd: "/work/app" },
+        message("assistant", [{ type: "toolCall", id: "c1", name: "Agent", arguments: { description: "Review it", subagent_type: "reviewer", prompt: "Review…" } }]),
+        message("toolResult", [{ type: "text", text: "Agent started in background.\nAgent ID: 3adf470b-a328-4e7" }], { toolCallId: "c1", toolName: "Agent" }),
+        message("assistant", [{ type: "toolCall", id: "c2", name: "Agent", arguments: { description: "Other", subagent_type: "worker", prompt: "…" } }]),
+        message("toolResult", [{ type: "text", text: "Agent started in background.\nAgent ID: 99999999-0000-000" }], { toolCallId: "c2", toolName: "Agent" }),
+      ]),
+    );
+    writeFileSync(
+      join(piDir, "child.jsonl"),
+      jsonl([
+        { type: "session", id: "01a1-child", timestamp: at, cwd: "/work/app", parentSession: main },
+        { type: "session_info", name: "reviewer#3adf470b" },
+        message("user", [{ type: "text", text: "Task: review the vendor blocks\nDetails…" }]),
+        message("assistant", [{ type: "toolCall", id: "t1", name: "read", arguments: { path: "a.py" } }]),
+        message("assistant", [{ type: "text", text: "Looks good." }], { stopReason: "stop" }),
+      ]),
+    );
+    writeFileSync(join(piDir, "unrelated.jsonl"), jsonl([{ type: "session", id: "u", timestamp: at, cwd: "/work/app", parentSession: join(piDir, "other.jsonl") }]));
+
+    const conversations = new Conversations(defaultVendors(h));
+    const page = conversations.get(working("pi"), { paneId: "w1:p1" });
+    if (!page.available) throw new Error(page.reason);
+    expect(page.subagents).toEqual([expect.objectContaining({ id: "01a1-child", name: "review the vendor blocks", kind: "reviewer", depth: 1, status: "done", startedAt: at })]);
+    expect(page.entries.filter((e) => e.kind === "tool").map((e) => (e.kind === "tool" ? e.subagent : null))).toEqual(["01a1-child", undefined]);
+    const own = conversations.get(working("pi"), { paneId: "w1:p1", subagent: "01a1-child" });
+    expect(own).toMatchObject({ available: true, entries: [{ kind: "user" }, { kind: "tool", name: "read" }, { kind: "assistant", text: "Looks good." }] });
+  });
+
   it("leaves subagents out for vendors that don't record them", () => {
     const h = homes();
     const piDir = join(h.pi, "sessions", piSessionDir("/work/app"));
     mkdirSync(piDir, { recursive: true });
     writeFileSync(join(piDir, "s.jsonl"), jsonl([{ type: "session", cwd: "/work/app" }]));
-    const conversations = new Conversations(defaultVendors(h));
+    const { subagents: _, ...withoutSubagents } = pi({ home: h.pi });
+    const conversations = new Conversations([withoutSubagents as Vendor]);
     expect(conversations.get(working("pi"), { paneId: "w1:p1" })).not.toHaveProperty("subagents");
     expect(conversations.subagents(working("pi"))).toMatchObject({ available: false });
   });

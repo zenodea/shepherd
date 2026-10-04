@@ -1,5 +1,5 @@
 import { Redirect, useRouter } from "expo-router";
-import { Activity, Check, ChevronDown, Laptop, Plus, QrCode, Settings } from "lucide-react-native";
+import { Activity, Check, ChevronDown, Laptop, Plus, QrCode, Settings, SquareTerminal } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { AgentInfo, BlockedPrompt } from "@shepherd/protocol";
@@ -9,8 +9,10 @@ import { agentName, agentTitle, projectOf } from "../agents/agents";
 import { PromptCard } from "../agents/PromptCard";
 import { useActivity } from "../agents/use-activity";
 import { useBlockedPrompts } from "../agents/use-blocked-prompts";
+import { tabsOf, useSnapshot, type WorkspaceTab } from "../agents/use-workspace-tabs";
 import { useConnection, useHostState } from "../connection/connection";
 import type { HostConnection } from "../connection/host-client";
+import { prefSwitch } from "../connection/pref-switch";
 import { ActionSheet } from "../ui/ActionSheet";
 import { AgentMark } from "../ui/AgentMark";
 import { Button } from "../ui/Button";
@@ -20,6 +22,9 @@ import { ConnectionBanner } from "../ui/ConnectionBanner";
 import { Screen, SectionHeader } from "../ui/Screen";
 import { StatusIndicator } from "../ui/StatusIndicator";
 import { colors, radii, space, statusColors, statusLabels, statusRank, type, themed } from "../ui/theme";
+
+/** The home screen lists agents, or every herdr space with its tabs (agents and plain terminals). */
+const spacesView = prefSwitch("home-spaces", false);
 
 export default function AgentsScreen() {
   // For "Last done: 12m ago" on each agent.
@@ -32,6 +37,12 @@ export default function AgentsScreen() {
   const prompts = useBlockedPrompts(client, state.agents);
   const activity = useActivity(client, settings?.id ?? null, state.status === "online");
   const actions = useAgentActions(client);
+  const showSpaces = spacesView.use();
+  const snapshot = useSnapshot(client, showSpaces && state.status === "online");
+  const spaces = useMemo(
+    () => (snapshot ? snapshot.workspaces.map((w) => ({ id: w.workspace_id, label: w.label, tabs: tabsOf(snapshot, w.workspace_id, state.agents).tabs })) : null),
+    [snapshot, state.agents],
+  );
 
   const { blocked, groups } = useMemo(() => {
     const sorted = [...state.agents].sort(
@@ -98,7 +109,16 @@ export default function AgentsScreen() {
       </View>
 
       <View style={styles.titleBlock}>
-        <Text style={type.largeTitle}>Agents</Text>
+        <View style={styles.views} accessibilityRole="tablist">
+          {(["Agents", "Spaces"] as const).map((view) => {
+            const selected = showSpaces === (view === "Spaces");
+            return (
+              <PressableScale key={view} onPress={() => spacesView.set(view === "Spaces")} highlight={false} accessibilityRole="tab" accessibilityState={{ selected }}>
+                <Text style={[type.largeTitle, !selected && { color: colors.subtle }]}>{view}</Text>
+              </PressableScale>
+            );
+          })}
+        </View>
         {online ? (
           <Text style={type.sub}>
             {summary(state.agents.length, working, blocked.length)}
@@ -112,7 +132,32 @@ export default function AgentsScreen() {
         contentContainerStyle={{ paddingBottom: space.xxl * 2 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.muted} />}
       >
-        {blocked.length > 0 ? (
+        {showSpaces ? (
+          online && !spaces ? (
+            <ActivityIndicator style={{ marginTop: space.xl }} color={colors.muted} />
+          ) : (
+            spaces?.map((ws) => (
+              <View key={ws.id}>
+                <SectionHeader title={ws.label} count={ws.tabs.length} />
+                {ws.tabs.map((tab) =>
+                  tab.agent ? (
+                    <AgentRow
+                      key={tab.tabId}
+                      agent={tab.agent}
+                      now={now}
+                      onPress={() => open(tab.agent!)}
+                      onLongPress={() => actions.show(tab.paneId, ws.id, tab.agent)}
+                    />
+                  ) : (
+                    <TerminalRow key={tab.tabId} tab={tab} onPress={() => router.push({ pathname: "/agent/[paneId]", params: { paneId: tab.paneId } })} />
+                  ),
+                )}
+              </View>
+            ))
+          )
+        ) : null}
+
+        {!showSpaces && blocked.length > 0 ? (
           <>
             <SectionHeader title="Needs you" count={blocked.length} />
             <View style={{ gap: space.md, paddingHorizontal: space.lg }}>
@@ -130,7 +175,7 @@ export default function AgentsScreen() {
           </>
         ) : null}
 
-        {groups.map(([project, agents]) => (
+        {showSpaces ? null : groups.map(([project, agents]) => (
           <View key={project}>
             <SectionHeader title={project} count={agents.length} />
             {agents.map((agent) => (
@@ -145,9 +190,9 @@ export default function AgentsScreen() {
           </View>
         ))}
 
-        {online && state.agents.length === 0 ? (
+        {online && (showSpaces ? spaces?.length === 0 : state.agents.length === 0) ? (
           <View style={styles.empty}>
-            <Text style={type.title}>No agents running</Text>
+            <Text style={type.title}>{showSpaces ? "No spaces open" : "No agents running"}</Text>
             <Text style={[type.sub, { textAlign: "center" }]}>Start one here, or in herdr on your computer.</Text>
             <Button title="Start an agent" onPress={() => router.push("/new")} style={{ marginTop: space.md, alignSelf: "stretch" }} />
           </View>
@@ -244,6 +289,22 @@ function AgentRow({ agent, now, onPress, onLongPress }: { agent: AgentInfo; now:
   );
 }
 
+function TerminalRow({ tab, onPress }: { tab: WorkspaceTab; onPress: () => void }) {
+  return (
+    <PressableScale onPress={onPress} style={styles.row} accessibilityLabel={`${tab.label}, terminal`} accessibilityHint="Opens the terminal.">
+      <View style={styles.terminalMark}>
+        <SquareTerminal size={20} color={colors.muted} />
+      </View>
+      <View style={{ flex: 1, gap: 3 }}>
+        <Text style={type.row} numberOfLines={1}>
+          {tab.label}
+        </Text>
+        <Text style={type.sub}>Terminal</Text>
+      </View>
+    </PressableScale>
+  );
+}
+
 function BlockedCard({
   agent,
   client,
@@ -314,6 +375,8 @@ const styles = themed(() => StyleSheet.create({
     borderColor: colors.background,
   },
   hostName: { fontSize: 14, fontWeight: "600", color: colors.text, flexShrink: 1 },
+  views: { flexDirection: "row", gap: space.lg },
+  terminalMark: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   titleBlock: { paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.sm, gap: 4 },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: 11 },
   statusSlot: { width: 24, alignItems: "center" },

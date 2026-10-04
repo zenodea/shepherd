@@ -12,8 +12,8 @@ export type SubagentSource = {
   transcript: string;
   open: () => ConversationReader;
   status: () => SubagentStatus;
-  /** Whether this tool call in the parent's conversation is the one that started it. */
-  startedBy: (call: Extract<ConversationEntry, { kind: "tool" }>) => boolean;
+  /** Whether this tool call in the parent's conversation (with its output, when on the same page) is one that started it. */
+  startedBy: (call: Extract<ConversationEntry, { kind: "tool" }>, output?: string) => boolean;
 };
 
 /**

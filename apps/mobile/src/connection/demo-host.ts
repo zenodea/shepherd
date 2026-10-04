@@ -385,6 +385,8 @@ export class DemoHost implements HostConnection {
         if (method === "shepherd.set_model") await new Promise((r) => setTimeout(r, 900));
         return { available: true, agent: "claude", ...this.model } satisfies ModelResult as T;
       }
+      case "shepherd.make_folder":
+        return { name: String(params.name).trim(), path: `${String(params.path)}/${String(params.name).trim()}`, repo: false } as T;
       case "shepherd.folders": {
         const home = "/Users/demo";
         const path = typeof params.path === "string" ? params.path.replace(/^~/, home) : home;

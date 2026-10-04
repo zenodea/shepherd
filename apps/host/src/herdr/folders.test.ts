@@ -48,6 +48,16 @@ describe("folders", () => {
     expect(() => folders.resolve("Work/api")).toThrow(/full path/);
   });
 
+  it("makes a new folder inside a folder in your home folder", () => {
+    const root = home();
+    const folders = new Folders(root);
+    expect(folders.make("~/Work", " app ")).toEqual({ name: "app", path: join(root, "Work", "app"), repo: false });
+    expect(folders.list("~/Work", []).folders.map((f) => f.name)).toContain("app");
+    expect(() => folders.make("~/Work", "app")).toThrow(/already exists/);
+    for (const bad of ["", "a/b", "..", ".hidden", "a\\b"]) expect(() => folders.make("~/Work", bad)).toThrow(FolderError);
+    expect(() => folders.make("/etc", "x")).toThrow(/inside your home/);
+  });
+
   it("starts an agent in a new workspace for the folder", async () => {
     const root = home();
     const herdr = new FakeHerdr();

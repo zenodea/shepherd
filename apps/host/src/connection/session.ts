@@ -279,6 +279,7 @@ export class AppSession {
     if (!launcher) return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
     if (method === "shepherd.projects") return launcher.projects();
     if (method === "shepherd.folders") return launcher.listFolders((params as { path?: string }).path);
+    if (method === "shepherd.make_folder") return Promise.resolve().then(() => launcher.makeFolder(params));
     return launcher.start(params as StartAgentParams);
   }
 

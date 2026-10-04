@@ -73,7 +73,7 @@ export class Conversations {
       agent: vendor.id,
       session: `${sessionName(transcript)}${source ? `/${source.id}` : ""}~${epoch}`,
       ...page,
-      entries: page.entries.map((entry) => linkSubagent(entry, sources)),
+      entries: linkSubagents(page.entries, sources),
       ...(queued ? { queued } : {}),
       ...(context ? { context } : {}),
       ...(vendor.subagents ? { subagents: this.described(session) } : {}),
@@ -212,10 +212,14 @@ function fileStamp(transcript: string): string | null {
   }
 }
 
-function linkSubagent(entry: ConversationEntry, sources: SubagentSource[]): ConversationEntry {
-  if (entry.kind !== "tool") return entry;
-  const started = sources.find((s) => s.startedBy(entry));
-  return started ? { ...entry, subagent: started.id } : entry;
+function linkSubagents(entries: ConversationEntry[], sources: SubagentSource[]): ConversationEntry[] {
+  if (sources.length === 0) return entries;
+  const outputs = new Map(entries.flatMap((e) => (e.kind === "tool_result" ? [[e.callId, e.output] as const] : [])));
+  return entries.map((entry) => {
+    if (entry.kind !== "tool") return entry;
+    const started = sources.find((s) => s.startedBy(entry, outputs.get(entry.callId)));
+    return started ? { ...entry, subagent: started.id } : entry;
+  });
 }
 
 const SUBAGENT_ID = /^[\w.-]{1,100}$/;

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { Folder, FoldersResult } from "@shepherd/protocol";
@@ -46,6 +46,19 @@ export class Folders {
     if (path !== this.home && !path.startsWith(this.home + sep)) throw new FolderError("Only folders inside your home folder.");
     if (!isDir(path)) throw new FolderError(`${input.trim()} isn't a folder on this computer.`);
     return path;
+  }
+
+  /** A new, empty folder called `name` inside `parent` (a folder in your home folder). */
+  make(parent: string, name: string): Folder {
+    const clean = name.trim();
+    if (!clean || clean.length > 100 || /[/\\\0]/.test(clean) || clean.startsWith(".")) throw new FolderError("Use a folder name without slashes that doesn't start with a dot.");
+    const path = join(this.resolve(parent), clean);
+    try {
+      mkdirSync(path);
+    } catch (err) {
+      throw new FolderError((err as NodeJS.ErrnoException).code === "EEXIST" ? `${clean} already exists.` : `Couldn't create ${clean}.`);
+    }
+    return folder(path);
   }
 
   list(input: string | undefined, recentCwds: string[]): FoldersResult {

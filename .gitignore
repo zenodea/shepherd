@@ -12,6 +12,7 @@ dist/
 apps/mobile/.expo/
 apps/mobile/ios/
 apps/mobile/android/
+apps/mobile/modules/*/android/build/
 apps/mobile/web-build/
 *.tsbuildinfo
 

@@ -141,7 +141,7 @@ description = "pair a phone"
 - **Read the conversation.** Agents open on their conversation (your messages, their replies and each tool call), read from what the agent itself records: Claude Code, Codex, Gemini CLI, OpenCode, Hermes and pi. It scrolls like a chat app, older messages load as you scroll up, runs of tool calls fold into one line, and the header shows how full the agent's context is.
 - **Formatted replies.** Tables, lists, checklists, quotes, headings and code come out formatted, and links open in your browser. Wide tables scroll sideways.
 - **See the images it read.** Images the agent looked at, and ones you pasted, appear in the chat: tap to load, zoom and save to Pictures/Shepherd. **Settings → Show images** loads them as they appear, and the agent's **⋯** menu lists them all.
-- **Follow its subagents.** Subagents (Claude Code, Codex, OpenCode, Gemini CLI, Hermes) show as cards with their task and status; tap one to read its own conversation as it works. Codex encrypts the instructions it gives them, so for Codex you see each task's name and what the subagent did.
+- **Follow its subagents.** Subagents (Claude Code, Codex, OpenCode, Gemini CLI, Hermes, and pi with the pi-subagents extension) show as cards with their task and status; tap one to read its own conversation as it works. Codex encrypts the instructions it gives them, so for Codex you see each task's name and what the subagent did.
 - **See what it changed.** A "4 files · +38 −12" pill under the agent's name opens the changed files and their diffs (uncommitted, or the whole branch), and **Mention in message** puts `@path/to/file` into your message. Read from git, read-only.
 - **See what's queued.** Messages sent while the agent works show as "Queued" until it takes them in (Claude Code, Codex and OpenCode; the others queue too but don't record it).
 - **Watch the live terminal.** Tap the terminal icon to switch. The agent is fitted to your screen as native text. Scroll up for the history, pinch to resize, search, long-press to copy, tap links.
@@ -149,7 +149,7 @@ description = "pair a phone"
 - **Home-screen widget.** Which agents need you, with their question and first two answers as buttons. It stays current while notifications are on.
 - **Themes.** Twelve colour themes (Catppuccin, Tokyo Night, Gruvbox, Nord…), each dark and light, in **Settings → Appearance**.
 - **Switch model and effort** for Claude Code, Codex and pi from the agent's ⋯ menu, while it's idle (it drives the agent's own `/model`).
-- **Switch tabs and start things.** Hop between herdr tabs like tmux windows, open a shell, or start claude, codex, gemini… in a project, a fresh git worktree, or any folder in your home folder (pick from recent folders and git repos, browse, or type a path; it gets its own herdr workspace).
+- **Switch tabs and start things.** Hop between herdr tabs like tmux windows, or flip the home screen from **Agents** to **Spaces** to see every herdr workspace with all its tabs, shells included. Open a shell, or start claude, codex, gemini… in a project, a fresh git worktree, or any folder in your home folder (pick from recent folders and git repos, browse, type a path, or make a new folder; it gets its own herdr workspace).
 - **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
 - **See what happened.** The activity feed shows what your agents did while you were away, and how long they waited for you.
 - **Several computers.** Pair with as many as you like and switch from the top of the agent list.
@@ -263,7 +263,7 @@ shepherd ui                   # the Shepherd window (status, pairing, phones, lo
 ## Security model
 
 - **A paired phone is like an SSH key.** It can type into your terminals and open a terminal running any command, in any folder inside your home folder. Revoke lost phones in the window's Phones screen or with `devices revoke`.
-- **Folders:** to start an agent in a new folder, the app can list folder names inside your home folder (never files, never hidden folders, nothing outside it).
+- **Folders:** to start an agent in a new folder, the app can list folder names inside your home folder and create an empty folder there (never files, never hidden folders, nothing outside it).
 - **Ways in:** choose which of LAN, Tailscale and the relay phones may use, in the Shepherd window (keys 1–3) or with `connections`. With only Tailscale, the host listens on its Tailscale address alone, so nothing is open on other networks; connections arriving on a way that's off are dropped. The relay off means the host never connects to it. Shepherd won't let you turn off the last way in.
 - **Pairing:** each phone gets its own random token (the host stores only a hash). Pairing codes work once and expire after 10 minutes. A QR code pins the host's whole key; a code typed by hand ends with the start of it (`<code>.<16 hex>`), so nothing else on the network can answer first. `devices revoke` cuts a phone off immediately.
 - **End-to-end encryption** on every connection, including through the relay: a Noise NK-style handshake with the host's X25519 key pinned from the QR code, then ChaCha20-Poly1305. The relay only ever sees ciphertext. Built on the audited [@noble](https://paulmillr.com/noble/) libraries (`packages/protocol/src/secure.ts`).

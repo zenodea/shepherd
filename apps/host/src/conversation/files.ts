@@ -40,6 +40,11 @@ export function firstRecord(path: string): Record<string, unknown> | null {
   return record;
 }
 
+/** Up to `max` records from the start of a file. */
+export function headRecords(path: string, max: number): Record<string, unknown>[] {
+  return readRecords(path, 0, HEADER_BYTES, max);
+}
+
 /** The last records of a file, newest first, from its final `bytes`. */
 export function lastRecords(path: string, bytes = 256 * 1024): Record<string, unknown>[] {
   let size: number;

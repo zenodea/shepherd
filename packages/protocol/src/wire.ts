@@ -97,6 +97,7 @@ export const HOST_METHODS = [
   "shepherd.subagents",
   "shepherd.upload",
   "shepherd.folders",
+  "shepherd.make_folder",
   "shepherd.model",
   "shepherd.set_model",
 ] as const;
@@ -130,6 +131,8 @@ export type Folder = { name: string; path: string; /** A git repository. */ repo
 
 /** `path`: a folder to list (default: your home folder). Without one, suggestions come too. */
 export type FoldersParams = { path?: string };
+/** Creates `name` inside `path`; returns the new Folder. */
+export type MakeFolderParams = { path: string; name: string };
 export type FoldersResult = {
   path: string;
   /** null at your home folder: browsing doesn't go above it. */

@@ -22,7 +22,7 @@ type SnapshotPane = {
   cwd?: string | null;
 };
 type SnapshotTab = { tab_id: string; workspace_id: string; number: number; label: string };
-type Snapshot = { tabs: SnapshotTab[]; panes: SnapshotPane[]; workspaces: { workspace_id: string; label: string }[] };
+export type Snapshot = { tabs: SnapshotTab[]; panes: SnapshotPane[]; workspaces: { workspace_id: string; label: string }[] };
 
 const REFRESH_MS = 5000;
 
@@ -33,12 +33,12 @@ function paneLabel(pane: SnapshotPane, tab: SnapshotTab): string {
   return pane.label || pane.terminal_title_stripped || pane.title || cwd || `Tab ${tab.number}`;
 }
 
-/** The herdr tabs in a workspace, like tmux windows, for switching between them. */
-export function useWorkspaceTabs(client: HostConnection | null, workspaceId: string | null, agents: AgentInfo[]) {
+/** herdr's workspaces, tabs and panes, refreshed while `active`. */
+export function useSnapshot(client: HostConnection | null, active: boolean): Snapshot | null {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
 
   useEffect(() => {
-    if (!client || !workspaceId) return;
+    if (!client || !active) return;
     let cancelled = false;
     const load = () =>
       client
@@ -54,14 +54,20 @@ export function useWorkspaceTabs(client: HostConnection | null, workspaceId: str
       cancelled = true;
       clearInterval(timer);
     };
-  }, [client, workspaceId]);
+  }, [client, active]);
 
+  return snapshot;
+}
+
+/** The herdr tabs in a workspace, like tmux windows, for switching between them. */
+export function useWorkspaceTabs(client: HostConnection | null, workspaceId: string | null, agents: AgentInfo[]) {
+  const snapshot = useSnapshot(client, Boolean(workspaceId));
   return useMemo(() => (snapshot && workspaceId ? tabsOf(snapshot, workspaceId, agents) : EMPTY), [snapshot, workspaceId, agents]);
 }
 
 const EMPTY = { tabs: [] as WorkspaceTab[], workspaceLabel: null as string | null, panes: [] as SnapshotPane[] };
 
-function tabsOf(snapshot: Snapshot, workspaceId: string, agents: AgentInfo[]): typeof EMPTY {
+export function tabsOf(snapshot: Snapshot, workspaceId: string, agents: AgentInfo[]): typeof EMPTY {
   const tabs = snapshot.tabs
     .filter((t) => t.workspace_id === workspaceId)
     .sort((a, b) => a.number - b.number)
