@@ -21,6 +21,8 @@ function editDiff(name: string, input: unknown): FileDiff | undefined {
 /** Housekeeping Claude Code writes into user messages, not something the person typed. */
 const HIDDEN_USER_TEXT = /^\s*<(local-command-stdout|local-command-stderr|local-command-caveat|task-notification|system-reminder)>/;
 
+const MENU_COMMANDS = new Set(["/model", "/effort"]);
+
 export function claudeProjectDir(cwd: string): string {
   return cwd.replace(/[^A-Za-z0-9]/g, "-");
 }
@@ -31,6 +33,8 @@ function userText(text: string): string | null {
   const command = /<command-name>([^<]*)<\/command-name>/.exec(text);
   if (command) {
     const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim();
+    // Opening a menu, e.g. when Shepherd reads or switches the model: nothing was said.
+    if (!args && MENU_COMMANDS.has(command[1]!.trim())) return null;
     return [command[1]!.trim(), args].filter(Boolean).join(" ");
   }
   return text.trim() || null;

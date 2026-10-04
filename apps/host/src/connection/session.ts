@@ -19,6 +19,8 @@ import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
 import type { ActivityLog } from "../herdr/activity-log.ts";
 import type { Uploads } from "../uploads.ts";
+import { ModelError, type Models } from "../model/models.ts";
+import { ScreenError } from "../model/screen.ts";
 import { LaunchError, type Launcher } from "../herdr/launcher.ts";
 import { ScreenRenderer } from "../herdr/screen-renderer.ts";
 import type { TerminalStream } from "../herdr/terminal-stream.ts";
@@ -51,6 +53,8 @@ export type SessionDeps = {
   activity?: ActivityLog;
   /** Backs `shepherd.conversation`; without it there are no conversations. */
   conversations?: Conversations;
+  /** Backs `shepherd.model` and `shepherd.set_model`; without them models can't be switched. */
+  models?: Models;
   /** Backs `shepherd.upload`; without it images can't be sent. */
   uploads?: Uploads;
   /** Told which phones are connected, for the Shepherd window. */
@@ -261,6 +265,7 @@ export class AppSession {
         return Promise.reject(new LaunchError("invalid_params", (err as Error).message));
       }
     }
+    if (method === "shepherd.model" || method === "shepherd.set_model") return this.model(method, params);
     if (method === "shepherd.subagents") {
       if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.subagents needs a paneId"));
       if (!this.deps.conversations) return Promise.resolve({ available: false, reason: "This host doesn't support conversations." });
@@ -288,6 +293,22 @@ export class AppSession {
     if (method === "shepherd.projects") return launcher.projects();
     if (method === "shepherd.folders") return launcher.listFolders((params as { path?: string }).path);
     return launcher.start(params as StartAgentParams);
+  }
+
+  private async model(method: "shepherd.model" | "shepherd.set_model", params: Record<string, unknown>): Promise<unknown> {
+    const { paneId, model, effort } = params;
+    if (!isPaneId(paneId)) throw new LaunchError("invalid_params", `${method} needs a paneId`);
+    if (!this.deps.models) return { available: false, reason: "This host can't switch models." };
+    const agent = this.deps.tracker.get(paneId) ?? null;
+    try {
+      if (method === "shepherd.model") return await this.deps.models.get(agent);
+      const label = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length <= 100 ? v : undefined);
+      if (!label(model) && !label(effort)) throw new LaunchError("invalid_params", "shepherd.set_model needs a model or an effort");
+      return await this.deps.models.set(agent, { paneId, model: label(model), effort: label(effort) });
+    } catch (err) {
+      if (err instanceof ModelError || err instanceof ScreenError) throw new LaunchError("model_unavailable", err.message);
+      throw err;
+    }
   }
 
   private async openStream(streamId: string, paneId: string, mode: TerminalMode, requested: Size | null, render: TerminalRender = "ansi"): Promise<void> {

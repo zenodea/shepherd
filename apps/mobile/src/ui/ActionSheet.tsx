@@ -5,7 +5,8 @@ import { PressableScale } from "./Pressable";
 import { Sheet } from "./Sheet";
 import { colors, space, type, themed } from "./theme";
 
-export type SheetAction = { key?: string; icon: ReactNode; title: string; detail?: string; trailing?: ReactNode; onPress: () => void };
+/** `separated`: a line above it, setting it apart from the actions before. */
+export type SheetAction = { key?: string; icon: ReactNode; title: string; detail?: string; trailing?: ReactNode; separated?: boolean; onPress: () => void };
 
 /** A bottom sheet of large actions. Tapping outside closes it. */
 export function ActionSheet({ visible, title, actions, onClose }: { visible: boolean; title?: string; actions: SheetAction[]; onClose: () => void }) {
@@ -16,21 +17,23 @@ export function ActionSheet({ visible, title, actions, onClose }: { visible: boo
         {title ? <Text style={[type.sub, styles.title]}>{title}</Text> : null}
         <ScrollView style={styles.list}>
         {actions.map((action) => (
-          <PressableScale
-            key={action.key ?? action.title}
-            onPress={() => {
-              onClose();
-              action.onPress();
-            }}
-            style={styles.action}
-          >
-            <View style={styles.icon}>{action.icon}</View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={type.row}>{action.title}</Text>
-              {action.detail ? <Text style={type.sub}>{action.detail}</Text> : null}
-            </View>
-            {action.trailing}
-          </PressableScale>
+          <View key={action.key ?? action.title}>
+            {action.separated ? <View style={styles.separator} /> : null}
+            <PressableScale
+              onPress={() => {
+                onClose();
+                action.onPress();
+              }}
+              style={styles.action}
+            >
+              <View style={styles.icon}>{action.icon}</View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={type.row}>{action.title}</Text>
+                {action.detail ? <Text style={type.sub}>{action.detail}</Text> : null}
+              </View>
+              {action.trailing}
+            </PressableScale>
+          </View>
         ))}
         </ScrollView>
     </Sheet>
@@ -42,6 +45,7 @@ const styles = themed(() => StyleSheet.create({
   grabber: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: space.sm },
   title: { paddingHorizontal: space.sm, paddingBottom: space.xs },
   list: { flexShrink: 1 },
+  separator: { height: 1, backgroundColor: colors.border, marginHorizontal: space.sm, marginVertical: space.sm },
   action: { flexDirection: "row", alignItems: "center", gap: space.md, padding: space.md, borderRadius: 14 },
   icon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center" },
 }));

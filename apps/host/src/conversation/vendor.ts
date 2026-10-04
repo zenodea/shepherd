@@ -30,6 +30,8 @@ export type Vendor = {
   queued?(transcript: string, reader: ConversationReader): QueuedMessage[];
   /** Subagents the session started; absent when the vendor doesn't record them. */
   subagents?(transcript: string): SubagentSource[];
+  /** The model id it last answered with, e.g. "claude-opus-5-5"; absent when the vendor doesn't record one. */
+  model?(transcript: string): string | null;
 };
 
 /** How long a subagent can go without writing anything before "running" means it was stopped. */

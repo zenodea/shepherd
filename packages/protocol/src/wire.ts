@@ -97,6 +97,8 @@ export const HOST_METHODS = [
   "shepherd.subagents",
   "shepherd.upload",
   "shepherd.folders",
+  "shepherd.model",
+  "shepherd.set_model",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
@@ -108,6 +110,21 @@ export type Project = {
   /** Set when the workspace is a git worktree herdr manages. */
   repoName: string | null;
 };
+
+/**
+ * One of an agent's models or effort levels, named as the agent names it.
+ * `id` picks it when the label alone isn't unique (else the label does);
+ * `group` is e.g. its provider; `noEffort`: a model without effort levels.
+ */
+export type ModelChoice = { label: string; id?: string; detail?: string; group?: string; noEffort?: boolean };
+export const choiceId = (choice: ModelChoice): string => choice.id ?? choice.label;
+export type ModelParams = { paneId: string };
+/** `model` is a `choiceId` from `models`, `effort` a label from `efforts`; null when unknown. */
+export type ModelResult =
+  | { available: true; agent: string; model: string | null; effort: string | null; models: ModelChoice[]; efforts: ModelChoice[] }
+  | { available: false; reason: string };
+/** Switches for this session only; at least one of the two. */
+export type SetModelParams = { paneId: string; model?: string; effort?: string };
 
 export type Folder = { name: string; path: string; /** A git repository. */ repo: boolean };
 

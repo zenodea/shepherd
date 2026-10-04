@@ -1,5 +1,5 @@
 import { Redirect, useRouter } from "expo-router";
-import { Activity, Check, ChevronDown, Info, Laptop, Plus, QrCode, Settings } from "lucide-react-native";
+import { Activity, Check, ChevronDown, Laptop, Plus, QrCode, Settings } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { AgentInfo, BlockedPrompt } from "@shepherd/protocol";
@@ -171,14 +171,8 @@ export default function AgentsScreen() {
             };
           }),
           {
-            key: "details",
-            icon: <Info size={19} color={colors.text} />,
-            title: `About ${hostName}`,
-            detail: "Addresses, notifications, forget",
-            onPress: () => router.push("/connect"),
-          },
-          {
             key: "add",
+            separated: true,
             icon: <QrCode size={19} color={colors.text} />,
             title: "Add a computer",
             detail: "Scan the QR code from npm run host on another computer",

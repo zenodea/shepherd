@@ -109,5 +109,11 @@ export function claude({ home, running = () => runningSessions(join(home, "sessi
     open: (transcript) => new TranscriptReader(transcript, () => claudeParser()),
     queued: (_transcript, reader) => reader.queued() ?? [],
     subagents,
+    model: (transcript) => {
+      const message = lastRecords(transcript)
+        .map((r) => (r.type === "assistant" && isRecord(r.message) ? str(r.message.model) : null))
+        .findLast((m) => m?.startsWith("claude-"));
+      return message ?? null;
+    },
   };
 }

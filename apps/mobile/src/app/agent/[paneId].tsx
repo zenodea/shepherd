@@ -1,10 +1,10 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-  ALargeSmall,
   ArrowDown,
   ArrowUp,
   Bot,
   ChevronLeft,
+  Cpu,
   Ellipsis,
   ImagePlus,
   Images,
@@ -46,13 +46,13 @@ import { HostCallError, type TerminalHandle, type TerminalLines } from "../../co
 import { loadPref, savePref } from "../../connection/prefs";
 import { useKeyboardInset } from "../../connection/use-keyboard-inset";
 import { KeyboardCapture, type KeyboardCaptureHandle } from "../../terminal/KeyboardCapture";
-import { DEFAULT_FONT_SIZE, LiveTerminal, MAX_FONT_SIZE, MIN_FONT_SIZE, clampFontSize, type LiveTerminalHandle } from "../../terminal/LiveTerminal";
+import { DEFAULT_FONT_SIZE, LiveTerminal, clampFontSize, type LiveTerminalHandle } from "../../terminal/LiveTerminal";
 import { ActionSheet } from "../../ui/ActionSheet";
 import { IconButton } from "../../ui/IconButton";
 import { PressableScale } from "../../ui/Pressable";
 import { Banner, Screen } from "../../ui/Screen";
 import { StatusIndicator } from "../../ui/StatusIndicator";
-import { TextSizeSheet } from "../../ui/TextSizeSheet";
+import { ModelSheet } from "../../agents/ModelSheet";
 import { colors, fonts, space, statusColors, statusLabels, themed } from "../../ui/theme";
 
 const REOPEN_MS = 1500;
@@ -131,12 +131,16 @@ export default function TerminalScreen() {
   const imagesShown = useImagesShown();
   const actions = useAgentActions(client, {
     extra: [
-      {
-        icon: <ALargeSmall size={19} color={colors.text} />,
-        title: "Text size",
-        detail: "Or pinch the terminal",
-        onPress: () => setTextSizeSheet(true),
-      },
+      ...(agent
+        ? [
+            {
+              icon: <Cpu size={19} color={colors.text} />,
+              title: "Model",
+              detail: "Switch model and effort",
+              onPress: () => setModelSheet(true),
+            },
+          ]
+        : []),
       // With "Show images" on: every image in the conversation on one page.
       ...(imagesShown && agent
         ? [
@@ -179,7 +183,7 @@ export default function TerminalScreen() {
   const [atBottom, setAtBottom] = useState(true);
   const [typing, setTyping] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [textSizeSheet, setTextSizeSheet] = useState(false);
+  const [modelSheet, setModelSheet] = useState(false);
   // Landscape leaves little height, so the tab strip steps aside.
   const window = useWindowDimensions();
   const landscape = window.width > window.height;
@@ -539,6 +543,7 @@ export default function TerminalScreen() {
           ) : null}
         </View>
       ) : null}
+      <View style={styles.headerLine} />
 
       {!online ? <Banner>{state.status === "connecting" ? "Connecting…" : "Can't reach your computer. Retrying…"}</Banner> : null}
 
@@ -692,15 +697,7 @@ export default function TerminalScreen() {
       </View>
 
       {actions.element}
-      <TextSizeSheet
-        visible={textSizeSheet}
-        size={fontSize}
-        min={MIN_FONT_SIZE}
-        max={MAX_FONT_SIZE}
-        defaultSize={DEFAULT_FONT_SIZE}
-        onChange={changeFontSize}
-        onClose={() => setTextSizeSheet(false)}
-      />
+      {agent && paneId ? <ModelSheet client={client} paneId={paneId} name={agentName(agent)} visible={modelSheet} onClose={() => setModelSheet(false)} /> : null}
       <ActionSheet
         visible={newSheet}
         title={`New in ${agent ? projectOf(agent) : "this workspace"}`}
@@ -791,10 +788,10 @@ const styles = themed(() => StyleSheet.create({
     flex: 1,
     color: colors.text,
     fontSize: 15,
-    lineHeight: 20,
+    // No lineHeight: Android applies it to typed text but not to the placeholder, which then sits a pixel off.
     maxHeight: 120,
-    paddingTop: 7,
-    paddingBottom: 7,
+    paddingTop: 8,
+    paddingBottom: 8,
     textAlignVertical: "top",
     includeFontPadding: false,
   },
@@ -808,6 +805,8 @@ const styles = themed(() => StyleSheet.create({
   attachmentImage: { width: 56, height: 56 },
   attachmentOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.35)" },
   attachmentRemove: { position: "absolute", top: 3, right: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
+  // Matches the line above the composer at the bottom.
+  headerLine: { height: StyleSheet.hairlineWidth, backgroundColor: colors.hairline },
   pills: { flexDirection: "row", gap: 6, marginHorizontal: space.md, marginBottom: 6 },
   pill: {
     flexDirection: "row",

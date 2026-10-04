@@ -72,6 +72,12 @@ export class Conversations {
     };
   }
 
+  /** The model id the agent's conversation last used, when its vendor records one. */
+  model(agent: AgentInfo | null): string | null {
+    const session = this.session(agent);
+    return "reason" in session ? null : (session.vendor.model?.(session.transcript) ?? null);
+  }
+
   subagents(agent: AgentInfo | null): SubagentsResult {
     const session = this.session(agent);
     if ("reason" in session) return session;

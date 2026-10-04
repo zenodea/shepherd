@@ -11,6 +11,7 @@ import type {
   FileDiff,
   FileDiffResult,
   FoldersResult,
+  ModelResult,
   ImageResult,
   ImagesResult,
   Subagent,
@@ -316,6 +317,18 @@ export class DemoHost implements HostConnection {
     device: { id: "a1b2c3", name: "Pixel 9" },
     agents: AGENTS,
   };
+  private model = {
+    model: "Opus 5.5" as string | null,
+    effort: "high" as string | null,
+    models: [
+      { label: "Default", detail: "Opus 5.5 · Best for everyday, complex tasks" },
+      { label: "Opus 5.5", detail: "For complex work and everyday tasks" },
+      { label: "Fable 5.1", detail: "For your toughest challenges" },
+      { label: "Sonnet 5.5", detail: "Most efficient for simpler tasks" },
+      { label: "Haiku 4.5", detail: "Fastest for quick answers" },
+    ],
+    efforts: ["low", "medium", "high", "xhigh", "max"].map((label) => ({ label })),
+  };
   private listeners = new Set<() => void>();
   private statusListeners = new Set<(c: StatusChange) => void>();
 
@@ -364,6 +377,13 @@ export class DemoHost implements HostConnection {
       case "shepherd.image": {
         const from = typeof params.from === "number" ? params.from : 0;
         return { available: true, mime: "image/png", total: DEMO_IMAGE.length, from, data: DEMO_IMAGE.slice(from, from + 4096) } satisfies ImageResult as T;
+      }
+      case "shepherd.model":
+      case "shepherd.set_model": {
+        if (typeof params.model === "string") this.model.model = params.model;
+        if (typeof params.effort === "string") this.model.effort = params.effort;
+        if (method === "shepherd.set_model") await new Promise((r) => setTimeout(r, 900));
+        return { available: true, agent: "claude", ...this.model } satisfies ModelResult as T;
       }
       case "shepherd.folders": {
         const home = "/Users/demo";

@@ -24,6 +24,10 @@ import { Service, serviceSpec } from "./system/service.ts";
 import { HostStatusWriter } from "./system/host-status.ts";
 import { Conversations } from "./conversation/conversations.ts";
 import { Uploads } from "./uploads.ts";
+import { Models } from "./model/models.ts";
+import { claudeModels } from "./model/vendors/claude.ts";
+import { codexModels } from "./model/vendors/codex.ts";
+import { piModels } from "./model/vendors/pi.ts";
 import { SCREENS, runWindow, type Screen } from "./ui/window.ts";
 import { clearPidFile, readRunningHost, restartHost, setConnections, startDetached, stopRunningHost, turnOff, turnOn, writePidFile } from "./system/daemon.ts";
 import { TerminalStream } from "./herdr/terminal-stream.ts";
@@ -100,6 +104,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   const activity = new ActivityLog({ path: join(dirname(config.configPath), "activity.json") });
   activity.attach(tracker);
 
+  const conversations = new Conversations();
   const deps: SessionDeps = {
     herdr,
     tracker,
@@ -114,7 +119,8 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
       recentCwds: () => activity.page({ limit: 200 }).entries.flatMap((e) => (e.cwd ? [e.cwd] : [])),
     }),
     activity,
-    conversations: new Conversations(),
+    conversations,
+    models: new Models({ herdr, vendors: [claudeModels, codexModels, piModels], transcriptModel: (agent) => conversations.model(agent) }),
     uploads: new Uploads(),
   };
 
