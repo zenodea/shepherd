@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { BatteryCharging, Bell, BellOff, Check, Fingerprint, Image as ImageIcon, Laptop, LockOpen, QrCode } from "lucide-react-native";
+import { BatteryCharging, Bell, BellOff, BellRing, Check, Fingerprint, Image as ImageIcon, Laptop, LockOpen, QrCode } from "lucide-react-native";
 import { setImagesShown, useImagesShown } from "../agents/image-setting";
 import { setAnswerUnlocked, useAnswerUnlocked } from "../notifications/lock-screen-setting";
 import { useEffect, useState } from "react";
@@ -35,6 +35,15 @@ export default function SettingsScreen() {
     const sub = AppState.addEventListener("change", (s) => s === "active" && check());
     return () => sub.remove();
   }, []);
+
+  /** Shows one right away, the way agents' notifications are shown, or says why it can't. */
+  const testNotification = async () => {
+    try {
+      await Background!.notify({ id: 1, channel: "finished", title: "Shepherd test", body: "Notifications work. Agents' ones show up like this when Shepherd isn't open.", url: "shepherd://settings", paneId: "", answers: [], timeoutMs: 15_000 });
+    } catch (err) {
+      Alert.alert("Couldn't show a notification", (err as Error).message);
+    }
+  };
 
   const toggleNotifications = async (on: boolean) => {
     if (!(await setNotificationsEnabled(on)) && on) {
@@ -159,6 +168,8 @@ export default function SettingsScreen() {
                     chevron={false}
                     trailing={<Toggle value={answerUnlocked} onValueChange={setAnswerUnlocked} />}
                   />
+                  <Divider inset={56} />
+                  <ListRow icon={<BellRing size={19} color={colors.muted} />} title="Send a test notification" chevron={false} onPress={() => void testNotification()} />
                 </>
               ) : null}
             </ListGroup>

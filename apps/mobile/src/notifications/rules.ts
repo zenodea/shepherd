@@ -19,13 +19,16 @@ export function agentLabel(agent: AgentInfo | null, paneId: string): string {
 /** "claude needs input" when an agent asks something, "claude finished" when it's done working. */
 export function alertFor(change: StatusChange, hostName: string): AgentAlert | null {
   if (change.previous === change.status) return null;
-  if (change.status !== "blocked" && change.status !== "done") return null;
+  // herdr says done or idle for a finished turn (idle when it counts the pane as seen): both are finished,
+  // unless you're looking at that pane on the computer right now.
+  const finished = change.status === "done" || (change.status === "idle" && !change.agent?.focused);
+  if (change.status !== "blocked" && !finished) return null;
   // Finished: after working, or after a question (answered somewhere, then it carried on and finished).
-  if (change.status === "done" && change.previous !== "working" && change.previous !== "blocked") return null;
+  if (finished && change.previous !== "working" && change.previous !== "blocked") return null;
   const agent = change.agent;
   const detail = agent?.terminal_title_stripped || agent?.title || agent?.cwd?.split("/").filter(Boolean).pop() || change.paneId;
   const verb = change.status === "blocked" ? "needs input" : "finished";
-  return { paneId: change.paneId, kind: change.status, title: `${agentLabel(agent, change.paneId)} ${verb}`, body: `${detail} · ${hostName}` };
+  return { paneId: change.paneId, kind: finished ? "done" : "blocked", title: `${agentLabel(agent, change.paneId)} ${verb}`, body: `${detail} · ${hostName}` };
 }
 
 /**

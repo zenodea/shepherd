@@ -9,6 +9,10 @@ describe("alertFor", () => {
   it("notifies when an agent needs input or finishes working", () => {
     expect(alertFor(change("blocked", "working"), "studio")).toEqual({ paneId: "w1:p1", kind: "blocked", title: "claude needs input", body: "Fix login test · studio" });
     expect(alertFor(change("done", "working"), "studio")?.title).toBe("claude finished");
+    // herdr says idle, not done, for a turn it counts as seen: still finished.
+    expect(alertFor(change("idle", "working"), "studio")).toMatchObject({ kind: "done", title: "claude finished" });
+    expect(alertFor(change("idle", "blocked"), "studio")?.kind).toBe("done");
+    expect(alertFor({ ...change("idle", "working"), agent: { ...change("idle", "working").agent!, focused: true } }, "studio")).toBeNull();
   });
 
   it("stays quiet otherwise", () => {

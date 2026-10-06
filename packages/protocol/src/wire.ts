@@ -99,6 +99,7 @@ export const HOST_METHODS = [
   "shepherd.folders",
   "shepherd.make_folder",
   "shepherd.commands",
+  "shepherd.log",
   "shepherd.model",
   "shepherd.set_model",
 ] as const;

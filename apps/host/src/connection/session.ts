@@ -287,6 +287,12 @@ export class AppSession {
     if (method === "shepherd.model" || method === "shepherd.set_model") return this.model(method, params);
     const conversation = this.conversationCall(method, params);
     if (conversation) return conversation;
+    // The phone's account of what it did in the background (notifications), for this host's log.
+    if (method === "shepherd.log") {
+      if (typeof params.text !== "string") return Promise.reject(new LaunchError("invalid_params", "shepherd.log needs text"));
+      console.log(`[phone ${this.device?.name ?? "?"}] ${params.text.replace(/[\u0000-\u001f]/g, " ").slice(0, 300)}`);
+      return Promise.resolve({});
+    }
     if (method === "shepherd.commands") {
       if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.commands needs a paneId"));
       const commands = this.deps.commands;

@@ -119,6 +119,8 @@ export function BackgroundNotifications() {
     const native = Background;
     if (!client || !native) return;
     const cooldown = new Cooldown();
+    // What happened to each alert, in the computer's Shepherd log: nothing on a phone shows why one didn't come.
+    const report = (text: string) => void client.call("shepherd.log", { text }).catch(() => {});
 
     /** Post the notification for a change (`again`: a follow-up question, so skip the cooldown). */
     const post = async (change: StatusChange, again = false) => {
@@ -139,27 +141,35 @@ export function BackgroundNotifications() {
           : content.write
             ? { replyHint: `Answer ${name}…`, replyKey: content.write.key, replyLabel: content.write.label }
             : {};
-      await native.notify({
-        id: notificationId(change.paneId),
-        channel: alert.kind === "blocked" ? "input" : "finished",
-        title: content.alert.title,
-        body: content.alert.body,
-        url: agentLink(change.paneId, hostId),
-        paneId: change.paneId,
-        answers: content.actions,
-        timeoutMs: 0,
-        ...reply,
-        requireAuth,
-        privateContent,
-      });
+      await native
+        .notify({
+          id: notificationId(change.paneId),
+          channel: alert.kind === "blocked" ? "input" : "finished",
+          title: content.alert.title,
+          body: content.alert.body,
+          url: agentLink(change.paneId, hostId),
+          paneId: change.paneId,
+          answers: content.actions,
+          timeoutMs: 0,
+          ...reply,
+          requireAuth,
+          privateContent,
+        })
+        .then(
+          () => report(`notified "${content.alert.title}"`),
+          (err: Error) => report(`couldn't show "${content.alert.title}": ${err.message}`),
+        );
     };
 
     const onChange = (change: StatusChange) => {
       if (!latest.current.active) return;
       // Answered somewhere else: the question is gone, so is its notification.
       if (change.previous === "blocked" && change.status !== "blocked") void native.cancel(notificationId(change.paneId)).catch(() => {});
-      if (AppState.currentState === "active") return;
-      void post(change).catch(() => {});
+      if (AppState.currentState === "active") {
+        if (alertFor(change, "")) report(`no notification for ${change.paneId} (${change.previous} → ${change.status}): Shepherd is open`);
+        return;
+      }
+      void post(change).catch((err: Error) => report(`couldn't notify ${change.paneId} (${change.previous} → ${change.status}): ${err.message}`));
     };
     const unsubscribeChanges = client.onStatusChange(onChange);
 
