@@ -73,7 +73,7 @@ class ShepherdBackgroundModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ShepherdBackground")
 
-    Events("onAnswer", "onTick", "onShare")
+    Events("onAnswer", "onTick", "onShare", "onDismiss")
 
     OnCreate { current = this@ShepherdBackgroundModule }
     OnDestroy {
@@ -160,6 +160,10 @@ class ShepherdBackgroundModule : Module() {
       Notifications.isShowing(context, id)
     }
 
+    Function("notificationState") { channel: String ->
+      Notifications.state(context, channel)
+    }
+
     // An image from a conversation into the phone's Pictures/Shepherd (see ImageSaver).
     AsyncFunction("saveImage") { base64: String, mime: String, name: String ->
       ImageSaver.save(context, base64, mime, name)
@@ -201,6 +205,11 @@ class ShepherdBackgroundModule : Module() {
     const val TICK_MS = 15_000L
 
     @Volatile private var current: ShepherdBackgroundModule? = null
+
+    /** A notification of ours was dismissed by Android or by you. */
+    fun emitDismissed(notificationId: Int) {
+      current?.sendEvent("onDismiss", bundleOf("notificationId" to notificationId))
+    }
 
     /** Hand a pressed answer button, or a typed reply, to JS. False when the app's JS isn't running. */
     fun emitAnswer(notificationId: Int, paneId: String, key: String, label: String, reply: String?): Boolean {

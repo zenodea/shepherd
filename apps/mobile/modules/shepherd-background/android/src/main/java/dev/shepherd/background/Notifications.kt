@@ -120,6 +120,15 @@ object Notifications {
       .setCategory(if (channel == CHANNEL_INPUT) NotificationCompat.CATEGORY_MESSAGE else NotificationCompat.CATEGORY_STATUS)
       .setGroup(GROUP_AGENTS)
     if (timeoutMs > 0) builder.setTimeoutAfter(timeoutMs)
+    // Tells the app when Android or you dismiss it (not when the app removes it), to find what's removing them.
+    builder.setDeleteIntent(
+      PendingIntent.getBroadcast(
+        context,
+        id * 8 + 6,
+        Intent(context, ActionReceiver::class.java).setAction(ActionReceiver.ACTION_DISMISSED).putExtra(ActionReceiver.EXTRA_NOTIFICATION_ID, id),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+      ),
+    )
     builder.setVisibility(if (privateContent) NotificationCompat.VISIBILITY_PRIVATE else NotificationCompat.VISIBILITY_PUBLIC)
     answers.forEachIndexed { index, answer ->
       val intent = actionIntent(context, id, paneId, url, answer.key, answer.label)
@@ -193,7 +202,7 @@ object Notifications {
   }
 
   /** What decides whether a notification shows: the app's switch, the permission, the category's importance, Do Not Disturb. */
-  private fun state(context: Context, channel: String): String {
+  fun state(context: Context, channel: String): String {
     val manager = context.getSystemService(NotificationManager::class.java)
     val permission = Build.VERSION.SDK_INT < 33 ||
       context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED

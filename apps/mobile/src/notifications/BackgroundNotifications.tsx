@@ -141,10 +141,11 @@ export function BackgroundNotifications() {
           : content.write
             ? { replyHint: `Answer ${name}…`, replyKey: content.write.key, replyLabel: content.write.label }
             : {};
+      const channel = alert.kind === "blocked" ? "input" : "finished";
       await native
         .notify({
           id: notificationId(change.paneId),
-          channel: alert.kind === "blocked" ? "input" : "finished",
+          channel,
           title: content.alert.title,
           body: content.alert.body,
           url: agentLink(change.paneId, hostId),
@@ -160,7 +161,7 @@ export function BackgroundNotifications() {
             report(`"${content.alert.title}": ${result}`);
             // Still there a moment later? If not, something removed it before you could see it.
             const id = notificationId(change.paneId);
-            setTimeout(() => report(`"${content.alert.title}" after 3 s: ${native.isShowing(id) ? "still showing" : "gone"}`), 3000);
+            setTimeout(() => report(`"${content.alert.title}" after 3 s: ${native.isShowing(id) ? "still showing" : "gone"} (${native.notificationState(channel)})`), 3000);
           },
           (err: Error) => report(`couldn't show "${content.alert.title}": ${err.message}`),
         );
@@ -169,7 +170,10 @@ export function BackgroundNotifications() {
     const onChange = (change: StatusChange) => {
       if (!latest.current.active) return;
       // Answered somewhere else: the question is gone, so is its notification.
-      if (change.previous === "blocked" && change.status !== "blocked") void native.cancel(notificationId(change.paneId)).catch(() => {});
+      if (change.previous === "blocked" && change.status !== "blocked") {
+        report(`removing ${change.paneId}'s notification: it stopped waiting (${change.previous} → ${change.status})`);
+        void native.cancel(notificationId(change.paneId)).catch(() => {});
+      }
       if (AppState.currentState === "active") {
         if (alertFor(change, "")) report(`no notification for ${change.paneId} (${change.previous} → ${change.status}): Shepherd is open`);
         return;
@@ -177,6 +181,7 @@ export function BackgroundNotifications() {
       void post(change).catch((err: Error) => report(`couldn't notify ${change.paneId} (${change.previous} → ${change.status}): ${err.message}`));
     };
     const unsubscribeChanges = client.onStatusChange(onChange);
+    const dismissed = native.addListener("onDismiss", (event) => report(`notification ${event.notificationId} dismissed by Android or by you`));
 
     // The host sends changes as they happen; if the connection was down when an
     // agent finished or started asking, catch up from the snapshot on reconnecting.
@@ -271,6 +276,7 @@ export function BackgroundNotifications() {
 
     return () => {
       unsubscribeChanges();
+      dismissed.remove();
       unsubscribeState();
       answers.remove();
     };

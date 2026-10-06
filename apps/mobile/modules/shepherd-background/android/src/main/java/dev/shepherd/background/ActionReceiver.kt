@@ -12,6 +12,10 @@ import androidx.core.app.RemoteInput
 class ActionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     val id = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0)
+    if (intent.action == ACTION_DISMISSED) {
+      ShepherdBackgroundModule.emitDismissed(id)
+      return
+    }
     val paneId = intent.getStringExtra(EXTRA_PANE_ID) ?: return
     val key = intent.getStringExtra(EXTRA_KEY) ?: return
     val label = intent.getStringExtra(EXTRA_LABEL) ?: key
@@ -31,5 +35,6 @@ class ActionReceiver : BroadcastReceiver() {
     const val EXTRA_KEY = "key"
     const val EXTRA_LABEL = "label"
     const val EXTRA_URL = "url"
+    const val ACTION_DISMISSED = "dev.shepherd.background.DISMISSED"
   }
 }
