@@ -184,7 +184,7 @@ export default function TerminalScreen() {
   const scrollback = scrollbackState.paneId === paneId ? scrollbackState.lines : NO_LINES;
   const agentStatus = agent?.agent_status ?? null;
   const isAgent = agent !== null;
-  const conversation = useConversation(client, isAgent ? paneId : null, online);
+  const conversation = useConversation(client, isAgent ? paneId : null, online, null, settings?.id ?? null);
   // The chat only gets a reply once it's finished; meanwhile, show what the agent's screen says it's doing.
   const activity = useActivityLine(client, paneId, online && agent?.agent_status === "working" && view === "chat");
   const chatAvailable = isAgent && conversation.available !== false;

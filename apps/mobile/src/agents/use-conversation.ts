@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ContextUsage, ConversationEntry, ConversationResult, QueuedMessage, Subagent } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
+import { loadChat, saveChat } from "../connection/offline-store";
 
 const PAGE = 150;
 /** While the conversation is on screen: new messages show up within this. */
 const POLL_MS = 1000;
 /** No transcript yet (the agent hasn't written one, or its harness isn't supported): check now and then. */
 const RETRY_MS = 10_000;
+/** How long after the last change the phone's copy is written. */
+const SAVE_MS = 1500;
 
 type State = {
   /** The pane, and the subagent when it's one of the agent's subagents. */
@@ -23,6 +26,8 @@ type State = {
   /** How full its context is, as of the last poll. */
   context: ContextUsage | null;
   subagents: Subagent[];
+  /** The phone's copy from last time, shown until the host answers (and all along without a connection). */
+  saved: boolean;
 };
 
 const EMPTY: State = {
@@ -36,6 +41,7 @@ const EMPTY: State = {
   queued: [],
   context: null,
   subagents: [],
+  saved: false,
 };
 
 function merge(older: ConversationEntry[], newer: ConversationEntry[]): ConversationEntry[] {
@@ -47,10 +53,17 @@ function merge(older: ConversationEntry[], newer: ConversationEntry[]): Conversa
  * An agent's conversation from its transcript on the host: the latest page,
  * then new entries as they're written, and older pages on request.
  */
-export function useConversation(client: HostConnection | null, paneId: string | null, online: boolean, subagent: string | null = null) {
+export function useConversation(client: HostConnection | null, paneId: string | null, online: boolean, subagent: string | null = null, hostId: string | null = null) {
   const scope = paneId && (subagent ? `${paneId}/${subagent}` : paneId);
   const [state, setState] = useState<State>(EMPTY);
-  const current = state.scope === scope ? state : { ...EMPTY, scope };
+  // What this chat looked like last time, read from the phone: something to read at once, and offline.
+  const saved = useMemo(() => (hostId && scope ? loadChat(hostId, scope) : null), [hostId, scope]);
+  const current: State =
+    state.scope === scope
+      ? state
+      : saved
+        ? { ...EMPTY, scope, available: true, agent: saved.agent, session: saved.session, entries: saved.entries, first: saved.first, subagents: saved.subagents, saved: true }
+        : { ...EMPTY, scope };
   const stateRef = useRef(current);
   useEffect(() => {
     stateRef.current = current;
@@ -65,7 +78,8 @@ export function useConversation(client: HostConnection | null, paneId: string | 
 
     const poll = async () => {
       const known = stateRef.current;
-      let fresh = known.scope !== scope || known.session === null;
+      // Showing the phone's copy: start from the host's latest page (and keep the copy's older messages if it's the same session).
+      let fresh = known.scope !== scope || known.session === null || known.saved;
       let next = RETRY_MS;
       try {
         const latest = () =>
@@ -99,11 +113,12 @@ export function useConversation(client: HostConnection | null, paneId: string | 
             reason: null,
             agent: result.agent,
             session: result.session,
-            entries: result.entries,
+            entries: known.saved && known.session === result.session ? merge(known.entries, result.entries) : result.entries,
             first: result.first,
             queued: result.queued ?? [],
             context: result.context ?? null,
             subagents: result.subagents ?? [],
+            saved: false,
           });
           next = POLL_MS;
         } else {
@@ -130,6 +145,14 @@ export function useConversation(client: HostConnection | null, paneId: string | 
       if (timer) clearTimeout(timer);
     };
   }, [client, paneId, subagent, scope, online]);
+
+  // Keep the phone's copy up to date with what the host sent.
+  useEffect(() => {
+    if (!hostId || !scope || current.saved || !current.available || !current.session) return;
+    const chat = { agent: current.agent, session: current.session, entries: current.entries, first: current.first, subagents: current.subagents };
+    const timer = setTimeout(() => saveChat(hostId, scope, chat), SAVE_MS);
+    return () => clearTimeout(timer);
+  }, [hostId, scope, current.saved, current.available, current.agent, current.session, current.entries, current.first, current.subagents]);
 
   const loadOlder = useCallback(async () => {
     const known = stateRef.current;

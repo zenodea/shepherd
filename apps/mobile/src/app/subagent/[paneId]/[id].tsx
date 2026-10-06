@@ -19,10 +19,10 @@ const NO_QUEUE: QueuedMessage[] = [];
 export default function SubagentScreen() {
   const router = useRouter();
   const { paneId, id } = useLocalSearchParams<{ paneId: string; id: string }>();
-  const { client } = useConnection();
+  const { client, settings } = useConnection();
   const state = useHostState();
   const online = state.status === "online";
-  const conversation = useConversation(client, paneId ?? null, online, id ?? null);
+  const conversation = useConversation(client, paneId ?? null, online, id ?? null, settings?.id ?? null);
   const subagent = conversation.subagents.find((s) => s.id === id) ?? null;
   const imagesShown = useImagesShown();
 

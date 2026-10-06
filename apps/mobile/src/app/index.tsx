@@ -535,6 +535,9 @@ function BlockedCard({
       </PressableScale>
       {prompt ? (
         <PromptCard key={JSON.stringify(prompt)} client={client} paneId={agent.pane_id} prompt={prompt} />
+      ) : client?.getState().status !== "online" ? (
+        // The phone's copy from last time: the question can only be read, and answered, once connected.
+        <Text style={type.sub}>Waiting for an answer when you last saw it. Reconnect to answer.</Text>
       ) : (
         <ActivityIndicator color={colors.muted} style={{ alignSelf: "flex-start" }} />
       )}

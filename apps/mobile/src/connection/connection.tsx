@@ -3,6 +3,7 @@ import { AppState, Platform } from "react-native";
 import { combineStores, peerHosts } from "./computers";
 import { DEMO_ENABLED, DEMO_LAPTOP_SETTINGS, DEMO_MODE, DEMO_SETTINGS, DemoHost } from "./demo-host";
 import { HostClient, type ConnectionSettings, type HostConnection, type HostState } from "./host-client";
+import { forgetSaved, loadAgents, saveAgents } from "./offline-store";
 import { deleteHost, hostIdFor, loadHosts, saveHost, saveHostList, type HostList, type SavedHost } from "./settings-store";
 
 /** A paired computer and its connection. */
@@ -82,6 +83,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         : new HostClient(host, {
             deviceName: deviceName(),
             onSettingsChange: (next) => updateHost({ ...next, id: host.id }),
+            agents: loadAgents(host.id),
           }),
     [updateHost],
   );
@@ -171,11 +173,36 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       const activeId = listRef.current.activeId === target ? (hosts[0]?.id ?? null) : listRef.current.activeId;
       const updated = { hosts, activeId };
       await deleteHost(target, updated);
+      forgetSaved(target);
       apply(updated);
       if (target === settings?.id) setSettings(hosts.find((h) => h.id === activeId) ?? null);
     },
     [apply, settings],
   );
+
+  // Each computer's agents, kept on the phone while connected, for reading without a connection next time.
+  useEffect(() => {
+    if (DEMO_ENABLED) return;
+    const stops = computers.map(({ host, client: c }) => {
+      let last = "";
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const save = () => {
+        const state = c.getState();
+        if (state.status !== "online") return;
+        const json = JSON.stringify(state.agents);
+        if (json === last) return;
+        last = json;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => saveAgents(host.id, state.agents), 2000);
+      };
+      const unsubscribe = c.subscribe(save);
+      return () => {
+        unsubscribe();
+        if (timer) clearTimeout(timer);
+      };
+    });
+    return () => stops.forEach((stop) => stop());
+  }, [computers]);
 
   const value = useMemo(
     () => ({ settings, hosts: list.hosts, client, computers, connect, switchTo, forget }),

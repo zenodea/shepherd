@@ -164,13 +164,14 @@ export class HostClient {
 
   constructor(
     settings: ConnectionSettings,
-    opts: { deviceName?: string; onSettingsChange?: (settings: ConnectionSettings) => void } = {},
+    /** `agents`: the ones seen last time, shown until the host sends its own (and all along offline). */
+    opts: { deviceName?: string; onSettingsChange?: (settings: ConnectionSettings) => void; agents?: AgentInfo[] } = {},
   ) {
     this.settings = settings;
     this.savedHostKey = settings.hostKey;
     this.deviceName = opts.deviceName ?? "Phone";
     this.onSettingsChange = opts.onSettingsChange ?? (() => {});
-    this.state = { status: "idle", error: null, host: null, activeUrl: null, urls: settings.urls, device: null, agents: [] };
+    this.state = { status: "idle", error: null, host: null, activeUrl: null, urls: settings.urls, device: null, agents: opts.agents ?? [] };
   }
 
   getState = (): HostState => this.state;
