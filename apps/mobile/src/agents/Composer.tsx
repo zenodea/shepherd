@@ -67,14 +67,15 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
   // "/" commands: suggestions while you type a name, then what it takes once you've picked one.
   const commands = useSlashCommands(client, agent?.pane_id ?? null, draft.startsWith("/"));
   const naming = /^\/\S*$/.test(draft);
-  const suggestions = naming && !typing ? matchCommands(commands, draft) : [];
+  // Only in the chat: the terminal view keeps to the terminal (things appearing here would resize it).
+  const suggestions = naming && !typing && chat ? matchCommands(commands, draft) : [];
   const picked = !naming ? commandIn(commands, draft) : null;
   const hint = picked?.hint && draft.trim() === picked.name ? picked.hint : null;
   // Saved replies: only while you're about to write (the box focused and empty), so they're out of sight otherwise.
   const replies = useSavedReplies();
   const [focused, setFocused] = useState(false);
   const [editing, setEditing] = useState<{ reply?: string } | null>(null);
-  const showReplies = focused && !draft && !typing && attachments.attachments.length === 0;
+  const showReplies = chat && focused && !draft && !typing && attachments.attachments.length === 0;
   const replyOptions = (reply: string) =>
     Alert.alert(reply, undefined, [
       { text: "Edit", onPress: () => setEditing({ reply }) },

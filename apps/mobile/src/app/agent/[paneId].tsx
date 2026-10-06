@@ -103,8 +103,6 @@ export default function TerminalScreen() {
   const workspaceId = agent?.workspace_id ?? paneId?.split(":")[0] ?? null;
   const { tabs, panes } = useWorkspaceTabs(client, workspaceId, state.agents);
   const pane = panes.find((p) => p.pane_id === paneId) ?? null;
-  const agentsForPrompt = useMemo(() => (agent ? [agent] : []), [agent]);
-  const prompt = useBlockedPrompts(client, agentsForPrompt)[paneId ?? ""];
   const online = state.status === "online";
   const imagesShown = useImagesShown();
   const actions = useAgentActions(client, {
@@ -189,6 +187,10 @@ export default function TerminalScreen() {
   const activity = useActivityLine(client, paneId, online && agent?.agent_status === "working" && view === "chat");
   const chatAvailable = isAgent && conversation.available !== false;
   const chat = chatAvailable && view === "chat";
+  // The question an agent is asking, for answer chips in the chat. Not in the terminal view: the terminal
+  // shows it, and chips coming and going there resize the terminal, which redraws the question, and so on.
+  const agentsForPrompt = useMemo(() => (agent && chat ? [agent] : []), [agent, chat]);
+  const prompt = useBlockedPrompts(client, agentsForPrompt)[paneId ?? ""];
   const readable = agentStatus === "idle" || agentStatus === "done";
   // Counts the agent's turns: each time it goes back to work, its transcript goes stale.
   const [turn, setTurn] = useState({ paneId, status: agentStatus, n: 0 });
@@ -481,7 +483,8 @@ export default function TerminalScreen() {
         }
       />
 
-      {changed || subagentsLabel ? (
+      {/* The terminal view keeps to the terminal: these come and go, and would resize it. */}
+      {chat && (changed || subagentsLabel) ? (
         <View style={styles.pills}>
           {changed ? (
             <PressableScale
@@ -572,7 +575,7 @@ export default function TerminalScreen() {
         <KeyboardCapture ref={capture} onKeys={(data) => stream.current?.input(data)} onActiveChange={setTyping} />
 
         <View style={[styles.bottom, { paddingBottom: keyboard.visible ? space.sm : Math.max(insets.bottom, space.sm) }]}>
-          {agent?.agent_status === "blocked" && prompt ? <PromptChips key={JSON.stringify(prompt)} client={client} paneId={paneId!} prompt={prompt} /> : null}
+          {chat && agent?.agent_status === "blocked" && prompt ? <PromptChips key={JSON.stringify(prompt)} client={client} paneId={paneId!} prompt={prompt} /> : null}
 
           {landscape ? null : (
             <WorkspaceTabs
