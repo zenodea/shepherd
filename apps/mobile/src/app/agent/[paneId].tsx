@@ -3,7 +3,7 @@ import { ArrowDown, Bot, Cpu, Ellipsis, Images, MessageSquareText, Search, Spark
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { TERMINAL_KIND, type PaneReadResult, type SlashCommand, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
+import { TERMINAL_KIND, type ChangesResult, type PaneReadResult, type SlashCommand, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
 import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
 import { Composer } from "../../agents/Composer";
@@ -22,6 +22,7 @@ import { parseAnsi, toStyledLines } from "../../agents/ansi";
 import { PromptChips } from "../../agents/PromptCard";
 import { useBlockedPrompts } from "../../agents/use-blocked-prompts";
 import { useWorkspaceTabs } from "../../agents/use-workspace-tabs";
+import { fingerprint, useReview, viewedKey, type Review } from "../../agents/review";
 import { WorkspaceTabs } from "../../agents/WorkspaceTabs";
 import { useConnection, useHostState } from "../../connection/connection";
 import { HostCallError, type TerminalHandle, type TerminalLines } from "../../connection/host-client";
@@ -78,6 +79,14 @@ type LiveScreen = { paneId: string | null; rows: StyledLine[]; cursor: TerminalL
 const NO_LINES: StyledLine[] = [];
 /** A message you sent, with the pane it went to. */
 type Outgoing = Sending & { paneId: string };
+
+/** "2 comments" while a review waits to be sent, else "3 left to view" once some are viewed; nothing before you start. */
+function reviewLabel(review: Review, changes: Extract<ChangesResult, { available: true }>): string | null {
+  if (review.comments.length) return `${review.comments.length} comment${review.comments.length === 1 ? "" : "s"}`;
+  const files = changes.files.filter((f) => !f.generated);
+  const viewed = files.filter((f) => review.viewed[viewedKey(changes.mode, f.path)] === fingerprint(f)).length;
+  return viewed > 0 && viewed < files.length ? `${files.length - viewed} left to view` : null;
+}
 
 export default function TerminalScreen() {
   const { paneId, host: linkedHost } = useLocalSearchParams<{ paneId: string; host?: string }>();
@@ -432,6 +441,9 @@ export default function TerminalScreen() {
   const usage = isAgent ? contextLabel(conversation.context) : null;
   const { changes } = useChanges(client, isAgent ? paneId : null, online, agentStatus);
   const changed = changes?.available && changes.files.length > 0 ? changes : null;
+  // Once you've started reviewing: what's left to look at, and comments not sent yet.
+  const review = useReview(`${settings?.id ?? "none"}:${paneId}`);
+  const reviewNote = changed ? reviewLabel(review, changed) : null;
   const subagentsLabel = subagentsPill(conversation.subagents);
 
   return (
@@ -481,7 +493,11 @@ export default function TerminalScreen() {
                 {`${changed.files.length + (changed.omitted ?? 0)} file${changed.files.length + (changed.omitted ?? 0) === 1 ? "" : "s"}  ·  `}
               </Text>
               <Counts additions={changed.additions} deletions={changed.deletions} size={12.5} />
-              {changed.mode === "branch" ? (
+              {reviewNote ? (
+                <Text style={[styles.changesText, styles.pillFlexible]} numberOfLines={1}>
+                  {`  ·  ${reviewNote}`}
+                </Text>
+              ) : changed.mode === "branch" ? (
                 <Text style={[styles.changesText, styles.pillFlexible, styles.pillBranch]} numberOfLines={1}>
                   {`·  on ${changed.branch}`}
                 </Text>

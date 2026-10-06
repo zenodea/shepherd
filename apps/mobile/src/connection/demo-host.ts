@@ -79,18 +79,61 @@ const LOGIN_EDIT: FileDiff = {
   ],
 };
 
+const ctx = (n: number, text: string) => ({ kind: "ctx" as const, text, old: n, new: n });
+const SESSION_EDIT: FileDiff = {
+  path: "src/auth/session.ts",
+  additions: 7,
+  deletions: 2,
+  hunks: [
+    {
+      oldStart: 1,
+      newStart: 1,
+      lines: [
+        ctx(1, 'import { EventEmitter } from "node:events";'),
+        ctx(2, 'import type { User } from "./user";'),
+        ctx(3, ""),
+        { kind: "del", text: "const FLUSH_TIMEOUT_MS = 2000;", old: 4 },
+        { kind: "add", text: "const FLUSH_TIMEOUT_MS = 5000;", new: 4 },
+        ctx(5, ""),
+        ctx(6, "export class Session extends EventEmitter {"),
+        ctx(7, '  state: "pending" | "signed-in" | "signed-out" = "pending";'),
+        ctx(8, "  user: User | null = null;"),
+        ctx(9, ""),
+        ctx(10, "  constructor(private readonly store: Storage) {"),
+        ctx(11, "    super();"),
+        ctx(12, "  }"),
+        ctx(13, ""),
+        ctx(14, "  async signIn(user: User): Promise<void> {"),
+        ctx(15, "    this.user = user;"),
+        { kind: "del", text: '    this.state = "signed-in";', old: 16 },
+        { kind: "add", text: '    // Wait for the token to be written before anyone reads the state.', new: 16 },
+        { kind: "add", text: "    await this.flush();", new: 17 },
+        { kind: "add", text: '    this.state = "signed-in";', new: 18 },
+        { kind: "add", text: '    this.emit("change", this.state);', new: 19 },
+        { kind: "ctx", text: "  }", old: 17, new: 20 },
+        { kind: "ctx", text: "", old: 18, new: 21 },
+        { kind: "add", text: "  /** Resolves once the session is on disk. */", new: 22 },
+        { kind: "add", text: "  get flushed(): Promise<void> {", new: 23 },
+      ],
+    },
+  ],
+};
+
 const CHANGES: ChangesResult = {
   available: true,
   mode: "uncommitted",
   branch: "fix-login-flake",
   base: "main",
   canCompareBranch: true,
-  additions: 31,
+  additions: 32,
   deletions: 6,
   files: [
     { path: "src/auth/login.test.ts", status: "modified", additions: 2, deletions: 1, binary: false, generated: false, mention: "src/auth/login.test.ts" },
     { path: "src/auth/signup.test.ts", status: "modified", additions: 4, deletions: 2, binary: false, generated: false, mention: "src/auth/signup.test.ts" },
-    { path: "src/auth/session.ts", status: "modified", additions: 25, deletions: 3, binary: false, generated: false, mention: "src/auth/session.ts" },
+    { path: "src/auth/session.ts", status: "modified", additions: 7, deletions: 2, binary: false, generated: false, mention: "src/auth/session.ts" },
+    { path: "src/auth/flush.ts", status: "added", additions: 18, deletions: 0, binary: false, generated: false, mention: "src/auth/flush.ts" },
+    { path: "README.md", status: "modified", additions: 1, deletions: 1, binary: false, generated: false, mention: "README.md" },
+    { path: "package-lock.json", status: "modified", additions: 40, deletions: 12, binary: false, generated: true, mention: "package-lock.json" },
   ],
 };
 
@@ -462,7 +505,7 @@ export class DemoHost implements HostConnection {
       case "shepherd.changes":
         return (params.paneId === "w1:p1" ? CHANGES : { available: false, reason: "No changes in the demo for this agent." }) as T;
       case "shepherd.file_diff":
-        return { available: true, diff: { ...LOGIN_EDIT, path: String(params.path) } } satisfies FileDiffResult as T;
+        return { available: true, diff: params.path === SESSION_EDIT.path ? SESSION_EDIT : { ...LOGIN_EDIT, path: String(params.path) } } satisfies FileDiffResult as T;
       case "shepherd.activity":
         return { entries: (params as { before?: number }).before ? [] : demoActivity() } as T;
       case "shepherd.start_agent":

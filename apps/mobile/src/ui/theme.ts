@@ -536,6 +536,10 @@ function derive(p: Palette, dark: boolean) {
     link: alpha(p.terminalText, 0.45),
     /** Links in the chat: the theme's bright blue. */
     linkText: p.ansi[12] ?? p.brand,
+    /** Code in diffs, from the theme's terminal colours: keywords magenta, strings green, numbers yellow. */
+    syntaxKeyword: p.ansi[5] ?? p.text,
+    syntaxString: p.ansi[2] ?? p.text,
+    syntaxNumber: p.ansi[3] ?? p.text,
     match: alpha(p.brand, dark ? 0.35 : 0.28),
     backdrop: dark ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.3)",
     dark,

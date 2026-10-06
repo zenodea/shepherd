@@ -97,7 +97,7 @@ const RowView = memo(function RowView({ row }: { row: Row }) {
           {call.diff ? (
             // Exactly what this edit changed; its output only matters if it failed.
             <>
-              <DiffView diff={call.diff} compact />
+              <DiffView diff={call.diff} />
               {result && !result.ok ? <Output text={result.output} /> : null}
             </>
           ) : (
