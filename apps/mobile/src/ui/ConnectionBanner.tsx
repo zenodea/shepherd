@@ -7,5 +7,6 @@ export function ConnectionBanner({ pairHint }: { pairHint?: string }) {
   if (state.status === "online") return null;
   if (state.status === "unauthorized") return <Banner tone="danger">{[state.error ?? "Not paired.", pairHint].filter(Boolean).join(" ")}</Banner>;
   if (state.status === "connecting") return <Banner>Connecting…</Banner>;
-  return <Banner>Can&apos;t reach your computer. Retrying…</Banner>;
+  // Offline, the agents and chats on screen are the phone's copy from last time: say so plainly.
+  return <Banner tone="danger">{state.agents.length ? "Offline · showing what you last saw. Retrying…" : "Offline · can't reach your computer. Retrying…"}</Banner>;
 }

@@ -599,6 +599,7 @@ export default function TerminalScreen() {
             agent={agent}
             draftKey={draftKey}
             chat={chat}
+            online={online}
             typing={typing}
             onToggleTyping={toggleTyping}
             onKeys={(keys, confirm) => void sendKeys(keys, confirm)}

@@ -39,6 +39,8 @@ type Props = {
   /** Unsent text is kept under this (per computer and pane); remount with it as the key so images stay with their pane. */
   draftKey: string;
   chat: boolean;
+  /** Offline: what you write stays in the box (and is kept), ready to send once connected. */
+  online: boolean;
   /** Typing straight into the terminal: the message box steps aside. */
   typing: boolean;
   onToggleTyping: () => void;
@@ -48,7 +50,7 @@ type Props = {
 };
 
 /** The quick keys and the message box, with its own state so typing doesn't redraw the conversation. */
-export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping, onKeys, onSend }: Props) {
+export function Composer({ client, agent, draftKey, chat, online, typing, onToggleTyping, onKeys, onSend }: Props) {
   const [draft, setDraft] = useState("");
   // Unsent text is kept per agent: switching agents or leaving keeps it.
   const draftsReady = useDraftsReady();
@@ -94,7 +96,7 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
     setSending(false);
   };
 
-  const canSend = (draft.trim().length > 0 || attachments.ready) && !attachments.uploading && !sending;
+  const canSend = online && (draft.trim().length > 0 || attachments.ready) && !attachments.uploading && !sending;
 
   return (
     <>
@@ -193,7 +195,11 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
             multiline
           />
           {/* Separate keys: Android draws a restyled stop button wrong, so each is its own view. */}
-          {canSend || sending ? (
+          {!online && draft.trim() ? (
+            <View key="offline" style={[styles.send, styles.sendOffline]} accessibilityLabel="Can't send while offline">
+              <ArrowUp size={18} color={colors.muted} strokeWidth={2.5} />
+            </View>
+          ) : canSend || sending ? (
             <PressableScale key="send" onPress={submit} disabled={!canSend} style={styles.send} accessibilityLabel="Send">
               <ArrowUp size={18} color={colors.onPrimary} strokeWidth={2.5} />
             </PressableScale>
@@ -207,6 +213,7 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
       ) : (
         <Text style={styles.typingHint}>Typing into the terminal · tap ⌨ to stop</Text>
       )}
+      {!online && !typing && draft.trim() ? <Text style={styles.offlineHint}>Offline · your message stays here until you&apos;re back</Text> : null}
       <PromptSheet
         visible={editing !== null}
         title={editing?.reply ? "Edit saved reply" : "New saved reply"}
@@ -293,5 +300,7 @@ const styles = themed(() => StyleSheet.create({
   reply: { height: 30, minWidth: 30, paddingHorizontal: 12, borderRadius: 15, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center" },
   replyText: { fontSize: 13, color: colors.text, maxWidth: 220 },
   hint: { marginHorizontal: 24, marginBottom: 6, fontFamily: fonts.mono, fontSize: 12.5, color: colors.muted },
+  sendOffline: { backgroundColor: colors.raised },
+  offlineHint: { fontSize: 12, color: colors.muted, textAlign: "center", paddingTop: 6 },
   typingHint: { fontSize: 12.5, color: colors.muted, textAlign: "center", paddingVertical: 12 },
 }));
