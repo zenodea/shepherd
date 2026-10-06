@@ -138,6 +138,7 @@ description = "pair a phone"
 
 - **See every agent at a glance.** Agents that need input come first, with their question and one button per answer. Under each agent, "Last done: 12m ago" says when it last finished a turn.
 - **Send images.** The image button next to the message box sends a photo or screenshot to the agent: it's saved on your computer (in a temporary folder, cleared after a week) and its path goes into your message, for the agent to open.
+- **Share to Shepherd.** Share a link, text, a screenshot or photos from any app on your phone, pick the agent, add a note if you like, and it's sent.
 - **Read the conversation.** Agents open on their conversation (your messages, their replies and each tool call), read from what the agent itself records: Claude Code, Codex, Gemini CLI, OpenCode, Hermes and pi. It scrolls like a chat app, older messages load as you scroll up, runs of tool calls fold into one line, and the header shows how full the agent's context is.
 - **Formatted replies.** Tables, lists, checklists, quotes, headings and code come out formatted, and links open in your browser. Wide tables scroll sideways.
 - **See the images it read.** Images the agent looked at, and ones you pasted, appear in the chat: tap to load, zoom and save to Pictures/Shepherd. **Settings → Show images** loads them as they appear, and the agent's **⋯** menu lists them all.

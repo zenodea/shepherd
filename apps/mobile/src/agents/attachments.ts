@@ -9,7 +9,14 @@ const TYPES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpe
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
-async function upload(client: HostConnection, base64: string, mime: string): Promise<string> {
+/** An image's type from its file name, e.g. "shot.png" → "image/png". */
+export function imageMime(name: string): string {
+  const ext = /\.(\w+)(?:\?|$)/.exec(name)?.[1]?.toLowerCase() ?? "";
+  return TYPES[ext] ?? "image/jpeg";
+}
+
+/** Sends an image (base64) to the host; resolves to where it was saved there. */
+export async function upload(client: HostConnection, base64: string, mime: string): Promise<string> {
   const uploadId = newId();
   for (let from = 0; ; from += CHUNK) {
     const done = from + CHUNK >= base64.length;
@@ -33,8 +40,7 @@ export function useAttachments(client: HostConnection | null) {
     for (const asset of picked.assets) {
       const id = newId();
       setAttachments((list) => [...list, { id, uri: asset.uri, state: "uploading" }]);
-      const ext = /\.(\w+)(?:\?|$)/.exec(asset.fileName ?? asset.uri)?.[1]?.toLowerCase() ?? "";
-      const mime = asset.mimeType ?? TYPES[ext] ?? "image/jpeg";
+      const mime = asset.mimeType ?? imageMime(asset.fileName ?? asset.uri);
       if (!asset.base64) {
         update(id, { state: "failed", error: "Couldn't read that image." });
         continue;

@@ -7,6 +7,7 @@ import { ConnectionProvider, useConnection } from "../connection/connection";
 import { BackgroundNotifications } from "../notifications/BackgroundNotifications";
 import { WidgetUpdater } from "../notifications/WidgetUpdater";
 import { AppLockProvider } from "../security/app-lock";
+import { ShareReceiver } from "../share/ShareReceiver";
 import { ThemeProvider, useTheme } from "../ui/ThemeProvider";
 import { colors } from "../ui/theme";
 
@@ -50,6 +51,7 @@ function App() {
         <StartOnAgents />
         <BackgroundNotifications />
         <WidgetUpdater />
+        <ShareReceiver />
         <Stack
           // Redraw every screen (keeping the navigation stack) when the theme changes.
           screenLayout={({ children }) => <Fragment key={version}>{children}</Fragment>}

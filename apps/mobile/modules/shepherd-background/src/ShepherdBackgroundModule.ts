@@ -30,10 +30,22 @@ export type AgentNotification = {
 /** A pressed answer button, or (with `reply`) text typed into the Reply box. */
 export type AnswerEvent = { notificationId: number; paneId: string; key: string; label: string; reply?: string | null };
 
+/** What another app shared to Shepherd: text or a link, and images copied into the app's cache. */
+export type SharedContent = {
+  text?: string | null;
+  subject?: string | null;
+  /** file:// URIs of the copies. */
+  images: string[];
+  /** Images that couldn't be read. */
+  failed: number;
+};
+
 type Events = {
   onAnswer: (event: AnswerEvent) => void;
   /** Every 15 s while the background service runs, even when JS timers are paused. */
   onTick: () => void;
+  /** Something was shared to the running app; take it with takeShare(). */
+  onShare: () => void;
 };
 
 declare class ShepherdBackgroundModule extends NativeModule<Events> {
@@ -47,6 +59,10 @@ declare class ShepherdBackgroundModule extends NativeModule<Events> {
   updateWidget(json: string): Promise<void>;
   /** Saves an image (base64) into Pictures/Shepherd; resolves to its content URI. Android 10+. */
   saveImage(base64: string, mime: string, name: string): Promise<string>;
+  /** The latest share (or the one that opened the app), once: null after it's been taken, or if there's none. */
+  takeShare(): Promise<SharedContent | null>;
+  /** A shared image's content, as base64. */
+  readSharedImage(uri: string): Promise<string>;
   notificationsEnabled(): boolean;
   isIgnoringBatteryOptimizations(): boolean;
   requestIgnoreBatteryOptimizations(): Promise<void>;

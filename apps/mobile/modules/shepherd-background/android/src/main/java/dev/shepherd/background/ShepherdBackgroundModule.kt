@@ -67,16 +67,37 @@ class ShepherdBackgroundModule : Module() {
   }
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+  // A share that arrived while the app was running (the activity is singleTask).
+  @Volatile private var sharedIntent: Intent? = null
 
   override fun definition() = ModuleDefinition {
     Name("ShepherdBackground")
 
-    Events("onAnswer", "onTick")
+    Events("onAnswer", "onTick", "onShare")
 
     OnCreate { current = this@ShepherdBackgroundModule }
     OnDestroy {
       handler.removeCallbacks(tick)
       if (current === this@ShepherdBackgroundModule) current = null
+    }
+
+    // Shared from another app's share sheet while Shepherd was open: JS then calls takeShare.
+    OnNewIntent { intent ->
+      if (ShareIntake.isNew(intent)) {
+        sharedIntent = intent
+        sendEvent("onShare", bundleOf())
+      }
+    }
+
+    // What was shared to Shepherd (the newest share, else the one that launched it), once; null if nothing.
+    AsyncFunction("takeShare") {
+      val intent = pickShare() ?: return@AsyncFunction null
+      ShareIntake.read(context, intent)
+    }
+
+    // A shared image, as base64 for shepherd.upload.
+    AsyncFunction("readSharedImage") { uri: String ->
+      ShareIntake.readBase64(context, uri)
     }
 
     AsyncFunction("start") { title: String, text: String ->
@@ -159,6 +180,15 @@ class ShepherdBackgroundModule : Module() {
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       context.startActivity(intent)
     }
+  }
+
+  /** Takes the share to hand to JS, marking it so it's never handed over twice. */
+  @Synchronized private fun pickShare(): Intent? {
+    val intent = sharedIntent?.takeIf { ShareIntake.isNew(it) }
+      ?: appContext.currentActivity?.intent?.takeIf { ShareIntake.isNew(it) }
+    sharedIntent = null
+    intent?.let { ShareIntake.markHandled(it) }
+    return intent
   }
 
   companion object {

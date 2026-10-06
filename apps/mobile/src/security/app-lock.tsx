@@ -14,6 +14,8 @@ type AppLockValue = {
   enabled: boolean | undefined;
   /** Turning it on or off asks for the fingerprint (or screen lock) first. */
   setEnabled: (on: boolean) => Promise<boolean>;
+  /** False while the lock (or the loading preference) covers the app. */
+  unlocked: boolean;
 };
 
 const AppLockContext = createContext<AppLockValue | null>(null);
@@ -94,8 +96,8 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
-  const value = useMemo(() => ({ enabled, setEnabled }), [enabled, setEnabled]);
   const covered = enabled === undefined || showLock;
+  const value = useMemo(() => ({ enabled, setEnabled, unlocked: !covered }), [enabled, setEnabled, covered]);
   return (
     <AppLockContext.Provider value={value}>
       {/* Screen readers can't reach the app behind the cover either. */}
