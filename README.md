@@ -146,6 +146,7 @@ description = "pair a phone"
 - **See what's queued.** Messages sent while the agent works show as "Queued" until it takes them in (Claude Code, Codex and OpenCode; the others queue too but don't record it).
 - **Watch the live terminal.** Tap the terminal icon to switch. The agent is fitted to your screen as native text. Scroll up for the history, pinch to resize, search, long-press to copy, tap links.
 - **Steer it.** Send a message, tap an answer, use the quick keys (esc, ↵, tab, arrows, ^C), or tap ⌨ to type straight into the terminal. Answers you write yourself ("Type something.", "No, and tell Claude what to do") open a text box. While an agent works, the send button turns into **Stop**. Unsent text is kept per agent until you send it.
+- **"/" commands.** Type `/` for the agent's commands with a line on what each does: its useful built-ins, plus your own commands, prompts and skills (from `~/.claude`, `~/.codex/prompts`, `~/.pi/agent`, `~/.gemini/commands`, OpenCode's config, and the project's). Ones that draw a screen open the terminal view; `/model` opens the model picker.
 - **Home-screen widget.** Which agents need you, with their question and first two answers as buttons. It stays current while notifications are on.
 - **Themes.** Twelve colour themes (Catppuccin, Tokyo Night, Gruvbox, Nord…), each dark and light, in **Settings → Appearance**.
 - **Switch model and effort** for Claude Code, Codex and pi from the agent's ⋯ menu, while it's idle (it drives the agent's own `/model`).

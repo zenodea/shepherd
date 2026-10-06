@@ -385,6 +385,18 @@ export class DemoHost implements HostConnection {
         if (method === "shepherd.set_model") await new Promise((r) => setTimeout(r, 900));
         return { available: true, agent: "claude", ...this.model } satisfies ModelResult as T;
       }
+      case "shepherd.commands":
+        return {
+          available: true,
+          commands: [
+            { name: "/clear", description: "Start a new session with empty context" },
+            { name: "/compact", description: "Free up context by summarizing the conversation so far" },
+            { name: "/context", description: "Visualize current context usage", opens: "terminal" },
+            { name: "/model", description: "Set the AI model", opens: "model" },
+            { name: "/effort", description: "Set effort level for model usage", hint: "low | medium | high | xhigh | max" },
+            { name: "/review-pr", description: "Review a pull request against our checklist", hint: "PR number" },
+          ],
+        } as T;
       case "shepherd.make_folder":
         return { name: String(params.name).trim(), path: `${String(params.path)}/${String(params.name).trim()}`, repo: false } as T;
       case "shepherd.folders": {

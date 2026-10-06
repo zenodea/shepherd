@@ -98,6 +98,7 @@ export const HOST_METHODS = [
   "shepherd.upload",
   "shepherd.folders",
   "shepherd.make_folder",
+  "shepherd.commands",
   "shepherd.model",
   "shepherd.set_model",
 ] as const;
@@ -131,6 +132,15 @@ export type Folder = { name: string; path: string; /** A git repository. */ repo
 
 /** `path`: a folder to list (default: your home folder). Without one, suggestions come too. */
 export type FoldersParams = { path?: string };
+/**
+ * A "/" command the agent understands: built in, or one of your own (a command
+ * file, prompt or skill). `opens`: what it shows, where the chat can't
+ * (the terminal), or a sheet the app has for it (the model picker).
+ */
+export type SlashCommand = { name: string; description: string; hint?: string; opens?: "terminal" | "model" };
+export type CommandsParams = { paneId: string };
+export type CommandsResult = { available: true; commands: SlashCommand[] } | { available: false; reason: string };
+
 /** Creates `name` inside `path`; returns the new Folder. */
 export type MakeFolderParams = { path: string; name: string };
 export type FoldersResult = {

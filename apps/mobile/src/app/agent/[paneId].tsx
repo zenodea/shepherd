@@ -3,7 +3,7 @@ import { ArrowDown, Bot, Cpu, Ellipsis, Images, MessageSquareText, Search, Spark
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { TERMINAL_KIND, type PaneReadResult, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
+import { TERMINAL_KIND, type PaneReadResult, type SlashCommand, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
 import { useAgentActions } from "../../agents/AgentActions";
 import { agentName, agentTitle, projectOf } from "../../agents/agents";
 import { Composer } from "../../agents/Composer";
@@ -385,10 +385,16 @@ export default function TerminalScreen() {
     else await go();
   };
 
-  const send = async (text: string): Promise<boolean> => {
+  const send = async (text: string, command: SlashCommand | null): Promise<boolean> => {
     if (!client || !paneId) return false;
+    // The app has its own picker for this one.
+    if (command?.opens === "model" && text.trim() === command.name) {
+      setModelSheet(true);
+      return true;
+    }
     const optimistic = { id: String(++outgoingIds.current), paneId, text, after: conversation.entries.at(-1)?.id ?? -1 };
-    if (agent && chat) {
+    // A command isn't a message: it never shows up in the conversation to replace the bubble.
+    if (agent && chat && !command) {
       setOutgoing((list) => [...list, optimistic]);
       conversationView.current?.scrollToBottom();
     }
@@ -397,6 +403,8 @@ export default function TerminalScreen() {
       if (agent) await client.call("agent.prompt", { target: paneId, text });
       else await client.call("pane.send_input", { pane_id: paneId, text, keys: ["enter"] });
       setTimeout(forget, OPTIMISTIC_MS);
+      // What it shows is drawn in the terminal.
+      if (command?.opens === "terminal") setView("terminal");
       toLive();
       return true;
     } catch (err) {

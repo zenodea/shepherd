@@ -1,7 +1,7 @@
 import { ArrowUp, ImagePlus, Keyboard as KeyboardIcon, Square, X } from "lucide-react-native";
 import { useState } from "react";
 import { ActivityIndicator, Image, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import type { AgentInfo } from "@shepherd/protocol";
+import type { AgentInfo, SlashCommand } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 import { PressableScale } from "../ui/Pressable";
 import { colors, fonts, themed } from "../ui/theme";
@@ -9,6 +9,7 @@ import { agentName } from "./agents";
 import { withImages } from "./attachment-message";
 import { useAttachments } from "./attachments";
 import { getDraft, saveDraft, useDraftRevision, useDraftsReady } from "./drafts";
+import { commandIn, matchCommands, useSlashCommands } from "./slash-commands";
 
 /** react-native-web renders a multiline input as a two-row textarea unless told otherwise. */
 const WEB_ONE_ROW = Platform.OS === "web" ? ({ rows: 1 } as object) : {};
@@ -40,8 +41,8 @@ type Props = {
   typing: boolean;
   onToggleTyping: () => void;
   onKeys: (keys: string[], confirm?: string) => void;
-  /** Resolves false when the message didn't go, so the draft stays. */
-  onSend: (text: string) => Promise<boolean>;
+  /** Resolves false when the message didn't go, so the draft stays. `command`: the "/" command it starts with. */
+  onSend: (text: string, command: SlashCommand | null) => Promise<boolean>;
 };
 
 /** The quick keys and the message box, with its own state so typing doesn't redraw the conversation. */
@@ -61,12 +62,18 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
   };
   const attachments = useAttachments(client);
   const [sending, setSending] = useState(false);
+  // "/" commands: suggestions while you type a name, then what it takes once you've picked one.
+  const commands = useSlashCommands(client, agent?.pane_id ?? null, draft.startsWith("/"));
+  const naming = /^\/\S*$/.test(draft);
+  const suggestions = naming && !typing ? matchCommands(commands, draft) : [];
+  const picked = !naming ? commandIn(commands, draft) : null;
+  const hint = picked?.hint && draft.trim() === picked.name ? picked.hint : null;
 
   const submit = async () => {
     const text = agent ? withImages(draft.trim(), attachments.attachments) : draft.trim();
     if (!text || attachments.uploading) return;
     setSending(true);
-    if (await onSend(text)) {
+    if (await onSend(text, commandIn(commands, text))) {
       changeDraft("");
       attachments.clear();
     }
@@ -77,6 +84,29 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
 
   return (
     <>
+      {suggestions.length > 0 && !(suggestions.length === 1 && suggestions[0]!.name === draft) ? (
+        <View style={styles.suggestions}>
+          {suggestions.map((c, i) => (
+            <PressableScale
+              key={c.name}
+              onPress={() => changeDraft(`${c.name} `)}
+              style={[styles.suggestion, i > 0 && styles.suggestionDivider]}
+              accessibilityLabel={`${c.name}, ${c.description}`}
+            >
+              <Text style={styles.suggestionName} numberOfLines={1}>
+                {c.name}
+              </Text>
+              <Text style={styles.suggestionText} numberOfLines={1}>
+                {c.description}
+              </Text>
+            </PressableScale>
+          ))}
+        </View>
+      ) : hint ? (
+        <Text style={styles.hint} numberOfLines={1}>
+          {picked!.name} <Text style={{ color: colors.subtle }}>{hint}</Text>
+        </Text>
+      ) : null}
       <View style={styles.keys}>
         {chat ? null : (
           <PressableScale
@@ -215,5 +245,11 @@ const styles = themed(() => StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  suggestions: { marginHorizontal: 12, marginBottom: 6, backgroundColor: colors.raised, borderRadius: 11, overflow: "hidden" },
+  suggestion: { flexDirection: "row", alignItems: "baseline", gap: 10, paddingHorizontal: 12, paddingVertical: 9 },
+  suggestionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.edge },
+  suggestionName: { fontFamily: fonts.mono, fontSize: 13.5, color: colors.text, flexShrink: 0, maxWidth: "55%" },
+  suggestionText: { flex: 1, fontSize: 12.5, color: colors.muted },
+  hint: { marginHorizontal: 24, marginBottom: 6, fontFamily: fonts.mono, fontSize: 12.5, color: colors.muted },
   typingHint: { fontSize: 12.5, color: colors.muted, textAlign: "center", paddingVertical: 12 },
 }));

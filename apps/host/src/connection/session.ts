@@ -18,6 +18,7 @@ import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
 import type { ActivityLog } from "../herdr/activity-log.ts";
+import type { SlashCommands } from "../commands/slash-commands.ts";
 import type { RunningSubagents } from "../conversation/running-subagents.ts";
 import type { Uploads } from "../uploads.ts";
 import { ModelError, type Models } from "../model/models.ts";
@@ -60,6 +61,8 @@ export type SessionDeps = {
   uploads?: Uploads;
   /** Subagents still running for agents that aren't, shown in the agent list. */
   runningSubagents?: RunningSubagents;
+  /** Backs `shepherd.commands`: the "/" commands to suggest. */
+  commands?: SlashCommands;
   /** Told which phones are connected, for the Shepherd window. */
   presence?: { connected: (deviceId: string, via: "direct" | "relay") => () => void };
 };
@@ -284,6 +287,11 @@ export class AppSession {
     if (method === "shepherd.model" || method === "shepherd.set_model") return this.model(method, params);
     const conversation = this.conversationCall(method, params);
     if (conversation) return conversation;
+    if (method === "shepherd.commands") {
+      if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.commands needs a paneId"));
+      const commands = this.deps.commands;
+      return Promise.resolve(commands ? commands.list(this.deps.tracker.get(params.paneId) ?? null) : { available: false, reason: "This host doesn't suggest commands." });
+    }
     const launcher = this.deps.launcher;
     if (!launcher) return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
     if (method === "shepherd.projects") return launcher.projects();

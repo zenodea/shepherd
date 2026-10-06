@@ -23,6 +23,7 @@ import { Service, logTail, serviceSpec, trimLog } from "./system/service.ts";
 import { HostStatusWriter } from "./system/host-status.ts";
 import { Conversations } from "./conversation/conversations.ts";
 import { RunningSubagents } from "./conversation/running-subagents.ts";
+import { SlashCommands } from "./commands/slash-commands.ts";
 import { Uploads } from "./uploads.ts";
 import { Models } from "./model/models.ts";
 import { claudeModels } from "./model/vendors/claude.ts";
@@ -126,6 +127,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     models: new Models({ herdr, vendors: [claudeModels, codexModels, piModels], transcriptModel: (agent) => conversations.model(agent) }),
     uploads: new Uploads(),
     runningSubagents,
+    commands: new SlashCommands(),
   };
 
   const routes = routesOf(config);
