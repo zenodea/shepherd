@@ -53,7 +53,8 @@ declare class ShepherdBackgroundModule extends NativeModule<Events> {
   start(title: string, text: string): Promise<void>;
   update(title: string, text: string): Promise<void>;
   stop(): Promise<boolean>;
-  notify(notification: AgentNotification): Promise<void>;
+  /** Resolves to what Android made of it: "showing (…)", or why it isn't, with the notification settings that decide it. */
+  notify(notification: AgentNotification): Promise<string>;
   cancel(id: number): Promise<void>;
   /** Redraw the home-screen widget from this summary (JSON of a WidgetSummary). */
   updateWidget(json: string): Promise<void>;

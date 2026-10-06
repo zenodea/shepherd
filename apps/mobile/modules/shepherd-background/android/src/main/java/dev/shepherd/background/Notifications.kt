@@ -97,7 +97,7 @@ object Notifications {
     requireAuth: Boolean = false,
     /** Hide the content on the lock screen (App lock); Android's "sensitive content" setting decides. */
     privateContent: Boolean = false,
-  ) {
+  ): String {
     ensureChannels(context)
     val builder = NotificationCompat.Builder(context, channel)
       .setSmallIcon(R.drawable.shepherd_notification_icon)
@@ -139,12 +139,24 @@ object Notifications {
       )
     }
     val manager = NotificationManagerCompat.from(context)
-    if (manager.areNotificationsEnabled()) {
-      try {
-        manager.notify(id, builder.build())
-      } catch (e: SecurityException) {
-        // The notification permission was revoked in the meantime.
-      }
+    if (!manager.areNotificationsEnabled()) return "not shown: notifications are off for Shepherd (${state(context, channel)})"
+    try {
+      manager.notify(id, builder.build())
+    } catch (e: SecurityException) {
+      return "not shown: ${e.message} (${state(context, channel)})"
     }
+    // Whether Android lists it as showing: notify() gives no other sign when it drops one.
+    val showing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+      context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == id }
+    return "${if (showing) "showing" else "posted, but Android doesn't list it as showing"} (${state(context, channel)})"
+  }
+
+  /** What decides whether a notification shows: the app's switch, the permission, the category's importance, Do Not Disturb. */
+  private fun state(context: Context, channel: String): String {
+    val manager = context.getSystemService(NotificationManager::class.java)
+    val permission = Build.VERSION.SDK_INT < 33 ||
+      context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    val importance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) manager.getNotificationChannel(channel)?.importance else null
+    return "enabled=${manager.areNotificationsEnabled()} permission=$permission channel=$channel importance=$importance dnd=${manager.currentInterruptionFilter}"
   }
 }

@@ -156,7 +156,7 @@ export function BackgroundNotifications() {
           privateContent,
         })
         .then(
-          () => report(`notified "${content.alert.title}"`),
+          (result) => report(`"${content.alert.title}": ${result}`),
           (err: Error) => report(`couldn't show "${content.alert.title}": ${err.message}`),
         );
     };
