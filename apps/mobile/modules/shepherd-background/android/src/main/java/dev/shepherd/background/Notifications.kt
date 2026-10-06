@@ -24,6 +24,13 @@ object Notifications {
   const val CHANNEL_CONNECTION = "connection"
   /** Where a typed reply comes back in the action's intent. */
   const val REMOTE_INPUT_KEY = "reply"
+  /**
+   * Agents' notifications and the permanent one each have a group of their own: left
+   * ungrouped, Android (16, One UI 8) bundles all of an app's notifications under one
+   * card, here the permanent one, and the agents' ones don't show.
+   */
+  const val GROUP_AGENTS = "dev.shepherd.agents"
+  const val GROUP_CONNECTION = "dev.shepherd.connection"
 
   fun ensureChannels(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -63,6 +70,7 @@ object Notifications {
       .setSilent(true)
       .setPriority(NotificationCompat.PRIORITY_LOW)
       .setCategory(NotificationCompat.CATEGORY_SERVICE)
+      .setGroup(GROUP_CONNECTION)
       .setContentIntent(openIntent(context, "shepherd://", 0))
       .build()
 
@@ -108,6 +116,7 @@ object Notifications {
       .setContentIntent(openIntent(context, url, id))
       .setPriority(if (channel == CHANNEL_INPUT) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
       .setCategory(if (channel == CHANNEL_INPUT) NotificationCompat.CATEGORY_MESSAGE else NotificationCompat.CATEGORY_STATUS)
+      .setGroup(GROUP_AGENTS)
     if (timeoutMs > 0) builder.setTimeoutAfter(timeoutMs)
     builder.setVisibility(if (privateContent) NotificationCompat.VISIBILITY_PRIVATE else NotificationCompat.VISIBILITY_PUBLIC)
     answers.forEachIndexed { index, answer ->
@@ -157,6 +166,10 @@ object Notifications {
     val permission = Build.VERSION.SDK_INT < 33 ||
       context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
     val importance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) manager.getNotificationChannel(channel)?.importance else null
-    return "enabled=${manager.areNotificationsEnabled()} permission=$permission channel=$channel importance=$importance dnd=${manager.currentInterruptionFilter}"
+    // Every Shepherd notification Android holds: id, category, group, and whether it's a bundle's summary.
+    val active = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      manager.activeNotifications.joinToString(" ") { "${it.id}/${it.notification.channelId}/${it.notification.group ?: "-"}${if (it.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY != 0) "/summary" else ""}" }
+    } else ""
+    return "enabled=${manager.areNotificationsEnabled()} permission=$permission channel=$channel importance=$importance dnd=${manager.currentInterruptionFilter} active=[$active]"
   }
 }
