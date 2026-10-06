@@ -1,14 +1,16 @@
-import { ArrowUp, ImagePlus, Keyboard as KeyboardIcon, Square, X } from "lucide-react-native";
+import { ArrowUp, ImagePlus, Keyboard as KeyboardIcon, Plus, Square, X } from "lucide-react-native";
 import { useState } from "react";
-import { ActivityIndicator, Image, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { AgentInfo, SlashCommand } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 import { PressableScale } from "../ui/Pressable";
+import { PromptSheet } from "../ui/PromptSheet";
 import { colors, fonts, themed } from "../ui/theme";
 import { agentName } from "./agents";
 import { withImages } from "./attachment-message";
 import { useAttachments } from "./attachments";
 import { getDraft, saveDraft, useDraftRevision, useDraftsReady } from "./drafts";
+import { removeReply, saveReply, useSavedReplies } from "./saved-replies";
 import { commandIn, matchCommands, useSlashCommands } from "./slash-commands";
 
 /** react-native-web renders a multiline input as a two-row textarea unless told otherwise. */
@@ -68,6 +70,17 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
   const suggestions = naming && !typing ? matchCommands(commands, draft) : [];
   const picked = !naming ? commandIn(commands, draft) : null;
   const hint = picked?.hint && draft.trim() === picked.name ? picked.hint : null;
+  // Saved replies: only while you're about to write (the box focused and empty), so they're out of sight otherwise.
+  const replies = useSavedReplies();
+  const [focused, setFocused] = useState(false);
+  const [editing, setEditing] = useState<{ reply?: string } | null>(null);
+  const showReplies = focused && !draft && !typing && attachments.attachments.length === 0;
+  const replyOptions = (reply: string) =>
+    Alert.alert(reply, undefined, [
+      { text: "Edit", onPress: () => setEditing({ reply }) },
+      { text: "Delete", style: "destructive", onPress: () => removeReply(reply) },
+      { text: "Cancel", style: "cancel" },
+    ]);
 
   const submit = async () => {
     const text = agent ? withImages(draft.trim(), attachments.attachments) : draft.trim();
@@ -101,6 +114,19 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
               </Text>
             </PressableScale>
           ))}
+        </ScrollView>
+      ) : showReplies ? (
+        <ScrollView horizontal style={styles.replies} contentContainerStyle={styles.repliesInner} keyboardShouldPersistTaps="always" showsHorizontalScrollIndicator={false}>
+          {replies.map((reply) => (
+            <PressableScale key={reply} onPress={() => changeDraft(reply)} onLongPress={() => replyOptions(reply)} style={styles.reply} accessibilityLabel={`Saved reply: ${reply}`} accessibilityHint="Puts it in your message. Long-press to edit or delete.">
+              <Text style={styles.replyText} numberOfLines={1}>
+                {reply}
+              </Text>
+            </PressableScale>
+          ))}
+          <PressableScale onPress={() => setEditing({})} style={styles.reply} accessibilityLabel="Save a new reply">
+            <Plus size={14} color={colors.muted} />
+          </PressableScale>
         </ScrollView>
       ) : hint ? (
         <Text style={styles.hint} numberOfLines={1}>
@@ -158,6 +184,8 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
             style={styles.input}
             value={draft}
             onChangeText={changeDraft}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             placeholder={agent ? `Message ${agentName(agent)}…` : "Run a command…"}
             placeholderTextColor={colors.subtle}
             accessibilityLabel={agent ? `Message ${agentName(agent)}` : "Command to run"}
@@ -178,6 +206,14 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
       ) : (
         <Text style={styles.typingHint}>Typing into the terminal · tap ⌨ to stop</Text>
       )}
+      <PromptSheet
+        visible={editing !== null}
+        title={editing?.reply ? "Edit saved reply" : "New saved reply"}
+        initial={editing?.reply ?? ""}
+        placeholder="e.g. run the tests and fix what fails"
+        onSubmit={(text) => saveReply(text, editing?.reply)}
+        onClose={() => setEditing(null)}
+      />
     </>
   );
 }
@@ -251,6 +287,10 @@ const styles = themed(() => StyleSheet.create({
   suggestionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.edge },
   suggestionName: { fontFamily: fonts.mono, fontSize: 13.5, color: colors.text, flexShrink: 0, maxWidth: "55%" },
   suggestionText: { flex: 1, fontSize: 12.5, color: colors.muted },
+  replies: { flexGrow: 0, marginBottom: 6 },
+  repliesInner: { gap: 6, paddingHorizontal: 12 },
+  reply: { height: 30, minWidth: 30, paddingHorizontal: 12, borderRadius: 15, backgroundColor: colors.raised, alignItems: "center", justifyContent: "center" },
+  replyText: { fontSize: 13, color: colors.text, maxWidth: 220 },
   hint: { marginHorizontal: 24, marginBottom: 6, fontFamily: fonts.mono, fontSize: 12.5, color: colors.muted },
   typingHint: { fontSize: 12.5, color: colors.muted, textAlign: "center", paddingVertical: 12 },
 }));
