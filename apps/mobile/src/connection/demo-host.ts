@@ -438,6 +438,13 @@ export class DemoHost implements HostConnection {
             { name: "/model", description: "Set the AI model", opens: "model" },
             { name: "/effort", description: "Set effort level for model usage", hint: "low | medium | high | xhigh | max" },
             { name: "/review-pr", description: "Review a pull request against our checklist", hint: "PR number" },
+            { name: "/diff", description: "View uncommitted changes and per-turn diffs", opens: "terminal" },
+            { name: "/plan", description: "Enable plan mode or view the current session plan" },
+            { name: "/recap", description: "Generate a one-line session recap now" },
+            { name: "/resume", description: "Resume a previous conversation", opens: "terminal" },
+            { name: "/rewind", description: "Restore the code and/or conversation to a previous point", opens: "terminal" },
+            { name: "/status", description: "Show version, model, account and connectivity", opens: "terminal" },
+            { name: "/usage", description: "Show session cost, plan usage, and activity stats", opens: "terminal" },
           ],
         } as T;
       case "shepherd.make_folder":

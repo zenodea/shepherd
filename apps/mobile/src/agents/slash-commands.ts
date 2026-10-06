@@ -3,7 +3,7 @@ import type { CommandsResult, SlashCommand } from "@shepherd/protocol";
 import type { HostConnection } from "../connection/host-client";
 
 const FRESH_MS = 60_000;
-const MAX_SHOWN = 5;
+const MAX_SHOWN = 200;
 const lists = new Map<string, { at: number; commands: SlashCommand[] }>();
 const NONE: SlashCommand[] = [];
 

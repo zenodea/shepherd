@@ -85,7 +85,7 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
   return (
     <>
       {suggestions.length > 0 && !(suggestions.length === 1 && suggestions[0]!.name === draft) ? (
-        <View style={styles.suggestions}>
+        <ScrollView style={styles.suggestions} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
           {suggestions.map((c, i) => (
             <PressableScale
               key={c.name}
@@ -101,7 +101,7 @@ export function Composer({ client, agent, draftKey, chat, typing, onToggleTyping
               </Text>
             </PressableScale>
           ))}
-        </View>
+        </ScrollView>
       ) : hint ? (
         <Text style={styles.hint} numberOfLines={1}>
           {picked!.name} <Text style={{ color: colors.subtle }}>{hint}</Text>
@@ -245,7 +245,8 @@ const styles = themed(() => StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  suggestions: { marginHorizontal: 12, marginBottom: 6, backgroundColor: colors.raised, borderRadius: 11, overflow: "hidden" },
+  // About five and a half rows: the cut-off one says there's more to scroll to.
+  suggestions: { flexGrow: 0, maxHeight: 205, marginHorizontal: 12, marginBottom: 6, backgroundColor: colors.raised, borderRadius: 11 },
   suggestion: { flexDirection: "row", alignItems: "baseline", gap: 10, paddingHorizontal: 12, paddingVertical: 9 },
   suggestionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.edge },
   suggestionName: { fontFamily: fonts.mono, fontSize: 13.5, color: colors.text, flexShrink: 0, maxWidth: "55%" },

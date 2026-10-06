@@ -13,8 +13,8 @@ const commands: SlashCommand[] = [
 ];
 
 describe("matchCommands", () => {
-  it("lists names starting with what's typed first, then names containing it, five at most", () => {
-    expect(matchCommands(commands, "/").map((c) => c.name)).toEqual(["/clear", "/compact", "/context", "/model", "/effort"]);
+  it("lists names starting with what's typed first, then names containing it", () => {
+    expect(matchCommands(commands, "/").map((c) => c.name)).toEqual(commands.map((c) => c.name));
     expect(matchCommands(commands, "/co").map((c) => c.name)).toEqual(["/compact", "/context"]);
     expect(matchCommands(commands, "/ex").map((c) => c.name)).toEqual(["/prompts:explain", "/context"]);
   });
