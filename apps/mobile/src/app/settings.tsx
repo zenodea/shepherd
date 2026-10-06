@@ -39,10 +39,7 @@ export default function SettingsScreen() {
   /** Shows one right away, the way agents' notifications are shown, or says why it can't. */
   const testNotification = async () => {
     try {
-      const result = await Background!.notify({ id: 1, channel: "finished", title: "Shepherd test", body: "Notifications work. Agents' ones show up like this when Shepherd isn't open.", url: "shepherd://settings", paneId: "", answers: [], timeoutMs: 15_000 });
-      // What Android made of it, and whether it's still there a moment later, so a notification that doesn't appear can be explained.
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      Alert.alert("Test notification", `${result}\n\nAfter 3 seconds: ${Background!.isShowing(1) ? "still showing" : "gone"}`);
+      await Background!.notify({ id: 1, channel: "finished", title: "Shepherd test", body: "Notifications work. Agents' ones show up like this when Shepherd isn't open.", url: "shepherd://settings", paneId: "", answers: [], timeoutMs: 15_000 });
     } catch (err) {
       Alert.alert("Couldn't show a notification", (err as Error).message);
     }

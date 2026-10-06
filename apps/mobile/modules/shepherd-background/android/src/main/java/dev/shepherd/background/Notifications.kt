@@ -24,15 +24,6 @@ object Notifications {
   const val CHANNEL_CONNECTION = "connection"
   /** Where a typed reply comes back in the action's intent. */
   const val REMOTE_INPUT_KEY = "reply"
-  /**
-   * Agents' notifications and the permanent one each have a group of their own: left
-   * ungrouped, Android (16, One UI 8) bundles all of an app's notifications under one
-   * card, here the permanent one, and the agents' ones don't show.
-   */
-  const val GROUP_AGENTS = "dev.shepherd.agents"
-  const val GROUP_CONNECTION = "dev.shepherd.connection"
-  /** The agents group's summary: with one, Android keeps the group as it is instead of bundling it itself. */
-  const val SUMMARY_ID = 4202
 
   fun ensureChannels(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -72,7 +63,6 @@ object Notifications {
       .setSilent(true)
       .setPriority(NotificationCompat.PRIORITY_LOW)
       .setCategory(NotificationCompat.CATEGORY_SERVICE)
-      .setGroup(GROUP_CONNECTION)
       .setContentIntent(openIntent(context, "shepherd://", 0))
       .build()
 
@@ -107,7 +97,7 @@ object Notifications {
     requireAuth: Boolean = false,
     /** Hide the content on the lock screen (App lock); Android's "sensitive content" setting decides. */
     privateContent: Boolean = false,
-  ): String {
+  ) {
     ensureChannels(context)
     val builder = NotificationCompat.Builder(context, channel)
       .setSmallIcon(R.drawable.shepherd_notification_icon)
@@ -118,17 +108,7 @@ object Notifications {
       .setContentIntent(openIntent(context, url, id))
       .setPriority(if (channel == CHANNEL_INPUT) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
       .setCategory(if (channel == CHANNEL_INPUT) NotificationCompat.CATEGORY_MESSAGE else NotificationCompat.CATEGORY_STATUS)
-      .setGroup(GROUP_AGENTS)
     if (timeoutMs > 0) builder.setTimeoutAfter(timeoutMs)
-    // Tells the app when Android or you dismiss it (not when the app removes it), to find what's removing them.
-    builder.setDeleteIntent(
-      PendingIntent.getBroadcast(
-        context,
-        id * 8 + 6,
-        Intent(context, ActionReceiver::class.java).setAction(ActionReceiver.ACTION_DISMISSED).putExtra(ActionReceiver.EXTRA_NOTIFICATION_ID, id),
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-      ),
-    )
     builder.setVisibility(if (privateContent) NotificationCompat.VISIBILITY_PRIVATE else NotificationCompat.VISIBILITY_PUBLIC)
     answers.forEachIndexed { index, answer ->
       val intent = actionIntent(context, id, paneId, url, answer.key, answer.label)
@@ -159,58 +139,12 @@ object Notifications {
       )
     }
     val manager = NotificationManagerCompat.from(context)
-    if (!manager.areNotificationsEnabled()) return "not shown: notifications are off for Shepherd (${state(context, channel)})"
-    try {
-      manager.notify(id, builder.build())
-      manager.notify(SUMMARY_ID, summary(context))
-    } catch (e: SecurityException) {
-      return "not shown: ${e.message} (${state(context, channel)})"
+    if (manager.areNotificationsEnabled()) {
+      try {
+        manager.notify(id, builder.build())
+      } catch (e: SecurityException) {
+        // The notification permission was revoked in the meantime.
+      }
     }
-    // Whether Android lists it as showing: notify() gives no other sign when it drops one.
-    val showing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-      context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == id }
-    return "${if (showing) "showing" else "posted, but Android doesn't list it as showing"} (${state(context, channel)})"
-  }
-
-  private fun summary(context: Context): android.app.Notification =
-    NotificationCompat.Builder(context, CHANNEL_FINISHED)
-      .setSmallIcon(R.drawable.shepherd_notification_icon)
-      .setContentTitle("Shepherd")
-      .setGroup(GROUP_AGENTS)
-      .setGroupSummary(true)
-      // The agents' own notifications make the sound, not this.
-      .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
-      .setSilent(true)
-      .setAutoCancel(true)
-      .setContentIntent(openIntent(context, "shepherd://", SUMMARY_ID))
-      .build()
-
-  /** Whether Android still lists this notification as showing. */
-  fun isShowing(context: Context, id: Int): Boolean =
-    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-      context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == id }
-
-  /** Remove one; and the group's summary once no agent's notification is left. */
-  fun cancel(context: Context, id: Int) {
-    val manager = NotificationManagerCompat.from(context)
-    manager.cancel(id)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      val left = context.getSystemService(NotificationManager::class.java).activeNotifications
-        .any { it.notification.group == GROUP_AGENTS && it.id != SUMMARY_ID }
-      if (!left) manager.cancel(SUMMARY_ID)
-    }
-  }
-
-  /** What decides whether a notification shows: the app's switch, the permission, the category's importance, Do Not Disturb. */
-  fun state(context: Context, channel: String): String {
-    val manager = context.getSystemService(NotificationManager::class.java)
-    val permission = Build.VERSION.SDK_INT < 33 ||
-      context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-    val importance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) manager.getNotificationChannel(channel)?.importance else null
-    // Every Shepherd notification Android holds: id, category, group, and whether it's a bundle's summary.
-    val active = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      manager.activeNotifications.joinToString(" ") { "${it.id}/${it.notification.channelId}/${it.notification.group ?: "-"}${if (it.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY != 0) "/summary" else ""}" }
-    } else ""
-    return "enabled=${manager.areNotificationsEnabled()} permission=$permission channel=$channel importance=$importance dnd=${manager.currentInterruptionFilter} active=[$active]"
   }
 }

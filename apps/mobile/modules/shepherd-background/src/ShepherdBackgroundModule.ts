@@ -42,7 +42,6 @@ export type SharedContent = {
 
 type Events = {
   onAnswer: (event: AnswerEvent) => void;
-  onDismiss: (event: { notificationId: number }) => void;
   /** Every 15 s while the background service runs, even when JS timers are paused. */
   onTick: () => void;
   /** Something was shared to the running app; take it with takeShare(). */
@@ -54,13 +53,8 @@ declare class ShepherdBackgroundModule extends NativeModule<Events> {
   start(title: string, text: string): Promise<void>;
   update(title: string, text: string): Promise<void>;
   stop(): Promise<boolean>;
-  /** Resolves to what Android made of it: "showing (…)", or why it isn't, with the notification settings that decide it. */
-  notify(notification: AgentNotification): Promise<string>;
+  notify(notification: AgentNotification): Promise<void>;
   cancel(id: number): Promise<void>;
-  /** Whether Android still lists this notification as showing. */
-  isShowing(id: number): boolean;
-  /** The notification settings that decide whether one shows, and every Shepherd notification Android holds. */
-  notificationState(channel: string): string;
   /** Redraw the home-screen widget from this summary (JSON of a WidgetSummary). */
   updateWidget(json: string): Promise<void>;
   /** Saves an image (base64) into Pictures/Shepherd; resolves to its content URI. Android 10+. */
