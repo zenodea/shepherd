@@ -107,11 +107,12 @@ The app tries every address in the QR code at once and uses whichever answers fi
   <img src="docs/screenshots/herdr-phones.png" width="49%" alt="The Shepherd window's Phones screen: a connected phone first, then the others with when they were last seen" />
 </p>
 
-The window has four screens; switch with the letter keys or Tab:
+The window has five screens; switch with the letter keys or Tab:
 
 - **Overview (`o`):** whether Shepherd is on and for how long, the herdr session, your agents and how many phones are connected. `s` turns Shepherd on or off. Under **Phones connect over**, `1`, `2` and `3` switch LAN, Tailscale and the relay on or off (see [Security model](#security-model)).
 - **Pair (`p`):** the QR code, with a countdown.
 - **Phones (`d`):** every paired phone, connected ones first with how they're connected (direct or through the relay). Select one and press `x` to revoke it.
+- **Plugins (`i`):** your other herdr plugins, each on for phones unless you switch it off here with space, and what each one runs for its cards (see [Plugins on the phone](#plugins-on-the-phone)).
 - **Log (`l`):** the host's recent log.
 
 `r` restarts the host from any screen, and `q` or Esc closes the window. Turning Shepherd **off** stops the host and keeps it stopped (herdr won't start it again), so no phone can connect.
@@ -136,6 +137,8 @@ description = "pair a phone"
 
 ## What you can do
 
+- **Use your herdr plugins from your phone.** Every plugin you install in herdr shows up under an agent's menu → Plugins, with its actions as buttons. A plugin with a `shepherd.toml` adds cards of its own. See [Plugins on the phone](#plugins-on-the-phone).
+
 - **See every agent at a glance.** Agents that need input come first, with their question and one button per answer. Under each agent, "Last done: 12m ago" says when it last finished a turn.
 - **Send images.** The image button next to the message box sends a photo or screenshot to the agent: it's saved on your computer (in a temporary folder, cleared after a week) and its path goes into your message, for the agent to open.
 - **Share to Shepherd.** Share a link, text, a screenshot or photos from any app on your phone, pick the agent, add a note if you like, and it's sent.
@@ -158,6 +161,12 @@ description = "pair a phone"
 - **Several computers.** Pair with as many as you like and switch from the top of the agent list.
 - **App lock.** Require your fingerprint to open Shepherd (Settings).
 - **Get notified** when an agent needs input or finishes, and answer from the notification.
+
+## Plugins on the phone
+
+Your other herdr plugins work from the phone without any setup. Install one with `herdr plugin install`, and it appears under an agent's menu (⋯) → **Plugins**. Tap it for its page: its herdr actions as buttons that run against that agent, and its cards. Settings → Plugins has the same for what's about the computer. A plugin whose author adds a `shepherd.toml` next to its `herdr-plugin.toml` also shows **cards**: small panels the host fills by running a command of the plugin's that prints JSON, with badges, text, lists and buttons that invoke the plugin's actions or open its panes on the phone. [docs/plugins.md](docs/plugins.md) has the whole contract, which fits on a page.
+
+To keep a plugin off phones, press `i` in the Shepherd window, select it and press space. The window also shows what each plugin's cards run.
 
 ## Notifications
 
@@ -271,6 +280,7 @@ shepherd ui                   # the Shepherd window (status, pairing, phones, lo
 - **Pairing:** each phone gets its own random token (the host stores only a hash). Pairing codes work once and expire after 10 minutes. A QR code pins the host's whole key; a code typed by hand ends with the start of it (`<code>.<16 hex>`), so nothing else on the network can answer first. `devices revoke` cuts a phone off immediately.
 - **End-to-end encryption** on every connection, including through the relay: a Noise NK-style handshake with the host's X25519 key pinned from the QR code, then ChaCha20-Poly1305. The relay only ever sees ciphertext. Built on the audited [@noble](https://paulmillr.com/noble/) libraries (`packages/protocol/src/secure.ts`).
 - **Limited API:** the host forwards only an allowlist of herdr methods (`FORWARDED_METHODS` in `packages/protocol/src/wire.ts`).
+- **Plugins:** a phone can invoke the actions and open the panes your installed herdr plugins declare, with the agent it's looking at as context, and nothing else of theirs. That's no more than typing `herdr plugin action invoke` into a terminal, which a phone can already do. Card commands come from the plugin's own `shepherd.toml` and run as the plugin already does; the Plugins screen in the window shows exactly what each one runs, and switches a plugin off for phones.
 - **Relay:** every host on a relay uses the same `HOST_TOKEN`, so one could take another's place there (it still can't read or answer for your computer). Don't share your relay.
 - **Conversations:** the app asks for an agent's conversation by its pane, never by a file path. The host reads only the transcript that belongs to that agent (in `~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi`, `~/.hermes` or OpenCode's data folder; OpenCode and Hermes keep theirs in a database, which Shepherd opens read-only), which shows what the pane already shows.
 
@@ -292,6 +302,7 @@ apps/
   host/src/
     cli.ts            entry point and commands
     herdr/            herdr socket client, agent tracker, activity log, terminal streams, agent launcher
+    plugins/          other herdr plugins on the phone: their shepherd.toml, card commands, actions and panes
     connection/       WebSocket server, encrypted session, relay tunnel
     pairing/          paired devices, pairing codes, QR output
     conversation/     agents' conversations, read from their transcripts; vendors/ holds what's specific to each agent

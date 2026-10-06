@@ -5,3 +5,4 @@ export * from "./pairing.ts";
 export * from "./secure.ts";
 export * from "./palette.ts";
 export * from "./prompt-options.ts";
+export * from "./plugins.ts";

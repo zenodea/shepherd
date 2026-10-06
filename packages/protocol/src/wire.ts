@@ -102,6 +102,11 @@ export const HOST_METHODS = [
   "shepherd.log",
   "shepherd.model",
   "shepherd.set_model",
+  // herdr plugins on the phone (plugins.ts): what's installed, their cards, and their actions and panes.
+  "shepherd.plugins",
+  "shepherd.cards",
+  "shepherd.plugin_action",
+  "shepherd.plugin_pane",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;

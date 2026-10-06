@@ -1,12 +1,14 @@
 import { useRouter } from "expo-router";
-import { BatteryCharging, Bell, BellOff, BellRing, Check, Fingerprint, Image as ImageIcon, Laptop, LockOpen, QrCode } from "lucide-react-native";
+import { BatteryCharging, Bell, BellOff, BellRing, Check, Fingerprint, Image as ImageIcon, Laptop, LockOpen, Puzzle, QrCode } from "lucide-react-native";
 import { setImagesShown, useImagesShown } from "../agents/image-setting";
 import { setAnswerUnlocked, useAnswerUnlocked } from "../notifications/lock-screen-setting";
 import { useEffect, useState } from "react";
 import { Alert, AppState, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import Background from "../../modules/shepherd-background/src/ShepherdBackgroundModule";
 import { NOTIFICATIONS_SUPPORTED, setNotificationsEnabled, useNotificationsEnabled } from "../notifications/setting";
-import { useConnection } from "../connection/connection";
+import { useConnection, useHostState } from "../connection/connection";
+import { HostCallError } from "../connection/host-client";
+import type { PluginsResult, PluginSummary } from "@shepherd/protocol";
 import { PressableScale } from "../ui/Pressable";
 import { useTheme } from "../ui/ThemeProvider";
 import { RELOCK_AFTER_MS, useAppLock } from "../security/app-lock";
@@ -19,8 +21,22 @@ import { THEMES, colors, radii, space, type, themed, type Palette, type ThemeMod
 export default function SettingsScreen() {
   const router = useRouter();
   const lock = useAppLock();
-  const { hosts, settings, switchTo } = useConnection();
+  const { hosts, settings, switchTo, client } = useConnection();
+  const online = useHostState().status === "online";
   const [busy, setBusy] = useState(false);
+  const [fetched, setFetched] = useState<{ list: PluginSummary[] } | { error: string } | null>(null);
+  const plugins = online ? fetched : null;
+  useEffect(() => {
+    if (!client || !online) return;
+    let current = true;
+    client
+      .call<PluginsResult>("shepherd.plugins")
+      .then((r) => current && setFetched({ list: r.plugins }))
+      .catch((err: unknown) => current && setFetched({ error: err instanceof HostCallError && err.code === "invalid_message" ? "Update Shepherd on your computer to see its plugins here." : (err as Error).message }));
+    return () => {
+      current = false;
+    };
+  }, [client, online]);
   const theme = useTheme();
   const notifications = useNotificationsEnabled();
   const imagesShown = useImagesShown();
@@ -201,10 +217,23 @@ export default function SettingsScreen() {
             />
           </ListGroup>
         </View>
+
+        <View>
+          <Text style={styles.groupLabel}>Plugins</Text>
+          <ListGroup>
+            <ListRow
+              icon={<Puzzle size={19} color={colors.muted} />}
+              title="herdr plugins"
+              detail={!online ? "Connect to your computer to see them" : !plugins ? "Asking your computer…" : "error" in plugins ? plugins.error : plugins.list.length === 0 ? "None installed" : plugins.list.map((p) => p.name).join(", ")}
+              onPress={() => router.push("/plugins")}
+            />
+          </ListGroup>
+        </View>
       </ScrollView>
     </Screen>
   );
 }
+
 
 const MODES: { id: ThemeMode; label: string }[] = [
   { id: "system", label: "System" },

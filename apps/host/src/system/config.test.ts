@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultConfigPath, envVar, hostCommand, loadOrCreateStoredConfig, readStoredConfig, setDisabled } from "./config.ts";
+import { defaultConfigPath, envVar, hostCommand, loadOrCreateStoredConfig, pluginsOff, readStoredConfig, setDisabled, setPluginOff } from "./config.ts";
 
 describe("config location", () => {
   const dirs: string[] = [];
@@ -68,5 +68,24 @@ describe("stored settings", () => {
     expect(readStoredConfig(path)?.disabled).toBe(true);
     setDisabled(path, false);
     expect(readStoredConfig(path)).not.toHaveProperty("disabled");
+  });
+});
+
+describe("plugins for phones", () => {
+  const dirs: string[] = [];
+  afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+
+  it("remembers which plugins are switched off, and forgets the list when none are", () => {
+    const dir = mkdtempSync(join(tmpdir(), "shepherd-plugins-"));
+    dirs.push(dir);
+    const path = join(dir, "host.json");
+    setPluginOff(path, "graphdiff", true);
+    setPluginOff(path, "fence", true);
+    expect(pluginsOff(readStoredConfig(path))).toEqual(new Set(["fence", "graphdiff"]));
+    expect(readStoredConfig(path)?.plugins).toEqual({ off: ["fence", "graphdiff"] });
+    setPluginOff(path, "fence", false);
+    setPluginOff(path, "graphdiff", false);
+    expect(readStoredConfig(path)).not.toHaveProperty("plugins");
+    expect(pluginsOff(null).size).toBe(0);
   });
 });

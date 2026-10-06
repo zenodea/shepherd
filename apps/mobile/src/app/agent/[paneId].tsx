@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowDown, Bot, Cpu, Ellipsis, Images, MessageSquareText, Search, Sparkles, SquareTerminal } from "lucide-react-native";
+import { ArrowDown, Bot, Cpu, Ellipsis, Images, MessageSquareText, Puzzle, Search, Sparkles, SquareTerminal } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -128,6 +128,12 @@ export default function TerminalScreen() {
             },
           ]
         : []),
+      {
+        icon: <Puzzle size={19} color={colors.text} />,
+        title: "Plugins",
+        detail: "What your herdr plugins show and do here",
+        onPress: () => router.push({ pathname: "/plugins", params: { paneId: paneId! } }),
+      },
     ],
     // Go to another tab in the workspace if there is one, else back to the list.
     onClosed: (closed) => {

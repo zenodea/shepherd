@@ -25,6 +25,8 @@ export type StoredConfig = {
   disabled?: boolean;
   /** Which ways phones may connect; each is on unless set to false. */
   connections?: { lan?: boolean; tailscale?: boolean; relay?: boolean };
+  /** herdr plugins switched off for phones in the Shepherd window; every other one is on. */
+  plugins?: { off?: string[] };
 };
 
 export type HostConfig = StoredConfig & {
@@ -164,4 +166,14 @@ export function hostCommand(args: string, env: NodeJS.ProcessEnv = process.env):
 export function setDisabled(configPath: string, disabled: boolean): void {
   const { disabled: _was, ...rest } = loadOrCreateStoredConfig(configPath);
   saveStoredConfig(configPath, disabled ? { ...rest, disabled: true } : rest);
+}
+
+export const pluginsOff = (config: StoredConfig | null): Set<string> => new Set(config?.plugins?.off ?? []);
+
+export function setPluginOff(configPath: string, pluginId: string, off: boolean): void {
+  const { plugins, ...rest } = loadOrCreateStoredConfig(configPath);
+  const ids = pluginsOff({ plugins } as StoredConfig);
+  if (off) ids.add(pluginId);
+  else ids.delete(pluginId);
+  saveStoredConfig(configPath, ids.size ? { ...rest, plugins: { off: [...ids].sort() } } : rest);
 }

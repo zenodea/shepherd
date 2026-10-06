@@ -29,6 +29,7 @@ import { Models } from "./model/models.ts";
 import { claudeModels } from "./model/vendors/claude.ts";
 import { codexModels } from "./model/vendors/codex.ts";
 import { piModels } from "./model/vendors/pi.ts";
+import { Plugins } from "./plugins/plugins.ts";
 import { SCREENS, runWindow, type Screen } from "./ui/window.ts";
 import { clearPidFile, readRunningHost, restartHost, setConnections, startDetached, stopRunningHost, turnOff, turnOn, writePidFile } from "./system/daemon.ts";
 import { TerminalStream } from "./herdr/terminal-stream.ts";
@@ -128,6 +129,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     uploads: new Uploads(),
     runningSubagents,
     commands: new SlashCommands(),
+    plugins: new Plugins({ herdr, tracker, configPath: config.configPath, herdrBin: config.herdrBin, socketPath: config.socketPath }),
   };
 
   const routes = routesOf(config);

@@ -5,6 +5,10 @@ import type {
   AgentInfo,
   AgentStatus,
   CallMethod,
+  CardsResult,
+  PluginActionResult,
+  PluginPaneResult,
+  PluginsResult,
   ConversationEntry,
   ChangesResult,
   ConversationResult,
@@ -389,6 +393,83 @@ function base64(text: string): string {
 }
 
 /** Behaves like HostClient for the screens, with canned data. */
+const DEMO_PLUGINS: PluginsResult["plugins"] = [
+  {
+    id: "fence",
+    name: "fence",
+    version: "0.1.0",
+    description: "Pens for your agents: a space fenced off from your secrets and the network",
+    actions: [
+      { id: "new", title: "fence: new pen here", description: null, contexts: ["workspace"] },
+      { id: "open", title: "fence: this space's pen", description: null, contexts: ["workspace"] },
+    ],
+    panes: [{ id: "window", title: "fence", description: null }],
+    cards: [{ id: "pen", title: "Pen", context: "pane" }, { id: "pens", title: "Pens", context: "global" }],
+  },
+  {
+    id: "graphdiff",
+    name: "graphdiff",
+    version: "0.1.0",
+    description: "Review what your agent changed: a live tree of the diff in your browser",
+    actions: [{ id: "open", title: "graphdiff: review changes", description: null, contexts: ["workspace"] }, { id: "tui", title: "graphdiff: map in the terminal", description: null, contexts: ["workspace"] }],
+    panes: [{ id: "tui", title: "graphdiff", description: null }],
+    cards: [],
+  },
+];
+
+function demoCards(paneId: string | null): CardsResult["cards"] {
+  const at = Date.now() - 20_000;
+  const pens: CardsResult["cards"][number] = {
+    plugin: "fence",
+    pluginName: "fence",
+    id: "pens",
+    title: "Pens",
+    context: "global",
+    updatedAt: at,
+    body: { rows: [{ kind: "list", items: [{ text: "api", detail: "strict · 2 agents inside" }, { text: "web", detail: "default" }] }], buttons: [] },
+  };
+  if (!paneId) return [pens];
+  const penned = paneId.startsWith("w1:");
+  return [
+    {
+      plugin: "fence",
+      pluginName: "fence",
+      id: "pen",
+      title: "Pen",
+      context: "pane",
+      updatedAt: at,
+      body: penned
+        ? {
+            rows: [
+              { kind: "badge", text: "penned", tone: "ok" },
+              { kind: "text", label: "Profile", value: "strict: no ~/.ssh, no ~/.aws, no network except the package registry" },
+            ],
+            buttons: [{ label: "Open fence", pane: "window" }],
+          }
+        : { rows: [{ kind: "badge", text: "not penned", tone: "warn" }, { kind: "text", value: "This agent can read everything you can." }], buttons: [{ label: "Make this a pen", action: "new", confirm: "Agents here lose access to your secrets and the network. Running agents keep theirs until restarted." }] },
+    },
+    pens,
+    {
+      plugin: "fence",
+      pluginName: "fence",
+      id: "actions",
+      title: "Actions",
+      context: "pane",
+      updatedAt: 0,
+      body: { rows: [], buttons: [{ label: "fence: new pen here", action: "new" }, { label: "fence: this space's pen", action: "open" }] },
+    },
+    {
+      plugin: "graphdiff",
+      pluginName: "graphdiff",
+      id: "actions",
+      title: "Actions",
+      context: "pane",
+      updatedAt: 0,
+      body: { rows: [], buttons: [{ label: "graphdiff: review changes", action: "open" }, { label: "graphdiff: map in the terminal", action: "tui" }] },
+    },
+  ];
+}
+
 export class DemoHost implements HostConnection {
   private readonly computer: "studio" | "laptop";
   private state: HostState;
@@ -578,6 +659,15 @@ export class DemoHost implements HostConnection {
       case "agent.prompt":
         this.setStatus(String(params.target), "working");
         return { type: "ok" } as T;
+      case "shepherd.plugins":
+        return { plugins: DEMO_PLUGINS } satisfies PluginsResult as T;
+      case "shepherd.cards":
+        return { cards: demoCards(typeof params.paneId === "string" ? params.paneId : null) } satisfies CardsResult as T;
+      case "shepherd.plugin_action":
+        await new Promise((r) => setTimeout(r, 700));
+        return { status: "succeeded", output: params.action === "new" ? "Fenced w1 as a pen: no secrets, no network." : null, error: null } satisfies PluginActionResult as T;
+      case "shepherd.plugin_pane":
+        return { paneId: "w1:p2", workspaceId: "w1" } satisfies PluginPaneResult as T;
       default:
         throw new HostCallError("demo", `${method} isn't available in demo mode`);
     }

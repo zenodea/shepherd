@@ -11,7 +11,7 @@ import type {
   TerminalMode,
   TerminalRender,
 } from "@shepherd/protocol";
-import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, isPaneId, parseClientMessage } from "@shepherd/protocol";
+import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, isPaneId, isPluginId, parseClientMessage } from "@shepherd/protocol";
 import { conversationParams, imageParams, type Conversations } from "../conversation/conversations.ts";
 import { changes, changesParams, fileDiff, fileDiffParams } from "../changes/git-changes.ts";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
@@ -25,6 +25,7 @@ import { ModelError, type Models } from "../model/models.ts";
 import { ScreenError } from "../model/screen.ts";
 import { LaunchError, type Launcher } from "../herdr/launcher.ts";
 import { ScreenRenderer } from "../herdr/screen-renderer.ts";
+import { PluginError, type Plugins } from "../plugins/plugins.ts";
 import type { TerminalStream } from "../herdr/terminal-stream.ts";
 import { hostCommand } from "../system/config.ts";
 
@@ -63,6 +64,8 @@ export type SessionDeps = {
   runningSubagents?: RunningSubagents;
   /** Backs `shepherd.commands`: the "/" commands to suggest. */
   commands?: SlashCommands;
+  /** Backs `shepherd.plugins`, `shepherd.cards`, `shepherd.plugin_action` and `shepherd.plugin_pane`. */
+  plugins?: Plugins;
   /** Told which phones are connected, for the Shepherd window. */
   presence?: { connected: (deviceId: string, via: "direct" | "relay") => () => void };
 };
@@ -204,7 +207,7 @@ export class AppSession {
           const result = await this.call(msg.method, msg.params);
           this.send({ type: "result", id: msg.id, result });
         } catch (err) {
-          const code = err instanceof HerdrRequestError || err instanceof LaunchError ? err.code : "internal";
+          const code = err instanceof HerdrRequestError || err instanceof LaunchError || err instanceof PluginError ? err.code : "internal";
           const message = err instanceof Error ? err.message : String(err);
           this.send({ type: "error", id: msg.id, error: { code, message } });
         }
@@ -285,6 +288,7 @@ export class AppSession {
       }
     }
     if (method === "shepherd.model" || method === "shepherd.set_model") return this.model(method, params);
+    if (method.startsWith("shepherd.plugin") || method === "shepherd.cards") return this.plugins(method, params);
     const conversation = this.conversationCall(method, params);
     if (conversation) return conversation;
     // The phone's account of what it did in the background (notifications), for this host's log.
@@ -342,6 +346,32 @@ export class AppSession {
     } catch (err) {
       if (err instanceof ModelError || err instanceof ScreenError) throw new LaunchError("model_unavailable", err.message);
       throw err;
+    }
+  }
+
+  private plugins(method: CallMethod, params: Record<string, unknown>): Promise<unknown> {
+    const plugins = this.deps.plugins;
+    if (!plugins) {
+      if (method === "shepherd.plugins") return Promise.resolve({ plugins: [] });
+      if (method === "shepherd.cards") return Promise.resolve({ cards: [] });
+      return Promise.reject(new LaunchError("unsupported", "This host doesn't support plugins."));
+    }
+    const bad = (what: string) => Promise.reject(new LaunchError("invalid_params", `${method} ${what}`));
+    const { paneId, plugin, action, pane, refresh } = params;
+    if (paneId !== undefined && !isPaneId(paneId)) return bad("needs a valid paneId");
+    switch (method) {
+      case "shepherd.plugins":
+        return plugins.list();
+      case "shepherd.cards":
+        return plugins.cards({ paneId, refresh: refresh === true });
+      case "shepherd.plugin_action":
+        if (!isPluginId(plugin) || !isPluginId(action)) return bad("needs a plugin and an action id");
+        return plugins.invoke({ plugin, action, paneId });
+      case "shepherd.plugin_pane":
+        if (!isPluginId(plugin) || !isPluginId(pane)) return bad("needs a plugin and a pane id");
+        return plugins.openPane({ plugin, pane, paneId });
+      default:
+        return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
     }
   }
 

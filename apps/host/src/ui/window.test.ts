@@ -30,6 +30,18 @@ const data = (patch: Partial<WindowData> = {}): WindowData => ({
   relayConfigured: true,
   log: ["[agent] w1:p1 working → idle"],
   logFile: "/tmp/host.log",
+  plugins: {
+    list: [
+      {
+        info: { plugin_id: "fence", name: "fence", version: "0.1.0", enabled: true, plugin_root: "/plugins/fence", description: "Pens for your agents", actions: [{ id: "new", title: "fence: new pen" }] },
+        sidecar: { schema: 1, actions: true, cards: [{ id: "pen", title: "Pen", context: "pane", command: ["node", "src/cli.ts", "card"], refresh: "status", timeoutMs: 10_000 }] },
+        sidecarError: null,
+        off: false,
+      },
+      { info: { plugin_id: "graphdiff", name: "graphdiff", version: "0.1.0", enabled: true, plugin_root: "/plugins/graphdiff", actions: [{ id: "open", title: "review" }] }, sidecar: null, sidecarError: null, off: true },
+    ],
+    error: null,
+  },
   ...patch,
 });
 
@@ -90,8 +102,20 @@ describe("Shepherd window", () => {
     expect(plain(render(view({ screen: "pair", pairing: { ...pairing, expiresAt: now - 1 } }), data(), 100, 40))).toContain("This code has expired.");
   });
 
+  it("lists plugins with whether they're on for phones, and what the selected one runs", () => {
+    const out = plain(render(view({ screen: "plugins" }), data(), 120, 40));
+    expect(out).toMatch(/› ● fence +on for phones +· 1 card · 1 action +0\.1\.0/);
+    expect(out).toContain("Pens for your agents");
+    expect(out).toContain("Pen (pane) runs: node src/cli.ts card");
+    expect(out).toMatch(/○ graphdiff +off for phones +· 1 action/);
+    expect(out).not.toContain("No shepherd.toml");
+    expect(plain(render(view({ screen: "plugins", selected: 1 }), data(), 120, 40))).toContain("No shepherd.toml: the phone shows its actions as buttons.");
+    expect(plain(render(view({ screen: "plugins" }), data({ plugins: null }), 120, 40))).toContain("Asking herdr for its plugins…");
+    expect(plain(render(view({ screen: "plugins" }), data({ plugins: { list: [], error: null } }), 120, 40))).toContain("No other herdr plugins installed.");
+  });
+
   it("always fills the window exactly", () => {
-    for (const screen of ["overview", "pair", "phones", "log"] as const) {
+    for (const screen of ["overview", "pair", "phones", "plugins", "log"] as const) {
       expect(render(view({ screen }), data(), 80, 30)).toHaveLength(30);
     }
   });

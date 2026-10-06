@@ -3,20 +3,23 @@
 import { encodePairingLink } from "@shepherd/protocol";
 import { DeviceRegistry, type Device } from "../pairing/devices.ts";
 import { hostAddresses, manualCode, pairingInfo, renderQr, type HostAddress } from "../pairing/pairing.ts";
-import { loadConfig, type HostConfig } from "../system/config.ts";
+import { loadConfig, setPluginOff, type HostConfig } from "../system/config.ts";
+import { HerdrClient } from "../herdr/herdr-client.ts";
+import { listInstalled, type InstalledPlugin } from "../plugins/plugins.ts";
 import { readRunningHost, restartHost, setConnections, turnOff, turnOn, type RunningHost } from "../system/daemon.ts";
 import { ROUTE_LABELS, ROUTES, routesOf, withRoute, type Route, type Routes } from "../connection/routes.ts";
 import { readHostStatus, type ConnectedPhone, type HostStatus } from "../system/host-status.ts";
 import { Service, logTail } from "../system/service.ts";
 import { duration, frame, pad, screen, style, visibleLength, when } from "./ansi.ts";
 
-export const SCREENS = ["overview", "pair", "phones", "log"] as const;
+export const SCREENS = ["overview", "pair", "phones", "plugins", "log"] as const;
 export type Screen = (typeof SCREENS)[number];
 
 const TABS: Record<Screen, { key: string; label: string }> = {
   overview: { key: "o", label: "Overview" },
   pair: { key: "p", label: "Pair" },
   phones: { key: "d", label: "Phones" },
+  plugins: { key: "i", label: "Plugins" },
   log: { key: "l", label: "Log" },
 };
 
@@ -34,6 +37,8 @@ export type WindowData = {
   relayConfigured: boolean;
   log: string[];
   logFile: string;
+  /** null until herdr has answered. */
+  plugins: { list: InstalledPlugin[]; error: string | null } | null;
 };
 
 export type Flash = { text: string; tone: "ok" | "warn" | "error" };
@@ -166,6 +171,34 @@ function phonesScreen(view: ViewState, data: WindowData, now: number): string[] 
   });
 }
 
+function pluginsScreen(view: ViewState, data: WindowData): string[] {
+  if (!data.plugins) return [style.dim("  Asking herdr for its plugins…")];
+  const { list, error } = data.plugins;
+  const lines: string[] = [];
+  if (error) lines.push(`  ${style.red(error)}`, "");
+  if (list.length === 0) return [...lines, "  No other herdr plugins installed.", "", style.dim("  Install one with `herdr plugin install owner/repo` and it shows up on your phone.")];
+  lines.push(style.dim("  Every plugin is on for phones unless you switch it off here. Its cards and actions show on the phone."), "");
+  const nameWidth = Math.min(28, Math.max(...list.map((p) => p.info.name.length)) + 2);
+  list.forEach((plugin, i) => {
+    const selected = i === view.selected;
+    const on = plugin.info.enabled && !plugin.off;
+    const name = selected ? style.bold(pad(plugin.info.name, nameWidth)) : pad(plugin.info.name, nameWidth);
+    const state = !plugin.info.enabled ? style.dim("disabled in herdr") : plugin.off ? style.dim("off for phones") : style.green("on for phones");
+    const cards = plugin.sidecar?.cards.length ?? 0;
+    const actions = plugin.info.actions?.length ?? 0;
+    const counts = [cards ? `${cards} card${cards === 1 ? "" : "s"}` : "", actions ? `${actions} action${actions === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+    lines.push(`${selected ? style.cyan(" › ") : "   "}${on ? style.green("●") : style.dim("○")} ${name}${state}${counts ? style.dim(`  · ${counts}`) : ""}  ${style.dim(plugin.info.version)}`);
+    if (!selected) return;
+    const indent = `${" ".repeat(nameWidth + 6)}`;
+    if (plugin.info.description) lines.push(`${indent}${style.dim(plugin.info.description)}`);
+    if (plugin.sidecarError) lines.push(`${indent}${style.red(plugin.sidecarError)}`);
+    else if (!plugin.sidecar) lines.push(`${indent}${style.dim("No shepherd.toml: the phone shows its actions as buttons.")}`);
+    for (const card of plugin.sidecar?.cards ?? []) lines.push(`${indent}${card.title} ${style.dim(`(${card.context}) runs: ${card.command.join(" ")}`)}`);
+    lines.push("");
+  });
+  return lines;
+}
+
 function logScreen(data: WindowData, height: number): string[] {
   const lines = [`  ${style.dim(data.logFile)}`, ""];
   if (data.log.length === 0) return [...lines, style.dim("  Nothing logged yet.")];
@@ -176,6 +209,7 @@ const HINTS: Record<Screen, [string, string][]> = {
   overview: [["s", "shepherd on/off"], ["1-3", "connections"], ["r", "restart"], ["q", "close"]],
   pair: [["p", "new code"], ["r", "restart"], ["q", "close"]],
   phones: [["↑↓", "select"], ["x", "revoke"], ["p", "pair"], ["q", "close"]],
+  plugins: [["↑↓", "select"], ["space", "on/off for phones"], ["q", "close"]],
   log: [["r", "restart"], ["q", "close"]],
 };
 
@@ -199,6 +233,9 @@ export function render(view: ViewState, data: WindowData, cols: number, rows: nu
       break;
     case "phones":
       body = phonesScreen(view, data, view.now);
+      break;
+    case "plugins":
+      body = pluginsScreen(view, data);
       break;
     case "log":
       body = logScreen(data, bodyHeight);
@@ -228,6 +265,8 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
   const devices = new DeviceRegistry(config.configPath);
   devices.watch(500);
   const service = new Service();
+  const herdr = new HerdrClient(config.socketPath, 3000);
+  let plugins: WindowData["plugins"] = null;
   const out = process.stdout;
   const input = process.stdin;
 
@@ -249,7 +288,17 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       relayConfigured: Boolean(config.relayUrl && config.relayHostToken),
       log: logTail(svc.logFile, LOG_LINES),
       logFile: svc.logFile,
+      plugins,
     };
+  };
+  const refreshPlugins = async () => {
+    try {
+      plugins = { list: await listInstalled(herdr, config.configPath), error: null };
+    } catch (err) {
+      plugins = { list: plugins?.list ?? [], error: `Couldn't ask herdr for its plugins: ${(err as Error).message}` };
+    }
+    data = load();
+    draw();
   };
 
   const view: ViewState = { screen: initial, selected: 0, confirmRevoke: null, flash: null, pairing: null, now: Date.now() };
@@ -274,9 +323,11 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       config = loadConfig();
       svc = service.status();
       slowAt = view.now;
+      void refreshPlugins();
     }
     data = load();
-    view.selected = Math.min(view.selected, Math.max(0, data.devices.length - 1));
+    const rows = view.screen === "plugins" ? (data.plugins?.list.length ?? 0) : data.devices.length;
+    view.selected = Math.min(view.selected, Math.max(0, rows - 1));
     draw();
   };
 
@@ -295,6 +346,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
     draw();
   };
   const show = (next: Screen) => {
+    if (next !== view.screen) view.selected = 0;
     view.screen = next;
     view.confirmRevoke = null;
     if (next === "pair") void newPairing();
@@ -353,6 +405,14 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
     refresh(true);
     setTimeout(() => refresh(true), 1500);
   };
+  const togglePlugin = () => {
+    const plugin = data.plugins?.list[view.selected];
+    if (!plugin) return;
+    const off = !plugin.off;
+    setPluginOff(config.configPath, plugin.info.plugin_id, off);
+    flash(`${plugin.info.name} is ${off ? "off" : "on"} for phones.`, off ? "warn" : "ok");
+    void refreshPlugins();
+  };
   const close = () => {
     devices.unwatch();
     out.write(screen.leave);
@@ -387,6 +447,8 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
         return show("pair");
       case "d":
         return show("phones");
+      case "i":
+        return show("plugins");
       case "l":
         return show("log");
       case "\t":
@@ -404,11 +466,12 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
         if (view.screen === "overview") void toggleRoute(ROUTES[Number(key) - 1]!);
         return;
     }
-    if (view.screen === "phones") {
-      const rows = phoneRows(data);
+    if (view.screen === "phones" || view.screen === "plugins") {
+      const rows = view.screen === "phones" ? phoneRows(data).length : (data.plugins?.list.length ?? 0);
       if (key === "\x1b[A" || key === "k") view.selected = Math.max(0, view.selected - 1);
-      else if (key === "\x1b[B" || key === "j") view.selected = Math.min(rows.length - 1, view.selected + 1);
-      else if ((key === "x" || key === "\x7f") && rows[view.selected]) view.confirmRevoke = rows[view.selected]!.device.id;
+      else if (key === "\x1b[B" || key === "j") view.selected = Math.min(Math.max(0, rows - 1), view.selected + 1);
+      else if (view.screen === "phones" && (key === "x" || key === "\x7f") && phoneRows(data)[view.selected]) view.confirmRevoke = phoneRows(data)[view.selected]!.device.id;
+      else if (view.screen === "plugins" && (key === " " || key === "\r")) togglePlugin();
       draw();
     }
   };
@@ -421,6 +484,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
   out.on("resize", draw);
   process.on("SIGTERM", close);
   setInterval(() => refresh(), 1000);
+  void refreshPlugins();
   if (view.screen === "pair") void newPairing();
   draw();
   await new Promise(() => {});
