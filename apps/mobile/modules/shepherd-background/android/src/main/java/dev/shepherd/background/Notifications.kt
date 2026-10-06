@@ -31,6 +31,8 @@ object Notifications {
    */
   const val GROUP_AGENTS = "dev.shepherd.agents"
   const val GROUP_CONNECTION = "dev.shepherd.connection"
+  /** The agents group's summary: with one, Android keeps the group as it is instead of bundling it itself. */
+  const val SUMMARY_ID = 4202
 
   fun ensureChannels(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -151,6 +153,7 @@ object Notifications {
     if (!manager.areNotificationsEnabled()) return "not shown: notifications are off for Shepherd (${state(context, channel)})"
     try {
       manager.notify(id, builder.build())
+      manager.notify(SUMMARY_ID, summary(context))
     } catch (e: SecurityException) {
       return "not shown: ${e.message} (${state(context, channel)})"
     }
@@ -158,6 +161,35 @@ object Notifications {
     val showing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
       context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == id }
     return "${if (showing) "showing" else "posted, but Android doesn't list it as showing"} (${state(context, channel)})"
+  }
+
+  private fun summary(context: Context): android.app.Notification =
+    NotificationCompat.Builder(context, CHANNEL_FINISHED)
+      .setSmallIcon(R.drawable.shepherd_notification_icon)
+      .setContentTitle("Shepherd")
+      .setGroup(GROUP_AGENTS)
+      .setGroupSummary(true)
+      // The agents' own notifications make the sound, not this.
+      .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+      .setSilent(true)
+      .setAutoCancel(true)
+      .setContentIntent(openIntent(context, "shepherd://", SUMMARY_ID))
+      .build()
+
+  /** Whether Android still lists this notification as showing. */
+  fun isShowing(context: Context, id: Int): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+      context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == id }
+
+  /** Remove one; and the group's summary once no agent's notification is left. */
+  fun cancel(context: Context, id: Int) {
+    val manager = NotificationManagerCompat.from(context)
+    manager.cancel(id)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      val left = context.getSystemService(NotificationManager::class.java).activeNotifications
+        .any { it.notification.group == GROUP_AGENTS && it.id != SUMMARY_ID }
+      if (!left) manager.cancel(SUMMARY_ID)
+    }
   }
 
   /** What decides whether a notification shows: the app's switch, the permission, the category's importance, Do Not Disturb. */

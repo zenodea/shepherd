@@ -56,6 +56,8 @@ declare class ShepherdBackgroundModule extends NativeModule<Events> {
   /** Resolves to what Android made of it: "showing (…)", or why it isn't, with the notification settings that decide it. */
   notify(notification: AgentNotification): Promise<string>;
   cancel(id: number): Promise<void>;
+  /** Whether Android still lists this notification as showing. */
+  isShowing(id: number): boolean;
   /** Redraw the home-screen widget from this summary (JSON of a WidgetSummary). */
   updateWidget(json: string): Promise<void>;
   /** Saves an image (base64) into Pictures/Shepherd; resolves to its content URI. Android 10+. */

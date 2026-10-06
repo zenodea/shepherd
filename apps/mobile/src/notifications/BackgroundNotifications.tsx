@@ -156,7 +156,12 @@ export function BackgroundNotifications() {
           privateContent,
         })
         .then(
-          (result) => report(`"${content.alert.title}": ${result}`),
+          (result) => {
+            report(`"${content.alert.title}": ${result}`);
+            // Still there a moment later? If not, something removed it before you could see it.
+            const id = notificationId(change.paneId);
+            setTimeout(() => report(`"${content.alert.title}" after 3 s: ${native.isShowing(id) ? "still showing" : "gone"}`), 3000);
+          },
           (err: Error) => report(`couldn't show "${content.alert.title}": ${err.message}`),
         );
     };

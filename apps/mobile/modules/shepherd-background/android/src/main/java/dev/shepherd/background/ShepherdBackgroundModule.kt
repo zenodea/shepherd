@@ -153,7 +153,11 @@ class ShepherdBackgroundModule : Module() {
     }
 
     AsyncFunction("cancel") { id: Int ->
-      NotificationManagerCompat.from(context).cancel(id)
+      Notifications.cancel(context, id)
+    }
+
+    Function("isShowing") { id: Int ->
+      Notifications.isShowing(context, id)
     }
 
     // An image from a conversation into the phone's Pictures/Shepherd (see ImageSaver).
