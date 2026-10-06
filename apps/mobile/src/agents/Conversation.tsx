@@ -266,6 +266,9 @@ export const Conversation = memo(forwardRef<ConversationHandle, Props>(function 
   );
   const userMessages = useMemo(() => countUserMessages(rows), [rows]);
   const showJumps = userMessages > 1 || scrolledUp;
+  // Room for the arrows at the newest end, when they show there. Never tied to scrolling:
+  // the list is inverted, so growing this space mid-scroll would shift every message.
+  const roomForJumps = userMessages > 1;
 
   // Which rows are on screen, for the jump arrows.
   const visible = useRef({ newest: 0, oldest: 0 });
@@ -365,7 +368,7 @@ export const Conversation = memo(forwardRef<ConversationHandle, Props>(function 
                   {activity ?? "Working…"}
                 </Text>
               ) : null}
-              {showJumps ? <View style={styles.jumpsSpace} /> : null}
+              {roomForJumps ? <View style={styles.jumpsSpace} /> : null}
             </View>
           }
           ListFooterComponent={
