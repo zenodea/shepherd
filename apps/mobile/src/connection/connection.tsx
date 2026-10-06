@@ -1,8 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AppState, Platform } from "react-native";
-import { DEMO_ENABLED, DEMO_MODE, DEMO_SETTINGS, DemoHost } from "./demo-host";
+import { combineStores, peerHosts } from "./computers";
+import { DEMO_ENABLED, DEMO_LAPTOP_SETTINGS, DEMO_MODE, DEMO_SETTINGS, DemoHost } from "./demo-host";
 import { HostClient, type ConnectionSettings, type HostConnection, type HostState } from "./host-client";
 import { deleteHost, hostIdFor, loadHosts, saveHost, saveHostList, type HostList, type SavedHost } from "./settings-store";
+
+/** A paired computer and its connection. */
+export type Computer = { host: SavedHost; client: HostConnection; active: boolean };
 
 type ConnectionContextValue = {
   /** The computer in use; undefined while loading saved settings, null when none is paired. */
@@ -10,6 +14,8 @@ type ConnectionContextValue = {
   /** Every paired computer. */
   hosts: SavedHost[];
   client: HostConnection | null;
+  /** Every paired computer with its connection, the one in use first. Empty until one is paired. */
+  computers: Computer[];
   /** Save a pairing (replacing the same computer if it was paired before) and switch to it. */
   connect: (settings: ConnectionSettings) => Promise<void>;
   switchTo: (id: string) => Promise<void>;
@@ -32,6 +38,7 @@ function deviceName(): string {
 const noopSubscribe = () => () => {};
 
 const DEMO_HOST: SavedHost = { ...DEMO_SETTINGS, id: "demo" };
+const DEMO_LAPTOP: SavedHost = { ...DEMO_LAPTOP_SETTINGS, id: "demo-laptop" };
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   // `settings` changes only when you pair, switch or forget, which reconnects;
@@ -39,7 +46,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SavedHost | null | undefined>(
     DEMO_MODE === "unpaired" ? null : DEMO_ENABLED ? DEMO_HOST : undefined,
   );
-  const [list, setList] = useState<HostList>(DEMO_ENABLED && DEMO_MODE !== "unpaired" ? { hosts: [DEMO_HOST], activeId: "demo" } : { hosts: [], activeId: null });
+  const [list, setList] = useState<HostList>(
+    DEMO_ENABLED && DEMO_MODE !== "unpaired" ? { hosts: [DEMO_HOST, DEMO_LAPTOP], activeId: DEMO_HOST.id } : { hosts: [], activeId: null },
+  );
   // For the actions below, which run outside render.
   const listRef = useRef(list);
   useEffect(() => {
@@ -66,18 +75,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setList((prev) => ({ ...prev, hosts: prev.hosts.map((h) => (h.id === host.id ? host : h)) }));
   }, []);
 
-  const client = useMemo<HostConnection | null>(
-    () =>
-      DEMO_ENABLED && settings
-        ? new DemoHost()
-        : settings
-        ? new HostClient(settings, {
+  const makeClient = useCallback(
+    (host: SavedHost): HostConnection =>
+      DEMO_ENABLED
+        ? new DemoHost(host.id === DEMO_LAPTOP.id ? "laptop" : "studio")
+        : new HostClient(host, {
             deviceName: deviceName(),
-            onSettingsChange: (next) => updateHost({ ...next, id: settings.id }),
-          })
-        : null,
-    [settings, updateHost],
+            onSettingsChange: (next) => updateHost({ ...next, id: host.id }),
+          }),
+    [updateHost],
   );
+
+  const client = useMemo<HostConnection | null>(() => (settings ? makeClient(settings) : null), [settings, makeClient]);
 
   useEffect(() => {
     if (!client) return;
@@ -90,6 +99,44 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       client.stop();
     };
   }, [client]);
+
+  // The other paired computers stay connected while the app is open, so the
+  // home screen can show their agents too. They're replaced only when a
+  // computer is added, removed or put in use (which already has its own
+  // client); token and address updates are saved without reconnecting.
+  const activeId = settings?.id ?? null;
+  const peerKey = peerHosts(list.hosts, activeId)
+    .map((h) => h.id)
+    .join(",");
+  const peers = useMemo(
+    () => (activeId ? new Map(peerHosts(list.hosts, activeId).map((h) => [h.id, makeClient(h)])) : new Map<string, HostConnection>()),
+    // `list.hosts` is read when the set of peers changes (`peerKey`), not on every token update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeId, peerKey, makeClient],
+  );
+  // Only in the foreground: in the background just the computer in use stays connected.
+  const [foreground, setForeground] = useState(AppState.currentState !== "background");
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => setForeground(state !== "background"));
+    return () => sub.remove();
+  }, []);
+  useEffect(() => {
+    if (!foreground) return;
+    for (const peer of peers.values()) peer.start();
+    return () => {
+      for (const peer of peers.values()) peer.stop();
+    };
+  }, [peers, foreground]);
+
+  const computers = useMemo<Computer[]>(() => {
+    if (!settings || !client) return [];
+    const active: Computer = { host: list.hosts.find((h) => h.id === settings.id) ?? settings, client, active: true };
+    const others = peerHosts(list.hosts, settings.id).flatMap((host) => {
+      const peer = peers.get(host.id);
+      return peer ? [{ host, client: peer, active: false }] : [];
+    });
+    return [active, ...others];
+  }, [settings, client, list.hosts, peers]);
 
   const connect = useCallback(
     async (next: ConnectionSettings) => {
@@ -109,7 +156,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       const host = listRef.current.hosts.find((h) => h.id === id);
       if (!host || listRef.current.activeId === id) return;
       const updated = { ...listRef.current, activeId: id };
-      await saveHostList(updated);
+      if (!DEMO_ENABLED) await saveHostList(updated);
       apply(updated);
       setSettings(host);
     },
@@ -131,8 +178,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ settings, hosts: list.hosts, client, connect, switchTo, forget }),
-    [settings, list.hosts, client, connect, switchTo, forget],
+    () => ({ settings, hosts: list.hosts, client, computers, connect, switchTo, forget }),
+    [settings, list.hosts, client, computers, connect, switchTo, forget],
   );
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;
 }
@@ -144,6 +191,16 @@ export function useConnection(): ConnectionContextValue {
 }
 
 export function useHostState(): HostState {
-  const { client } = useConnection();
+  return useClientState(useConnection().client);
+}
+
+/** A connection's state (idle without one). */
+export function useClientState(client: HostConnection | null): HostState {
   return useSyncExternalStore(client?.subscribe ?? noopSubscribe, client?.getState ?? (() => IDLE));
+}
+
+/** Each computer's state, in the same order; a new array only when one of them changes. */
+export function useComputerStates(computers: Computer[]): HostState[] {
+  const store = useMemo(() => combineStores(computers.map((c) => c.client)), [computers]);
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }

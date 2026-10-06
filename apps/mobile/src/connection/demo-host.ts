@@ -34,6 +34,13 @@ export const DEMO_SETTINGS: ConnectionSettings = {
   token: "d_demo",
 };
 
+/** A second paired computer in the demo, to show every computer on one screen. */
+export const DEMO_LAPTOP_SETTINGS: ConnectionSettings = {
+  name: "work-laptop",
+  urls: ["ws://192.168.1.31:7420/connect"],
+  token: "d_demo_laptop",
+};
+
 function agent(paneId: string, kind: string, status: AgentStatus, title: string, cwd: string, tab = 1): AgentInfo {
   const [workspace] = paneId.split(":");
   return {
@@ -57,6 +64,38 @@ const AGENTS: AgentInfo[] = [
   { ...agent("w1:p3", "claude", "done", "Refactor billing module", "/Users/demo/code/api", 3), last_done_at: Date.now() - 2 * 60_000, subagents_running: 1 },
   agent("w4:p1", "gemini", "idle", "Ready", "/Users/demo/code/docs"),
 ];
+
+const LAPTOP_AGENTS: AgentInfo[] = [
+  agent("w1:p1", "claude", "blocked", "Add retries to the payments webhook", "/Users/demo/code/payments"),
+  { ...agent("w2:p1", "codex", "working", "Write the release notes", "/Users/demo/code/site"), last_done_at: Date.now() - 18 * 60_000 },
+];
+
+const LAPTOP_SNAPSHOT = {
+  workspaces: [
+    { workspace_id: "w1", label: "payments" },
+    { workspace_id: "w2", label: "site" },
+  ],
+  tabs: [
+    { tab_id: "w1:t1", workspace_id: "w1", number: 1, label: "1" },
+    { tab_id: "w2:t1", workspace_id: "w2", number: 1, label: "1" },
+  ],
+  panes: [
+    { pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1", cwd: "/Users/demo/code/payments" },
+    { pane_id: "w2:p1", tab_id: "w2:t1", workspace_id: "w2", cwd: "/Users/demo/code/site" },
+  ],
+};
+
+const LAPTOP_BLOCKED_SCREEN = `⏺ Bash(npm run test:webhooks)
+
+╭──────────────────────────────────────────────────────────╮
+│ Bash command                                             │
+│   npm run test:webhooks                                  │
+│ Do you want to proceed?                                  │
+│ ❯ 1. Yes                                                 │
+│   2. Yes, and don't ask again for npm run commands       │
+│   3. No, and tell Claude what to do differently (esc)    │
+╰──────────────────────────────────────────────────────────╯
+`;
 
 /** What the agent's edit to the login test changed. */
 const LOGIN_EDIT: FileDiff = {
@@ -351,15 +390,24 @@ function base64(text: string): string {
 
 /** Behaves like HostClient for the screens, with canned data. */
 export class DemoHost implements HostConnection {
-  private state: HostState = {
-    status: "online",
-    error: null,
-    host: { name: "studio-mac", herdrVersion: "0.9.1" },
-    activeUrl: DEMO_SETTINGS.urls[1]!,
-    urls: DEMO_SETTINGS.urls,
-    device: { id: "a1b2c3", name: "Pixel 9" },
-    agents: AGENTS,
-  };
+  private readonly computer: "studio" | "laptop";
+  private state: HostState;
+
+  /** "laptop" is the demo's second computer, with a couple of agents. */
+  constructor(computer: "studio" | "laptop" = "studio") {
+    this.computer = computer;
+    const settings = computer === "laptop" ? DEMO_LAPTOP_SETTINGS : DEMO_SETTINGS;
+    this.state = {
+      status: "online",
+      error: null,
+      host: { name: settings.name!, herdrVersion: "0.9.1" },
+      activeUrl: settings.urls.at(-1)!,
+      urls: settings.urls,
+      device: { id: "a1b2c3", name: "Pixel 9" },
+      agents: computer === "laptop" ? LAPTOP_AGENTS : AGENTS,
+    };
+  }
+
   private model = {
     model: "Opus 5.5" as string | null,
     effort: "high" as string | null,
@@ -395,11 +443,11 @@ export class DemoHost implements HostConnection {
   async call<T = Record<string, unknown>>(method: CallMethod, params: Record<string, unknown> = {}): Promise<T> {
     switch (method) {
       case "agent.read":
-        return { read: { text: params.target === "w1:p1" ? BLOCKED_SCREEN : "Done.\n" } } as T;
+        return { read: { text: params.target === "w1:p1" ? (this.computer === "laptop" ? LAPTOP_BLOCKED_SCREEN : BLOCKED_SCREEN) : "Done.\n" } } as T;
       case "agent.list":
         return { agents: this.state.agents } as T;
       case "session.snapshot":
-        return { snapshot: SNAPSHOT } as T;
+        return { snapshot: this.computer === "laptop" ? LAPTOP_SNAPSHOT : SNAPSHOT } as T;
       case "pane.read":
         return { read: { text: history(String(params.pane_id)) } } as T;
       case "pane.send_keys":

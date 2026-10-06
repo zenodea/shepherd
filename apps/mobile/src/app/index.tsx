@@ -10,8 +10,9 @@ import { PromptCard } from "../agents/PromptCard";
 import { useActivity } from "../agents/use-activity";
 import { useBlockedPrompts } from "../agents/use-blocked-prompts";
 import { tabsOf, useSnapshot, type WorkspaceTab } from "../agents/use-workspace-tabs";
-import { useConnection, useHostState } from "../connection/connection";
-import type { HostConnection } from "../connection/host-client";
+import { blockedAgents, countAgents, sortAgents, visibleAgents } from "../connection/computers";
+import { useComputerStates, useConnection, useHostState, type Computer } from "../connection/connection";
+import type { ConnectionStatus, HostConnection, HostState } from "../connection/host-client";
 import { prefSwitch } from "../connection/pref-switch";
 import { ActionSheet } from "../ui/ActionSheet";
 import { AgentMark } from "../ui/AgentMark";
@@ -26,19 +27,32 @@ import { colors, radii, space, statusColors, statusLabels, statusRank, type, the
 /** The home screen lists agents, or every herdr space with its tabs (agents and plain terminals). */
 const spacesView = prefSwitch("home-spaces", false);
 
+const NO_AGENTS: AgentInfo[] = [];
+
+/** How the home screen opens an agent or terminal, and its long-press actions, on a given computer. */
+type Handlers = {
+  open: (computer: Computer, paneId: string) => void;
+  more: (computer: Computer, paneId: string, workspaceId: string, agent: AgentInfo | null) => void;
+};
+
 export default function AgentsScreen() {
   // For "Last done: 12m ago" on each agent.
   const now = useNow(30_000);
   const router = useRouter();
-  const { settings, hosts, client, switchTo } = useConnection();
+  const { settings, hosts, client, computers, switchTo } = useConnection();
   const state = useHostState();
+  const states = useComputerStates(computers);
+  // With more than one computer paired, every computer's agents are listed (see ComputerAgents).
+  const multi = computers.length > 1;
   const [refreshing, setRefreshing] = useState(false);
   const [hostSheet, setHostSheet] = useState(false);
-  const prompts = useBlockedPrompts(client, state.agents);
+  const prompts = useBlockedPrompts(client, multi ? NO_AGENTS : state.agents);
   const activity = useActivity(client, settings?.id ?? null, state.status === "online");
-  const actions = useAgentActions(client);
+  // Long-press actions go to the computer the agent is on.
+  const [actionsClient, setActionsClient] = useState<HostConnection | null>(null);
+  const actions = useAgentActions(multi ? (actionsClient ?? client) : client);
   const showSpaces = spacesView.use();
-  const snapshot = useSnapshot(client, showSpaces && state.status === "online");
+  const snapshot = useSnapshot(client, !multi && showSpaces && state.status === "online");
   const spaces = useMemo(
     () => (snapshot ? snapshot.workspaces.map((w) => ({ id: w.workspace_id, label: w.label, tabs: tabsOf(snapshot, w.workspace_id, state.agents).tabs })) : null),
     [snapshot, state.agents],
@@ -63,9 +77,8 @@ export default function AgentsScreen() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await client?.call("agent.list");
-    } catch {
-      // the banner shows connection problems
+      // the banner and each computer's heading show connection problems
+      await Promise.allSettled(computers.filter((_, i) => states[i]?.status === "online").map((c) => c.client.call("agent.list")));
     } finally {
       setRefreshing(false);
     }
@@ -73,8 +86,21 @@ export default function AgentsScreen() {
 
   const online = state.status === "online";
   const hostName = state.host?.name ?? settings.name ?? "Host";
-  const working = state.agents.filter((a) => a.agent_status === "working").length;
+  const counts = multi ? countAgents(states) : { total: state.agents.length, working: state.agents.filter((a) => a.agent_status === "working").length, blocked: blocked.length };
+  const anyOnline = multi ? states.some((s) => s.status === "online") : online;
   const open = (agent: AgentInfo) => router.push({ pathname: "/agent/[paneId]", params: { paneId: agent.pane_id } });
+  const handlers: Handlers = {
+    open: (computer, paneId) => {
+      const go = () => router.push({ pathname: "/agent/[paneId]", params: computer.active ? { paneId } : { paneId, host: computer.host.id } });
+      // Switch first, so the agent screen doesn't briefly show a pane with the same id on the computer in use.
+      if (computer.active) go();
+      else void switchTo(computer.host.id).finally(go);
+    },
+    more: (computer, paneId, workspaceId, agent) => {
+      setActionsClient(computer.active ? null : computer.client);
+      actions.show(paneId, workspaceId, agent);
+    },
+  };
 
   return (
     <Screen>
@@ -85,7 +111,7 @@ export default function AgentsScreen() {
           accessibilityRole="button"
           accessibilityLabel={`${hostName}, ${statusText(state.status)}. Switch computer`}
         >
-          <View style={[styles.hostDot, { backgroundColor: online ? statusColors.done : state.status === "connecting" ? colors.subtle : colors.danger }]} />
+          <View style={[styles.hostDot, { backgroundColor: dotColor(state.status) }]} />
           <Text style={styles.hostName} numberOfLines={1}>
             {hostName}
           </Text>
@@ -119,11 +145,7 @@ export default function AgentsScreen() {
             );
           })}
         </View>
-        {online ? (
-          <Text style={type.sub}>
-            {summary(state.agents.length, working, blocked.length)}
-          </Text>
-        ) : null}
+        {anyOnline ? <Text style={type.sub}>{summary(counts.total, counts.working, counts.blocked)}</Text> : null}
       </View>
 
       <ConnectionBanner pairHint="Tap the host name to pair." />
@@ -132,7 +154,30 @@ export default function AgentsScreen() {
         contentContainerStyle={{ paddingBottom: space.xxl * 2 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.muted} />}
       >
-        {showSpaces ? (
+        {multi && showSpaces
+          ? computers.map((computer, i) => (
+              <ComputerSpaces key={computer.host.id} computer={computer} state={states[i] ?? IDLE_STATE} now={now} handlers={handlers} />
+            ))
+          : null}
+
+        {multi && !showSpaces && counts.blocked > 0 ? (
+          <>
+            <SectionHeader title="Needs you" count={counts.blocked} />
+            <View style={{ gap: space.md, paddingHorizontal: space.lg }}>
+              {computers.map((computer, i) => (
+                <ComputerBlocked key={computer.host.id} computer={computer} state={states[i] ?? IDLE_STATE} handlers={handlers} />
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {multi && !showSpaces
+          ? computers.map((computer, i) => (
+              <ComputerAgents key={computer.host.id} computer={computer} state={states[i] ?? IDLE_STATE} now={now} handlers={handlers} />
+            ))
+          : null}
+
+        {multi ? null : showSpaces ? (
           online && !spaces ? (
             <ActivityIndicator style={{ marginTop: space.xl }} color={colors.muted} />
           ) : (
@@ -157,7 +202,7 @@ export default function AgentsScreen() {
           )
         ) : null}
 
-        {!showSpaces && blocked.length > 0 ? (
+        {!multi && !showSpaces && blocked.length > 0 ? (
           <>
             <SectionHeader title="Needs you" count={blocked.length} />
             <View style={{ gap: space.md, paddingHorizontal: space.lg }}>
@@ -175,7 +220,7 @@ export default function AgentsScreen() {
           </>
         ) : null}
 
-        {showSpaces ? null : groups.map(([project, agents]) => (
+        {multi || showSpaces ? null : groups.map(([project, agents]) => (
           <View key={project}>
             <SectionHeader title={project} count={agents.length} />
             {agents.map((agent) => (
@@ -190,7 +235,7 @@ export default function AgentsScreen() {
           </View>
         ))}
 
-        {online && (showSpaces ? spaces?.length === 0 : state.agents.length === 0) ? (
+        {!multi && online && (showSpaces ? spaces?.length === 0 : state.agents.length === 0) ? (
           <View style={styles.empty}>
             <Text style={type.title}>{showSpaces ? "No spaces open" : "No agents running"}</Text>
             <Text style={[type.sub, { textAlign: "center" }]}>Start one here, or in herdr on your computer.</Text>
@@ -230,6 +275,128 @@ export default function AgentsScreen() {
   );
 }
 
+const IDLE_STATE: HostState = { status: "idle", error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] };
+
+/** Online, connecting, or not reachable. */
+function dotColor(status: ConnectionStatus): string {
+  return status === "online" ? statusColors.done : status === "connecting" || status === "idle" ? colors.subtle : colors.danger;
+}
+
+function computerName(computer: Computer, state: HostState): string {
+  return state.host?.name ?? computer.host.name ?? "Computer";
+}
+
+/** A computer's name and connection, heading its agents or spaces. */
+function ComputerHeader({ computer, state, count }: { computer: Computer; state: HostState; count?: number }) {
+  const name = computerName(computer, state);
+  return (
+    <View style={styles.computerHeader} accessibilityRole="header" accessibilityLabel={`${name}, ${statusText(state.status)}`}>
+      <View style={[styles.hostDot, { backgroundColor: dotColor(state.status) }]} />
+      <Text style={[type.section, { flexShrink: 1 }]} numberOfLines={1}>
+        {name}
+      </Text>
+      {count !== undefined ? <Text style={[type.mono, { color: colors.subtle }]}>{count}</Text> : null}
+    </View>
+  );
+}
+
+/** A muted line under a computer's heading. */
+function ComputerNote({ children }: { children: string }) {
+  return <Text style={styles.computerNote}>{children}</Text>;
+}
+
+/** Why nothing is listed for a computer that isn't connected, or null when it is. */
+function offlineNote(state: HostState): string | null {
+  if (state.status === "online") return null;
+  if (state.status === "connecting" || state.status === "idle") return "Connecting…";
+  return statusText(state.status);
+}
+
+/** A computer's agents that need you, answered through that computer's connection. */
+function ComputerBlocked({ computer, state, handlers }: { computer: Computer; state: HostState; handlers: Handlers }) {
+  const blocked = useMemo(() => sortAgents(blockedAgents(state), statusRank), [state]);
+  const prompts = useBlockedPrompts(computer.client, blocked);
+  const name = computerName(computer, state);
+  return blocked.map((agent) => (
+    <BlockedCard
+      key={agent.pane_id}
+      agent={agent}
+      computer={name}
+      client={computer.client}
+      prompt={prompts[agent.pane_id]}
+      onOpen={() => handlers.open(computer, agent.pane_id)}
+      onMore={() => handlers.more(computer, agent.pane_id, agent.workspace_id, agent)}
+    />
+  ));
+}
+
+/** One computer's agents (those that need you are listed above, under "Needs you"). */
+function ComputerAgents({ computer, state, now, handlers }: { computer: Computer; state: HostState; now: number; handlers: Handlers }) {
+  const agents = useMemo(() => visibleAgents(state), [state]);
+  const rows = useMemo(() => {
+    const blocked = new Set(blockedAgents(state).map((a) => a.pane_id));
+    return sortAgents(agents, statusRank).filter((a) => !blocked.has(a.pane_id));
+  }, [state, agents]);
+  const note =
+    rows.length > 0 ? null : agents.length > 0 && state.status === "online" ? "Waiting on you, above" : (offlineNote(state) ?? "No agents running");
+  return (
+    <View>
+      <ComputerHeader computer={computer} state={state} count={state.status === "online" ? agents.length : undefined} />
+      {note ? <ComputerNote>{note}</ComputerNote> : null}
+      {rows.map((agent) => (
+        <AgentRow
+          key={agent.pane_id}
+          agent={agent}
+          project={projectOf(agent)}
+          now={now}
+          onPress={() => handlers.open(computer, agent.pane_id)}
+          onLongPress={() => handlers.more(computer, agent.pane_id, agent.workspace_id, agent)}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** One computer's herdr spaces and their tabs. */
+function ComputerSpaces({ computer, state, now, handlers }: { computer: Computer; state: HostState; now: number; handlers: Handlers }) {
+  const online = state.status === "online";
+  const snapshot = useSnapshot(computer.client, online);
+  const spaces = useMemo(
+    () => (snapshot ? snapshot.workspaces.map((w) => ({ id: w.workspace_id, label: w.label, tabs: tabsOf(snapshot, w.workspace_id, state.agents).tabs })) : null),
+    [snapshot, state.agents],
+  );
+  const note = offlineNote(state) ?? (spaces?.length === 0 ? "No spaces open" : null);
+  return (
+    <View>
+      <ComputerHeader computer={computer} state={state} count={online && spaces ? spaces.length : undefined} />
+      {note ? <ComputerNote>{note}</ComputerNote> : null}
+      {online && !spaces ? <ActivityIndicator style={styles.computerLoading} color={colors.muted} /> : null}
+      {online
+        ? spaces?.map((ws) => (
+            <View key={ws.id}>
+              <Text style={styles.spaceLabel} numberOfLines={1}>
+                {ws.label}
+              </Text>
+              {ws.tabs.map((tab) =>
+                tab.agent ? (
+                  <AgentRow
+                    key={tab.tabId}
+                    agent={tab.agent}
+                    now={now}
+                    onPress={() => handlers.open(computer, tab.paneId)}
+                    onLongPress={() => handlers.more(computer, tab.paneId, ws.id, tab.agent)}
+                  />
+                ) : (
+                  <TerminalRow key={tab.tabId} tab={tab} onPress={() => handlers.open(computer, tab.paneId)} />
+                ),
+              )}
+            </View>
+          ))
+        : null}
+    </View>
+  );
+}
+
 function statusText(status: string): string {
   if (status === "online") return "Connected";
   if (status === "connecting") return "Connecting…";
@@ -254,7 +421,20 @@ function useNow(ms: number): number {
   return now;
 }
 
-function AgentRow({ agent, now, onPress, onLongPress }: { agent: AgentInfo; now: number; onPress: () => void; onLongPress: () => void }) {
+function AgentRow({
+  agent,
+  project,
+  now,
+  onPress,
+  onLongPress,
+}: {
+  agent: AgentInfo;
+  /** Shown after the agent's name, when the list isn't grouped by project. */
+  project?: string;
+  now: number;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
   const title = agentTitle(agent) ?? agentName(agent);
   // Finished or waiting, but subagents it started are still at work.
   const subagents = agent.agent_status === "working" ? 0 : (agent.subagents_running ?? 0);
@@ -277,7 +457,7 @@ function AgentRow({ agent, now, onPress, onLongPress }: { agent: AgentInfo; now:
             <Text style={{ color: agent.agent_status === "idle" ? colors.subtle : statusColors[agent.agent_status] }}>
               {statusLabels[agent.agent_status]}
             </Text>
-            {`  ·  ${agentName(agent)}`}
+            {`  ·  ${agentName(agent)}${project ? `  ·  ${project}` : ""}`}
           </Text>
           {subagents ? (
             <View style={styles.subagents}>
@@ -317,12 +497,15 @@ function TerminalRow({ tab, onPress }: { tab: WorkspaceTab; onPress: () => void 
 
 function BlockedCard({
   agent,
+  computer,
   client,
   prompt,
   onOpen,
   onMore,
 }: {
   agent: AgentInfo;
+  /** Its computer's name, when more than one is paired. */
+  computer?: string;
   client: HostConnection | null;
   prompt: BlockedPrompt | undefined;
   onOpen: () => void;
@@ -336,7 +519,7 @@ function BlockedCard({
         highlight={false}
         style={styles.cardHeader}
         accessibilityRole="button"
-        accessibilityLabel={`${agentTitle(agent) ?? agentName(agent)}, ${agentName(agent)}, needs input`}
+        accessibilityLabel={`${agentTitle(agent) ?? agentName(agent)}, ${agentName(agent)}${computer ? ` on ${computer}` : ""}, needs input`}
         accessibilityHint="Opens the terminal. Long-press for more."
       >
         <AgentMark agent={agent.agent} size={28} />
@@ -345,7 +528,7 @@ function BlockedCard({
             {agentTitle(agent) ?? agentName(agent)}
           </Text>
           <Text style={type.sub} numberOfLines={1}>
-            {agentName(agent)} · {projectOf(agent)}
+            {[agentName(agent), projectOf(agent), computer].filter(Boolean).join(" · ")}
           </Text>
         </View>
         <StatusIndicator status="blocked" />
@@ -373,6 +556,10 @@ const styles = themed(() => StyleSheet.create({
     maxWidth: 240,
   },
   hostDot: { width: 7, height: 7, borderRadius: 4 },
+  computerHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.sm },
+  computerNote: { fontSize: 13, color: colors.subtle, paddingHorizontal: space.lg, paddingBottom: space.sm },
+  computerLoading: { alignSelf: "flex-start", marginHorizontal: space.lg, marginVertical: space.sm },
+  spaceLabel: { fontSize: 13, fontWeight: "600", color: colors.muted, paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: 2 },
   badge: {
     position: "absolute",
     top: 6,
