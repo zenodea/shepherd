@@ -25,6 +25,8 @@ export type AgentInfo = {
   agent_session?: { agent: string; kind: "id" | "path"; source: string; value: string } | null;
   /** Added by Shepherd's host, not herdr: when it last finished a turn (unix ms), from the activity log. */
   last_done_at?: number | null;
+  /** Added by Shepherd's host: subagents still running while the agent itself isn't working. */
+  subagents_running?: number;
 };
 
 export type WorkspaceInfo = {

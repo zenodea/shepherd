@@ -18,6 +18,7 @@ import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
 import type { ActivityLog } from "../herdr/activity-log.ts";
+import type { RunningSubagents } from "../conversation/running-subagents.ts";
 import type { Uploads } from "../uploads.ts";
 import { ModelError, type Models } from "../model/models.ts";
 import { ScreenError } from "../model/screen.ts";
@@ -57,6 +58,8 @@ export type SessionDeps = {
   models?: Models;
   /** Backs `shepherd.upload`; without it images can't be sent. */
   uploads?: Uploads;
+  /** Subagents still running for agents that aren't, shown in the agent list. */
+  runningSubagents?: RunningSubagents;
   /** Told which phones are connected, for the Shepherd window. */
   presence?: { connected: (deviceId: string, via: "direct" | "relay") => () => void };
 };
@@ -85,7 +88,8 @@ export class AppSession {
   private releasePresence: (() => void) | null = null;
   private readonly transport: SessionTransport;
   private readonly deps: SessionDeps;
-  private readonly onAgents = (agents: AgentInfo[]) => this.send({ type: "agents", agents: this.withLastDone(agents) });
+  private readonly onAgents = (agents: AgentInfo[]) => this.send({ type: "agents", agents: this.withHostInfo(agents) });
+  private readonly onSubagents = () => this.onAgents(this.deps.tracker.list());
   private readonly onStatus = (change: StatusChange) => {
     this.send(change);
     // The list went out just before this change was logged: send it again with the new "last done".
@@ -137,6 +141,7 @@ export class AppSession {
     this.releasePresence?.();
     this.deps.tracker.off("agents", this.onAgents);
     this.deps.tracker.off("status", this.onStatus);
+    this.deps.runningSubagents?.off("changed", this.onSubagents);
     this.deps.devices.off("changed", this.onDevicesChanged);
     for (const stream of [...this.streams.values()]) stream.close();
     this.streams.clear();
@@ -160,6 +165,7 @@ export class AppSession {
     this.authTimer = null;
     this.device = result.device;
     this.releasePresence = this.deps.presence?.connected(result.device.id, this.transport.via ?? "direct") ?? null;
+    this.deps.runningSubagents?.on("changed", this.onSubagents);
     this.deps.tracker.on("agents", this.onAgents);
     this.deps.tracker.on("status", this.onStatus);
     this.deps.devices.on("changed", this.onDevicesChanged);
@@ -169,14 +175,17 @@ export class AppSession {
       host: this.deps.host,
       device: { id: result.device.id, name: result.device.name },
       credentials: result.issuedToken ? { token: result.issuedToken } : undefined,
-      agents: this.withLastDone(this.deps.tracker.list()),
+      agents: this.withHostInfo(this.deps.tracker.list()),
     });
   }
 
-  /** Each agent with when it last finished, from the activity log. */
-  private withLastDone(agents: AgentInfo[]): AgentInfo[] {
-    const log = this.deps.activity;
-    return log ? agents.map((a) => ({ ...a, last_done_at: log.lastFinished(a.pane_id) })) : agents;
+  /** Each agent with when it last finished (from the activity log) and its subagents still running. */
+  private withHostInfo(agents: AgentInfo[]): AgentInfo[] {
+    const { activity, runningSubagents } = this.deps;
+    return agents.map((a) => {
+      const running = runningSubagents?.count(a.pane_id) ?? 0;
+      return { ...a, ...(activity ? { last_done_at: activity.lastFinished(a.pane_id) } : {}), ...(running > 0 ? { subagents_running: running } : {}) };
+    });
   }
 
   private reject(code: Extract<ServerMessage, { type: "auth.error" }>["code"], message: string, closeCode: number): void {

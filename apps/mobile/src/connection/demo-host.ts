@@ -54,7 +54,7 @@ function agent(paneId: string, kind: string, status: AgentStatus, title: string,
 const AGENTS: AgentInfo[] = [
   { ...agent("w1:p1", "claude", "blocked", "Fix flaky login test", "/Users/demo/code/api"), last_done_at: Date.now() - 41 * 60_000 },
   { ...agent("w2:p1", "codex", "working", "Create branch from PR-12", "/Users/demo/code/web"), last_done_at: Date.now() - 3 * 3600_000 },
-  { ...agent("w1:p3", "claude", "done", "Refactor billing module", "/Users/demo/code/api", 3), last_done_at: Date.now() - 2 * 60_000 },
+  { ...agent("w1:p3", "claude", "done", "Refactor billing module", "/Users/demo/code/api", 3), last_done_at: Date.now() - 2 * 60_000, subagents_running: 1 },
   agent("w4:p1", "gemini", "idle", "Ready", "/Users/demo/code/docs"),
 ];
 

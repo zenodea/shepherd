@@ -1,5 +1,5 @@
 import { Redirect, useRouter } from "expo-router";
-import { Activity, Check, ChevronDown, Laptop, Plus, QrCode, Settings, SquareTerminal } from "lucide-react-native";
+import { Activity, Bot, Check, ChevronDown, Laptop, Plus, QrCode, Settings, SquareTerminal } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { AgentInfo, BlockedPrompt } from "@shepherd/protocol";
@@ -256,13 +256,15 @@ function useNow(ms: number): number {
 
 function AgentRow({ agent, now, onPress, onLongPress }: { agent: AgentInfo; now: number; onPress: () => void; onLongPress: () => void }) {
   const title = agentTitle(agent) ?? agentName(agent);
+  // Finished or waiting, but subagents it started are still at work.
+  const subagents = agent.agent_status === "working" ? 0 : (agent.subagents_running ?? 0);
   return (
     <PressableScale
       onPress={onPress}
       onLongPress={onLongPress}
       style={styles.row}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${agentName(agent)}, ${statusLabels[agent.agent_status]}`}
+      accessibilityLabel={`${title}, ${agentName(agent)}, ${statusLabels[agent.agent_status]}${subagents ? `, ${subagents} subagent${subagents === 1 ? "" : "s"} running` : ""}`}
       accessibilityHint="Opens the terminal. Long-press for more."
     >
       <AgentMark agent={agent.agent} size={32} />
@@ -270,12 +272,20 @@ function AgentRow({ agent, now, onPress, onLongPress }: { agent: AgentInfo; now:
         <Text style={type.row} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={type.sub} numberOfLines={1}>
-          <Text style={{ color: agent.agent_status === "idle" ? colors.subtle : statusColors[agent.agent_status] }}>
-            {statusLabels[agent.agent_status]}
+        <View style={styles.metaRow}>
+          <Text style={[type.sub, { flexShrink: 1 }]} numberOfLines={1}>
+            <Text style={{ color: agent.agent_status === "idle" ? colors.subtle : statusColors[agent.agent_status] }}>
+              {statusLabels[agent.agent_status]}
+            </Text>
+            {`  ·  ${agentName(agent)}`}
           </Text>
-          {`  ·  ${agentName(agent)}`}
-        </Text>
+          {subagents ? (
+            <View style={styles.subagents}>
+              <Bot size={12} color={statusColors.working} />
+              <Text style={styles.subagentsText}>{subagents}</Text>
+            </View>
+          ) : null}
+        </View>
         {agent.last_done_at ? (
           <Text style={styles.lastDone} numberOfLines={1}>
             Last done: {agoLabel(agent.last_done_at, now)}
@@ -380,6 +390,9 @@ const styles = themed(() => StyleSheet.create({
   titleBlock: { paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.sm, gap: 4 },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: 11 },
   statusSlot: { width: 24, alignItems: "center" },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  subagents: { flexDirection: "row", alignItems: "center", gap: 3 },
+  subagentsText: { fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
   lastDone: { fontSize: 12, color: colors.subtle },
   card: { backgroundColor: colors.surface, borderRadius: 16, padding: 14, gap: space.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.hairline },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: space.md },

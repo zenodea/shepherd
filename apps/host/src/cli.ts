@@ -22,6 +22,7 @@ import type { SessionDeps } from "./connection/session.ts";
 import { Service, logTail, serviceSpec, trimLog } from "./system/service.ts";
 import { HostStatusWriter } from "./system/host-status.ts";
 import { Conversations } from "./conversation/conversations.ts";
+import { RunningSubagents } from "./conversation/running-subagents.ts";
 import { Uploads } from "./uploads.ts";
 import { Models } from "./model/models.ts";
 import { claudeModels } from "./model/vendors/claude.ts";
@@ -105,6 +106,8 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   activity.attach(tracker);
 
   const conversations = new Conversations();
+  const runningSubagents = new RunningSubagents((agent) => conversations.subagents(agent), () => tracker.list());
+  runningSubagents.start();
   const deps: SessionDeps = {
     herdr,
     tracker,
@@ -122,6 +125,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     conversations,
     models: new Models({ herdr, vendors: [claudeModels, codexModels, piModels], transcriptModel: (agent) => conversations.model(agent) }),
     uploads: new Uploads(),
+    runningSubagents,
   };
 
   const routes = routesOf(config);
