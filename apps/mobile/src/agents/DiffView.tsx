@@ -60,10 +60,15 @@ export function DiffHunkRow({ line }: { line: number }) {
 
 /** The rows of a diff, with folds that open when tapped. */
 export function useDiffRows(diff: FileDiff | null): { rows: DiffRow[]; open: (key: string) => void } {
-  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  // Opened folds belong to one diff: another file starts folded.
+  const [folds, setFolds] = useState<{ of: FileDiff | null; opened: ReadonlySet<string> }>({ of: diff, opened: new Set() });
+  if (folds.of !== diff) setFolds({ of: diff, opened: new Set() });
+  const opened = folds.of === diff ? folds.opened : NO_FOLDS;
   const rows = useMemo(() => (diff ? diffRows(diff, opened) : []), [diff, opened]);
-  return { rows, open: (key) => setOpened((prev) => new Set(prev).add(key)) };
+  return { rows, open: (key) => setFolds((prev) => ({ of: prev.of, opened: new Set(prev.opened).add(key) })) };
 }
+
+const NO_FOLDS: ReadonlySet<string> = new Set();
 
 export function DiffNote({ diff }: { diff: FileDiff }): ReactNode {
   if (diff.binary) return <Text style={styles.note}>Binary file: no text to show.</Text>;

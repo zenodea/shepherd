@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AtSign, Check, ChevronLeft, ChevronRight } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, SectionList, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Animated, Easing, FlatList, SectionList, StyleSheet, Text, useWindowDimensions, View, type GestureResponderEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ChangedFile, ChangesMode, ChangesResult, FileDiffResult } from "@shepherd/protocol";
 import { agentName } from "../../agents/agents";
@@ -180,23 +180,28 @@ function FileChanges({ paneId, path, mode }: { paneId: string; path: string; mod
   const { changes } = useChanges(client, paneId, online, agent?.agent_status ?? null, mode);
   const reviewKey = `${settings?.id ?? "none"}:${paneId}`;
   const review = useReview(reviewKey);
-  const [diff, setDiff] = useState<{ path: string; result: FileDiffResult } | null>(null);
   const [target, setTarget] = useState<CommentTarget | null>(null);
   const [sending, setSending] = useState(false);
 
+  const files = useMemo(() => (changes?.available ? ordered(changes) : []), [changes]);
+  const index = files.findIndex((f) => f.path === path);
+  const file = files[index] ?? null;
+
+  // Diffs by file and how it looks now; this file's neighbours are fetched too, so moving is instant.
+  const [diffs, setDiffs] = useState<Record<string, FileDiffResult>>({});
+  const diffKey = (f: ChangedFile | undefined | null, p = f?.path) => `${mode}:${p}:${f ? fingerprint(f) : ""}`;
+  const wanted = useMemo(() => [{ path, key: diffKey(file, path) }, ...[files[index + 1], files[index - 1]].flatMap((f) => (f ? [{ path: f.path, key: diffKey(f) }] : []))], [files, index, path, mode]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!client || !online) return;
-    let cancelled = false;
-    client
-      .call<FileDiffResult>("shepherd.file_diff", { paneId, path, mode })
-      .then((result) => !cancelled && setDiff({ path, result }))
-      .catch((err: Error) => !cancelled && setDiff({ path, result: { available: false, reason: err.message } }));
-    return () => {
-      cancelled = true;
-    };
-  }, [client, online, paneId, path, mode]);
-
-  const current = diff?.path === path ? diff.result : null;
+    for (const { path: p, key } of wanted) {
+      if (diffs[key]) continue;
+      client
+        .call<FileDiffResult>("shepherd.file_diff", { paneId, path: p, mode })
+        .catch((err: Error): FileDiffResult => ({ available: false, reason: err.message }))
+        .then((result) => setDiffs((prev) => ({ ...prev, [key]: result })));
+    }
+  }, [client, online, paneId, mode, wanted]); // eslint-disable-line react-hooks/exhaustive-deps
+  const current = diffs[diffKey(file, path)] ?? null;
   const { rows, open } = useDiffRows(current?.available ? current.diff : null);
   const comments = useMemo(() => review.comments.filter((c) => c.path === path), [review.comments, path]);
   // Each line followed by the comments on it.
@@ -210,11 +215,54 @@ function FileChanges({ paneId, path, mode }: { paneId: string; path: string; mod
     [rows, comments],
   );
 
-  const files = useMemo(() => (changes?.available ? ordered(changes) : []), [changes]);
-  const index = files.findIndex((f) => f.path === path);
-  const file = files[index] ?? null;
   const viewed = file ? isViewed(review, mode, file) : false;
-  const go = (to: ChangedFile | undefined) => to && router.setParams({ path: to.path });
+
+  // Moving between files: the diff slides out one side and the next slides in from the other; the bar stays.
+  const { width } = useWindowDimensions();
+  const [x] = useState(() => new Animated.Value(0));
+  const entering = useRef(0);
+  const go = (to: ChangedFile | undefined) => {
+    if (!to || to.path === path) return;
+    const direction = files.indexOf(to) > index ? 1 : -1;
+    Animated.timing(x, { toValue: -direction * width, duration: 150, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => {
+      entering.current = direction;
+      x.setValue(direction * width);
+      router.setParams({ path: to.path });
+    });
+  };
+  useEffect(() => {
+    if (!entering.current) return;
+    entering.current = 0;
+    Animated.timing(x, { toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [path, x]);
+  // Swiping sideways does the same (past the first or last file it gives a little, then springs back); up and down still scroll.
+  const touch = useRef<{ x: number; y: number; at: number } | null>(null);
+  const neighbour = (dx: number) => files[index + (dx < 0 ? 1 : -1)];
+  const settle = () => Animated.spring(x, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+  const sideways = (e: GestureResponderEvent) => {
+    const start = touch.current;
+    if (!start) return false;
+    const dx = e.nativeEvent.pageX - start.x;
+    return Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(e.nativeEvent.pageY - start.y) * 2;
+  };
+  const swipe = {
+    onTouchStart: (e: GestureResponderEvent) => (touch.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY, at: Date.now() }),
+    onMoveShouldSetResponderCapture: sideways,
+    onResponderTerminationRequest: () => false,
+    onResponderMove: (e: GestureResponderEvent) => {
+      const dx = e.nativeEvent.pageX - (touch.current?.x ?? e.nativeEvent.pageX);
+      x.setValue(neighbour(dx) ? dx : dx * 0.25);
+    },
+    onResponderRelease: (e: GestureResponderEvent) => {
+      const start = touch.current;
+      const dx = e.nativeEvent.pageX - (start?.x ?? e.nativeEvent.pageX);
+      const fast = start ? Math.abs(dx) / Math.max(1, Date.now() - start.at) > 0.5 : false;
+      const to = neighbour(dx);
+      if (to && (Math.abs(dx) > width * 0.25 || fast)) go(to);
+      else settle();
+    },
+    onResponderTerminate: settle,
+  };
   const toggleViewed = () => {
     if (!file) return;
     setViewed(reviewKey, viewedKey(mode, file.path), viewed ? null : fingerprint(file));
@@ -234,6 +282,7 @@ function FileChanges({ paneId, path, mode }: { paneId: string; path: string; mod
   const note = current?.available ? DiffNote({ diff: current.diff }) : null;
   return (
     <View style={{ flex: 1 }}>
+      <Animated.View style={[styles.diff, { transform: [{ translateX: x }] }]} {...swipe}>
       {!current ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.muted} />
       ) : !current.available ? (
@@ -244,7 +293,6 @@ function FileChanges({ paneId, path, mode }: { paneId: string; path: string; mod
         <FlatList
           data={items}
           keyExtractor={(item) => item.key}
-          style={styles.diff}
           contentContainerStyle={{ paddingVertical: space.sm, paddingBottom: space.xxl }}
           initialNumToRender={60}
           windowSize={15}
@@ -262,6 +310,7 @@ function FileChanges({ paneId, path, mode }: { paneId: string; path: string; mod
           ListFooterComponent={current.diff.truncated ? <Text style={styles.cut}>Cut short: the rest is too big to show here.</Text> : null}
         />
       )}
+      </Animated.View>
       <View style={[styles.fileBar, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
         <ReviewBar count={review.comments.length} onPress={() => setSending(true)} />
         <View style={styles.fileBarRow}>
