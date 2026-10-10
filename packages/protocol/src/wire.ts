@@ -107,6 +107,7 @@ export const HOST_METHODS = [
   "shepherd.cards",
   "shepherd.plugin_action",
   "shepherd.plugin_pane",
+  "shepherd.plugin_log",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;

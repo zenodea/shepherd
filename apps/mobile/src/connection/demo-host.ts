@@ -7,6 +7,7 @@ import type {
   CallMethod,
   CardsResult,
   PluginActionResult,
+  PluginLogResult,
   PluginPaneResult,
   PluginsResult,
   ConversationEntry,
@@ -399,6 +400,7 @@ const DEMO_PLUGINS: PluginsResult["plugins"] = [
     name: "fence",
     version: "0.1.0",
     description: "Pens for your agents: a space fenced off from your secrets and the network",
+    source: { kind: "local", path: "~/Documents/fence" },
     actions: [
       { id: "new", title: "fence: new pen here", description: null, contexts: ["workspace"] },
       { id: "open", title: "fence: this space's pen", description: null, contexts: ["workspace"] },
@@ -411,6 +413,7 @@ const DEMO_PLUGINS: PluginsResult["plugins"] = [
     name: "graphdiff",
     version: "0.1.0",
     description: "Review what your agent changed: a live tree of the diff in your browser",
+    source: { kind: "github", repo: "zenodea/graphdiff", commit: "4e1c0a9", installedAt: Date.now() - 2 * 86_400_000 },
     actions: [{ id: "open", title: "graphdiff: review changes", description: null, contexts: ["workspace"] }, { id: "tui", title: "graphdiff: map in the terminal", description: null, contexts: ["workspace"] }],
     panes: [{ id: "tui", title: "graphdiff", description: null }],
     cards: [],
@@ -480,6 +483,7 @@ export class DemoHost implements HostConnection {
     const settings = computer === "laptop" ? DEMO_LAPTOP_SETTINGS : DEMO_SETTINGS;
     this.state = {
       status: "online",
+      network: true,
       error: null,
       host: { name: settings.name!, herdrVersion: "0.9.1" },
       activeUrl: settings.urls.at(-1)!,
@@ -520,6 +524,7 @@ export class DemoHost implements HostConnection {
   stop(): void {}
   reconnectNow(): void {}
   checkConnection(): void {}
+  setNetwork(): void {}
 
   async call<T = Record<string, unknown>>(method: CallMethod, params: Record<string, unknown> = {}): Promise<T> {
     switch (method) {
@@ -668,6 +673,18 @@ export class DemoHost implements HostConnection {
         return { status: "succeeded", output: params.action === "new" ? "Fenced w1 as a pen: no secrets, no network." : null, error: null } satisfies PluginActionResult as T;
       case "shepherd.plugin_pane":
         return { paneId: "w1:p2", workspaceId: "w1" } satisfies PluginPaneResult as T;
+      case "shepherd.plugin_log": {
+        const t = Date.now();
+        const runs: PluginLogResult["runs"] =
+          params.plugin === "fence"
+            ? [
+                { id: "r1", what: "fence: new pen here", startedAt: t - 14 * 60_000, finishedAt: t - 14 * 60_000 + 900, status: "succeeded", output: "Fenced w2 as a pen: no secrets, no network.", error: null },
+                { id: "r2", what: "on pane.created", startedAt: t - 3 * 3_600_000, finishedAt: t - 3 * 3_600_000 + 200, status: "succeeded", output: null, error: null },
+                { id: "r3", what: "on pane.created", startedAt: t - 26 * 3_600_000, finishedAt: t - 26 * 3_600_000 + 300, status: "failed", output: null, error: "profile \"strict\" not found in ~/.config/herdr/plugins/config/fence/profiles" },
+              ]
+            : [{ id: "g1", what: "graphdiff: review changes", startedAt: t - 40 * 60_000, finishedAt: t - 40 * 60_000 + 1200, status: "succeeded", output: "Opened http://localhost:4411 in your browser.", error: null }];
+        return { runs } satisfies PluginLogResult as T;
+      }
       default:
         throw new HostCallError("demo", `${method} isn't available in demo mode`);
     }

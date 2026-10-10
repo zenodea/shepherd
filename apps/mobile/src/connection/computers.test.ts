@@ -12,7 +12,7 @@ function agent(paneId: string, status: AgentStatus, cwd: string): AgentInfo {
 }
 
 function state(status: HostState["status"], agents: AgentInfo[]): HostState {
-  return { status, error: null, host: null, activeUrl: null, urls: [], device: null, agents };
+  return { status, network: true, error: null, host: null, activeUrl: null, urls: [], device: null, agents };
 }
 
 const host = (id: string): SavedHost => ({ id, urls: [`ws://${id}`], token: "t" });

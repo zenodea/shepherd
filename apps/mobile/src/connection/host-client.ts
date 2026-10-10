@@ -47,6 +47,8 @@ export type ConnectionStatus = "idle" | "connecting" | "online" | "offline" | "u
 
 export type HostState = {
   status: ConnectionStatus;
+  /** Whether the phone has any network at all; without one the client waits instead of dialling. */
+  network: boolean;
   error: string | null;
   host: HostInfo | null;
   /** The address currently in use. */
@@ -133,7 +135,7 @@ function toBytes(data: unknown): Uint8Array | null {
 /** What screens use; implemented by HostClient and by the demo host. */
 export type HostConnection = Pick<
   HostClient,
-  "getState" | "subscribe" | "onStatusChange" | "start" | "stop" | "reconnectNow" | "checkConnection" | "call" | "openTerminal"
+  "getState" | "subscribe" | "onStatusChange" | "start" | "stop" | "reconnectNow" | "checkConnection" | "setNetwork" | "call" | "openTerminal"
 >;
 
 /**
@@ -171,7 +173,7 @@ export class HostClient {
     this.savedHostKey = settings.hostKey;
     this.deviceName = opts.deviceName ?? "Phone";
     this.onSettingsChange = opts.onSettingsChange ?? (() => {});
-    this.state = { status: "idle", error: null, host: null, activeUrl: null, urls: settings.urls, device: null, agents: opts.agents ?? [] };
+    this.state = { status: "idle", network: true, error: null, host: null, activeUrl: null, urls: settings.urls, device: null, agents: opts.agents ?? [] };
   }
 
   getState = (): HostState => this.state;
@@ -228,6 +230,21 @@ export class HostClient {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryMs = MIN_RETRY_MS;
     this.open();
+  }
+
+  /** Told by the OS whether the phone has a network. Without one, retrying is pointless; with one back, dial at once. */
+  setNetwork(connected: boolean): void {
+    if (connected === this.state.network) return;
+    if (!connected) {
+      if (this.retryTimer) clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+      for (const ws of this.attemptSockets) if (ws !== this.ws) ws.close();
+      this.attempt++;
+      this.setState({ network: false, ...(this.state.status === "connecting" ? { status: "offline" as const } : {}) });
+      return;
+    }
+    this.setState({ network: true });
+    this.reconnectNow();
   }
 
   /** Reconnect now (e.g. when the app returns to the foreground). */
@@ -302,6 +319,10 @@ export class HostClient {
   /** Dial every address at once; the first to send `hello` wins, the rest are closed. */
   private open(): void {
     for (const ws of this.attemptSockets) if (ws !== this.ws) ws.close();
+    if (!this.state.network) {
+      this.setState({ status: "offline", activeUrl: null });
+      return;
+    }
     const attempt = ++this.attempt;
     this.openedAt = Date.now();
     this.setState({ status: "connecting", error: null });
@@ -431,7 +452,7 @@ export class HostClient {
   }
 
   private scheduleRetry(): void {
-    if (this.stopped) return;
+    if (this.stopped || !this.state.network) return;
     const delay = this.retryMs;
     this.retryMs = Math.min(this.retryMs * 2, MAX_RETRY_MS);
     this.retryTimer = setTimeout(() => this.open(), delay);

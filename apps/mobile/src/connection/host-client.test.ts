@@ -97,6 +97,21 @@ describe("HostClient", () => {
     await expect(client.call("agent.list")).rejects.toMatchObject({ code: "offline" });
   });
 
+  it("waits without a network instead of dialling, and dials at once when it's back", async () => {
+    client = new HostClient({ urls: [DEAD], token: devices.token });
+    client.start();
+    await until(() => client!.getState().status === "offline", 5000);
+    const states: string[] = [];
+    client.subscribe(() => states.push(client!.getState().status));
+    client.setNetwork(false);
+    expect(client.getState().network).toBe(false);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(states).not.toContain("connecting");
+    client.setNetwork(true);
+    expect(client.getState().network).toBe(true);
+    await until(() => states.includes("connecting"), 2000);
+  });
+
   it("stops retrying when the phone isn't paired", async () => {
     client = new HostClient({ urls: [good], token: "d_unknown" });
     client.start();

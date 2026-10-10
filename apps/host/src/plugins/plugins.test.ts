@@ -94,6 +94,41 @@ describe("Plugins", () => {
     ]);
   });
 
+  it("says where a plugin came from", async () => {
+    const home = process.env.HOME!;
+    herdr.handlers["plugin.list"] = () => ({
+      type: "plugin_list",
+      plugins: [
+        plugin("fence", `${home}/Documents/fence`),
+        plugin("graphdiff", "/x/graphdiff", { source: { kind: "github", owner: "zenodea", repo: "graphdiff", resolved_commit: "abc123", installed_unix_ms: 1_700_000_000_000 } }),
+      ],
+    });
+    const { plugins: list } = await plugins.list();
+    expect(list.map((p) => p.source)).toEqual([
+      { kind: "local", path: "~/Documents/fence" },
+      { kind: "github", repo: "zenodea/graphdiff", commit: "abc123", installedAt: 1_700_000_000_000 },
+    ]);
+  });
+
+  it("lists a plugin's recent runs, newest first, named by their action", async () => {
+    herdr.handlers["plugin.log.list"] = () => ({
+      type: "plugin_log_list",
+      logs: [
+        { log_id: "L1", status: "succeeded", action_id: "open", started_unix_ms: 100, finished_unix_ms: 150, stdout: "opened\n" },
+        { log_id: "L2", status: "failed", event: "pane.created", started_unix_ms: 300, finished_unix_ms: 310, stderr: "no pen\n", exit_code: 1 },
+        { log_id: "L3", status: "running", started_unix_ms: 200 },
+      ],
+    });
+    expect(await plugins.log({ plugin: "fence" })).toEqual({
+      runs: [
+        { id: "L2", what: "on pane.created", startedAt: 300, finishedAt: 310, status: "failed", output: null, error: "no pen" },
+        { id: "L3", what: "startup", startedAt: 200, finishedAt: null, status: "running", output: null, error: null },
+        { id: "L1", what: "fence: open", startedAt: 100, finishedAt: 150, status: "succeeded", output: "opened", error: null },
+      ],
+    });
+    expect(herdr.requests.find((r) => r.method === "plugin.log.list")!.params).toEqual({ plugin_id: "fence", limit: 5 });
+  });
+
   it("leaves out plugins switched off in the window, but the window still sees them", async () => {
     setPluginOff(configPath, "fence", true);
     expect((await plugins.list()).plugins.map((p) => p.id)).toEqual(["broken", "graphdiff"]);

@@ -9,7 +9,11 @@ import type {
   CardsResult,
   PluginActionParams,
   PluginActionResult,
+  PluginLogParams,
+  PluginLogResult,
   PluginPaneParams,
+  PluginRun,
+  PluginSource,
   PluginPaneResult,
   PluginSummary,
   PluginsResult,
@@ -28,6 +32,7 @@ export type HerdrPlugin = {
   plugin_root: string;
   actions?: { id: string; title: string; description?: string | null; contexts?: ActionContext[] }[];
   panes?: { id: string; title: string; description?: string | null }[];
+  source?: { kind?: "local" | "github"; owner?: string | null; repo?: string | null; resolved_commit?: string | null; installed_unix_ms?: number | null };
 };
 
 export type InstalledPlugin = {
@@ -41,6 +46,10 @@ export type InstalledPlugin = {
 type HerdrLog = {
   log_id: string;
   status: "running" | "succeeded" | "failed";
+  action_id?: string | null;
+  event?: string | null;
+  started_unix_ms?: number;
+  finished_unix_ms?: number | null;
   stdout?: string | null;
   stderr?: string | null;
   error?: string | null;
@@ -95,12 +104,25 @@ export async function listInstalled(herdr: HerdrClient, configPath: string, env:
     });
 }
 
+const tildify = (path: string, home = homedir()) => (path === home || path.startsWith(home + "/") ? "~" + path.slice(home.length) : path);
+
+export function sourceOf(info: HerdrPlugin): PluginSource {
+  const source = info.source;
+  if (source?.kind === "github" && source.repo) {
+    return { kind: "github", repo: source.owner ? `${source.owner}/${source.repo}` : source.repo, commit: source.resolved_commit ?? null, installedAt: source.installed_unix_ms ?? null };
+  }
+  return { kind: "local", path: tildify(info.plugin_root) };
+}
+
+const tail = (s: string | null | undefined) => (s && s.trim() ? s.trim().slice(-OUTPUT_TAIL) : null);
+
 export function summarize({ info, sidecar, sidecarError }: InstalledPlugin): PluginSummary {
   return {
     id: info.plugin_id,
     name: info.name,
     version: info.version,
     description: info.description ?? null,
+    source: sourceOf(info),
     actions: (info.actions ?? []).map((a) => ({ id: a.id, title: a.title, description: a.description ?? null, contexts: a.contexts ?? [] })),
     panes: (info.panes ?? []).map((p) => ({ id: p.id, title: p.title, description: p.description ?? null })),
     cards: (sidecar?.cards ?? []).map((c) => ({ id: c.id, title: c.title, context: c.context })),
@@ -267,7 +289,6 @@ export class Plugins {
     });
     const finished = await this.awaitLog(id, log);
     for (const key of this.cache.keys()) if (key.startsWith(`${id}/`)) this.cache.delete(key);
-    const tail = (s: string | null | undefined) => (s && s.trim() ? s.trim().slice(-OUTPUT_TAIL) : null);
     if (finished.status === "running") return { status: "running", output: null, error: null };
     if (finished.status === "failed") {
       return { status: "failed", output: tail(finished.stdout), error: finished.error ?? tail(finished.stderr) ?? `Exited with code ${finished.exit_code ?? "?"}.` };
@@ -284,6 +305,22 @@ export class Plugins {
       latest = logs.find((l) => l.log_id === log.log_id) ?? latest;
     }
     return latest;
+  }
+
+  async log({ plugin: id, limit = 5 }: PluginLogParams): Promise<PluginLogResult> {
+    const plugin = await this.pluginNamed(id);
+    const { logs } = await this.deps.herdr.request<{ logs: HerdrLog[] }>("plugin.log.list", { plugin_id: id, limit: Math.min(Math.max(1, limit), 50) });
+    const titles = new Map((plugin.info.actions ?? []).map((a) => [a.id, a.title]));
+    const runs: PluginRun[] = logs.map((l) => ({
+      id: l.log_id,
+      what: l.action_id ? (titles.get(l.action_id) ?? l.action_id) : l.event ? `on ${l.event}` : "startup",
+      startedAt: l.started_unix_ms ?? 0,
+      finishedAt: l.finished_unix_ms ?? null,
+      status: l.status,
+      output: tail(l.stdout),
+      error: l.status === "failed" ? (l.error ?? tail(l.stderr) ?? `Exited with code ${l.exit_code ?? "?"}.`) : null,
+    }));
+    return { runs: runs.sort((a, b) => b.startedAt - a.startedAt) };
   }
 
   async openPane({ plugin: id, pane, paneId }: PluginPaneParams): Promise<PluginPaneResult> {

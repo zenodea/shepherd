@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AppState, Platform } from "react-native";
+import { addNetworkStateListener, getNetworkStateAsync } from "expo-network";
 import { combineStores, peerHosts } from "./computers";
 import { DEMO_ENABLED, DEMO_LAPTOP_SETTINGS, DEMO_MODE, DEMO_SETTINGS, DemoHost } from "./demo-host";
 import { HostClient, type ConnectionSettings, type HostConnection, type HostState } from "./host-client";
@@ -26,7 +27,7 @@ type ConnectionContextValue = {
 
 const ConnectionContext = createContext<ConnectionContextValue | null>(null);
 
-const IDLE: HostState = { status: "idle", error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] };
+const IDLE: HostState = { status: "idle", network: true, error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] };
 
 /** e.g. "Google Pixel 8"; shown in `npm run host -- devices`. */
 function deviceName(): string {
@@ -102,6 +103,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     };
   }, [client]);
 
+
   // The other paired computers stay connected while the app is open, so the
   // home screen can show their agents too. They're replaced only when a
   // computer is added, removed or put in use (which already has its own
@@ -129,6 +131,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       for (const peer of peers.values()) peer.stop();
     };
   }, [peers, foreground]);
+
+  // `isConnected` is any network at all, not internet: a host on the same Wi-Fi needs no internet.
+  useEffect(() => {
+    const targets = [client, ...peers.values()].filter((c): c is HostConnection => c !== null);
+    if (targets.length === 0) return;
+    const apply = (state: { isConnected?: boolean }) => {
+      for (const target of targets) target.setNetwork(state.isConnected !== false);
+    };
+    getNetworkStateAsync().then(apply, () => {});
+    const sub = addNetworkStateListener(apply);
+    return () => sub.remove();
+  }, [client, peers]);
 
   const computers = useMemo<Computer[]>(() => {
     if (!settings || !client) return [];

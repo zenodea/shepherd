@@ -109,7 +109,7 @@ export default function AgentsScreen() {
           onPress={() => setHostSheet(true)}
           style={styles.hostChip}
           accessibilityRole="button"
-          accessibilityLabel={`${hostName}, ${statusText(state.status)}. Switch computer`}
+          accessibilityLabel={`${hostName}, ${statusText(state)}. Switch computer`}
         >
           <View style={[styles.hostDot, { backgroundColor: dotColor(state.status) }]} />
           <Text style={styles.hostName} numberOfLines={1}>
@@ -256,7 +256,7 @@ export default function AgentsScreen() {
               key: host.id,
               icon: <Laptop size={19} color={colors.text} />,
               title: active ? hostName : (host.name ?? "Computer"),
-              detail: active ? statusText(state.status) : "Switch to this computer",
+              detail: active ? statusText(state) : "Switch to this computer",
               trailing: active ? <Check size={18} color={colors.text} /> : null,
               onPress: () => void switchTo(host.id),
             };
@@ -275,7 +275,7 @@ export default function AgentsScreen() {
   );
 }
 
-const IDLE_STATE: HostState = { status: "idle", error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] };
+const IDLE_STATE: HostState = { status: "idle", network: true, error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] };
 
 /** Online, connecting, or not reachable. */
 function dotColor(status: ConnectionStatus): string {
@@ -290,7 +290,7 @@ function computerName(computer: Computer, state: HostState): string {
 function ComputerHeader({ computer, state, count }: { computer: Computer; state: HostState; count?: number }) {
   const name = computerName(computer, state);
   return (
-    <View style={styles.computerHeader} accessibilityRole="header" accessibilityLabel={`${name}, ${statusText(state.status)}`}>
+    <View style={styles.computerHeader} accessibilityRole="header" accessibilityLabel={`${name}, ${statusText(state)}`}>
       <View style={[styles.hostDot, { backgroundColor: dotColor(state.status) }]} />
       <Text style={[type.section, { flexShrink: 1 }]} numberOfLines={1}>
         {name}
@@ -308,8 +308,8 @@ function ComputerNote({ children }: { children: string }) {
 /** Why nothing is listed for a computer that isn't connected, or null when it is. */
 function offlineNote(state: HostState): string | null {
   if (state.status === "online") return null;
-  if (state.status === "connecting" || state.status === "idle") return "Connecting…";
-  return statusText(state.status);
+  if (state.network && (state.status === "connecting" || state.status === "idle")) return "Connecting…";
+  return statusText(state);
 }
 
 /** A computer's agents that need you, answered through that computer's connection. */
@@ -397,10 +397,11 @@ function ComputerSpaces({ computer, state, now, handlers }: { computer: Computer
   );
 }
 
-function statusText(status: string): string {
-  if (status === "online") return "Connected";
-  if (status === "connecting") return "Connecting…";
-  if (status === "unauthorized") return "Not paired";
+function statusText(state: HostState): string {
+  if (state.status === "online") return "Connected";
+  if (state.status === "unauthorized") return "Not paired";
+  if (!state.network) return "No network";
+  if (state.status === "connecting") return "Connecting…";
   return "Can't reach it";
 }
 

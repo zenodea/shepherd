@@ -4,7 +4,7 @@ Every herdr plugin shows up in Shepherd without anyone doing anything: install i
 
 What a plugin shows depends on what its author did:
 
-- **Nothing special:** the plugin's herdr actions (from its `herdr-plugin.toml`) appear as buttons. Tapping one invokes the action through herdr, with the agent you're looking at as the context, exactly as if you'd run it from herdr's palette on that pane. Actions whose only context is `selection` are left out, since the phone has no selected text to give them.
+- **Nothing special:** the plugin's page shows its herdr actions (from its `herdr-plugin.toml`) as buttons, with their descriptions when they have any, its panes as buttons that open them live on the phone, where it came from, and its recent runs from herdr's plugin log. Tapping one invokes the action through herdr, with the agent you're looking at as the context, exactly as if you'd run it from herdr's palette on that pane. Actions whose only context is `selection` are left out, since the phone has no selected text to give them.
 - **A `shepherd.toml`:** the plugin's page also shows **cards**. A card is a small panel the host fills by running a command of the plugin's, which prints JSON. This file is the whole contract, and it's described below.
 
 To keep a plugin off phones, open the Shepherd window in herdr (`herdr plugin action invoke shepherd.open`), press `i` for Plugins, select it and press space. The window also shows, for each plugin, which commands its cards run.

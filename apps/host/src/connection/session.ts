@@ -357,7 +357,7 @@ export class AppSession {
       return Promise.reject(new LaunchError("unsupported", "This host doesn't support plugins."));
     }
     const bad = (what: string) => Promise.reject(new LaunchError("invalid_params", `${method} ${what}`));
-    const { paneId, plugin, action, pane, refresh } = params;
+    const { paneId, plugin, action, pane, refresh, limit } = params;
     if (paneId !== undefined && !isPaneId(paneId)) return bad("needs a valid paneId");
     switch (method) {
       case "shepherd.plugins":
@@ -370,6 +370,9 @@ export class AppSession {
       case "shepherd.plugin_pane":
         if (!isPluginId(plugin) || !isPluginId(pane)) return bad("needs a plugin and a pane id");
         return plugins.openPane({ plugin, pane, paneId });
+      case "shepherd.plugin_log":
+        if (!isPluginId(plugin)) return bad("needs a plugin id");
+        return plugins.log({ plugin, limit: typeof limit === "number" && Number.isInteger(limit) ? limit : undefined });
       default:
         return Promise.reject(new LaunchError("unsupported", `${method} is not available on this host`));
     }

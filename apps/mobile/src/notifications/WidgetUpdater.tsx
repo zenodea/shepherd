@@ -23,7 +23,7 @@ export function WidgetUpdater() {
     let shown = "";
     let asked: { key: string; ask: WidgetAsk | null } = { key: "", ask: null };
     const push = () => {
-      const state = client?.getState() ?? { status: "idle" as const, error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] };
+      const state = client?.getState() ?? { status: "idle" as const, network: true, error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] };
       const agent = askingAgent(state);
       // Re-read when it asks something else, or now and then: the next of several questions keeps it blocked.
       const key = agent ? `${agent.pane_id}:${agent.revision}:${Math.floor(Date.now() / ASK_REFRESH_MS)}` : "";

@@ -34,16 +34,34 @@ export type PluginAction = { id: string; title: string; description: string | nu
 export type PluginPaneEntry = { id: string; title: string; description: string | null };
 export type CardSpec = { id: string; title: string; context: CardContext };
 
+/** Installed from GitHub, or linked from a folder on the computer (`path` with the home folder as `~`). */
+export type PluginSource = { kind: "github"; repo: string; commit: string | null; installedAt: number | null } | { kind: "local"; path: string };
+
 export type PluginSummary = {
   id: string;
   name: string;
   version: string;
   description: string | null;
+  source: PluginSource;
   actions: PluginAction[];
   panes: PluginPaneEntry[];
   cards: CardSpec[];
   sidecarError?: string;
 };
+
+/** One run of a plugin's command that herdr logged: an action, an event hook or startup. */
+export type PluginRun = {
+  id: string;
+  /** The action's title, the event name, or "startup". */
+  what: string;
+  startedAt: number;
+  finishedAt: number | null;
+  status: "running" | "succeeded" | "failed";
+  output: string | null;
+  error: string | null;
+};
+export type PluginLogParams = { plugin: string; limit?: number };
+export type PluginLogResult = { runs: PluginRun[] };
 
 export type PluginsResult = { plugins: PluginSummary[] };
 
