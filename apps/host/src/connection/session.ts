@@ -29,6 +29,7 @@ import { ScreenRenderer } from "../herdr/screen-renderer.ts";
 import { PluginError, type Plugins } from "../plugins/plugins.ts";
 import type { TerminalStream } from "../herdr/terminal-stream.ts";
 import { hostCommand } from "../system/config.ts";
+import { handoff } from "../handoff.ts";
 
 export const MAX_STREAMS_PER_SESSION = 8;
 /** Used when herdr can't report a pane's size. */
@@ -296,6 +297,10 @@ export class AppSession {
       }
     }
     if (method === "shepherd.model" || method === "shepherd.set_model") return this.model(method, params);
+    if (method === "shepherd.handoff") {
+      if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.handoff needs a paneId"));
+      return handoff(this.deps.tracker.get(params.paneId) ?? null, this.deps.host.name, this.deps.conversations);
+    }
     if (method.startsWith("shepherd.plugin") || method === "shepherd.cards") return this.plugins(method, params);
     const conversation = this.conversationCall(method, params);
     if (conversation) return conversation;

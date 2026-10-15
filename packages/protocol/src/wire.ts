@@ -102,6 +102,8 @@ export const HOST_METHODS = [
   "shepherd.log",
   "shepherd.model",
   "shepherd.set_model",
+  // A brief to hand an agent's work to a new agent, here or on another computer.
+  "shepherd.handoff",
   // herdr plugins on the phone (plugins.ts): what's installed, their cards, and their actions and panes.
   "shepherd.plugins",
   "shepherd.cards",
@@ -178,6 +180,26 @@ export type StartAgentParams = {
   /** Sent once the agent is ready for input; for a terminal, a command to run. */
   prompt?: string;
 };
+
+/** Where an agent's code is in git, for whoever picks its work up. */
+export type HandoffRepo = {
+  name: string;
+  /** null on a detached HEAD. */
+  branch: string | null;
+  commit: string;
+  subject: string;
+  remote: string | null;
+  /** Commits its upstream doesn't have yet; null without an upstream. */
+  unpushed: number | null;
+  /** Changes not committed yet: how many files, and the first few of them. */
+  uncommitted: { count: number; files: string[] };
+};
+
+export type HandoffParams = { paneId: string };
+/** `brief`: a first message for the agent taking over; `from`: this computer's name. */
+export type HandoffResult =
+  | { available: true; from: string; agent: string | null; cwd: string | null; repo: HandoffRepo | null; brief: string }
+  | { available: false; reason: string };
 
 /** What happened to an agent: a status it moved to, or it appearing or closing. */
 export type ActivityEvent = AgentStatus | "started" | "closed";
