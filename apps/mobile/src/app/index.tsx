@@ -1,5 +1,5 @@
 import { Redirect, useRouter } from "expo-router";
-import { Activity, Bot, Check, ChevronDown, Laptop, Plus, QrCode, Settings, SquareTerminal } from "lucide-react-native";
+import { Activity, Bot, Check, ChevronDown, GitBranch, Laptop, Layers, Plus, QrCode, Settings, SquareTerminal } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { AgentInfo, BlockedPrompt } from "@shepherd/protocol";
@@ -10,6 +10,7 @@ import { PromptCard } from "../agents/PromptCard";
 import { useActivity } from "../agents/use-activity";
 import { useBlockedPrompts } from "../agents/use-blocked-prompts";
 import { tabsOf, useSnapshot, type WorkspaceTab } from "../agents/use-workspace-tabs";
+import { foldedWorktrees, worktreesRunning } from "../agents/worktrees";
 import { blockedAgents, countAgents, sortAgents, visibleAgents } from "../connection/computers";
 import { useComputerStates, useConnection, useHostState, type Computer } from "../connection/connection";
 import type { ConnectionStatus, HostConnection, HostState } from "../connection/host-client";
@@ -26,6 +27,8 @@ import { colors, radii, space, statusColors, statusLabels, statusRank, type, the
 
 /** The home screen lists agents, or every herdr space with its tabs (agents and plain terminals). */
 const spacesView = prefSwitch("home-spaces", false);
+/** The home screen lists every paired computer at once, instead of only the one in use. */
+const allComputers = prefSwitch("home-all-computers", false);
 
 const NO_AGENTS: AgentInfo[] = [];
 
@@ -42,8 +45,9 @@ export default function AgentsScreen() {
   const { settings, hosts, client, computers, switchTo } = useConnection();
   const state = useHostState();
   const states = useComputerStates(computers);
-  // With more than one computer paired, every computer's agents are listed (see ComputerAgents).
-  const multi = computers.length > 1;
+  // Picked "All computers" with more than one paired: every computer's agents are listed (see ComputerAgents).
+  const showAll = allComputers.use();
+  const multi = showAll && computers.length > 1;
   const [refreshing, setRefreshing] = useState(false);
   const [hostSheet, setHostSheet] = useState(false);
   const prompts = useBlockedPrompts(client, multi ? NO_AGENTS : state.agents);
@@ -63,8 +67,9 @@ export default function AgentsScreen() {
       (a, b) => statusRank[a.agent_status] - statusRank[b.agent_status] || a.pane_id.localeCompare(b.pane_id),
     );
     const byProject = new Map<string, AgentInfo[]>();
+    const folded = foldedWorktrees(state.agents);
     for (const agent of sorted) {
-      if (agent.agent_status === "blocked") continue;
+      if (agent.agent_status === "blocked" || folded.has(agent.pane_id)) continue;
       const project = projectOf(agent);
       byProject.set(project, [...(byProject.get(project) ?? []), agent]);
     }
@@ -86,8 +91,11 @@ export default function AgentsScreen() {
 
   const online = state.status === "online";
   const hostName = state.host?.name ?? settings.name ?? "Host";
+  const chipName = multi ? "All computers" : hostName;
+  // Across every computer, the dot is green while any of them is connected.
+  const chipStatus = multi && anyOnlineOf(states) ? "online" : state.status;
   const counts = multi ? countAgents(states) : { total: state.agents.length, working: state.agents.filter((a) => a.agent_status === "working").length, blocked: blocked.length };
-  const anyOnline = multi ? states.some((s) => s.status === "online") : online;
+  const anyOnline = multi ? anyOnlineOf(states) : online;
   const open = (agent: AgentInfo) => router.push({ pathname: "/agent/[paneId]", params: { paneId: agent.pane_id } });
   const handlers: Handlers = {
     open: (computer, paneId) => {
@@ -109,11 +117,11 @@ export default function AgentsScreen() {
           onPress={() => setHostSheet(true)}
           style={styles.hostChip}
           accessibilityRole="button"
-          accessibilityLabel={`${hostName}, ${statusText(state)}. Switch computer`}
+          accessibilityLabel={multi ? `${chipName}. Switch computer` : `${hostName}, ${statusText(state)}. Switch computer`}
         >
-          <View style={[styles.hostDot, { backgroundColor: dotColor(state.status) }]} />
+          <View style={[styles.hostDot, { backgroundColor: dotColor(chipStatus) }]} />
           <Text style={styles.hostName} numberOfLines={1}>
-            {hostName}
+            {chipName}
           </Text>
           <ChevronDown size={14} color={colors.muted} />
         </PressableScale>
@@ -227,6 +235,7 @@ export default function AgentsScreen() {
               <AgentRow
                 key={agent.pane_id}
                 agent={agent}
+                worktrees={worktreesRunning(agent, state.agents)}
                 now={now}
                 onPress={() => open(agent)}
                 onLongPress={() => actions.show(agent.pane_id, agent.workspace_id, agent)}
@@ -250,15 +259,31 @@ export default function AgentsScreen() {
         title="Computers"
         onClose={() => setHostSheet(false)}
         actions={[
-          ...hosts.map((host) => {
+          ...(hosts.length > 1
+            ? [
+                {
+                  key: "all",
+                  icon: <Layers size={19} color={colors.text} />,
+                  title: "All computers",
+                  detail: "Agents and spaces from every computer",
+                  trailing: multi ? <Check size={18} color={colors.text} /> : null,
+                  onPress: () => allComputers.set(true),
+                },
+              ]
+            : []),
+          ...hosts.map((host, i) => {
             const active = host.id === settings.id;
             return {
               key: host.id,
+              separated: i === 0 && hosts.length > 1,
               icon: <Laptop size={19} color={colors.text} />,
               title: active ? hostName : (host.name ?? "Computer"),
               detail: active ? statusText(state) : "Switch to this computer",
-              trailing: active ? <Check size={18} color={colors.text} /> : null,
-              onPress: () => void switchTo(host.id),
+              trailing: active && !multi ? <Check size={18} color={colors.text} /> : null,
+              onPress: () => {
+                allComputers.set(false);
+                void switchTo(host.id);
+              },
             };
           }),
           {
@@ -276,6 +301,10 @@ export default function AgentsScreen() {
 }
 
 const IDLE_STATE: HostState = { status: "idle", network: true, error: null, host: null, activeUrl: null, urls: [], device: null, agents: [] };
+
+function anyOnlineOf(states: HostState[]): boolean {
+  return states.some((s) => s.status === "online");
+}
 
 /** Online, connecting, or not reachable. */
 function dotColor(status: ConnectionStatus): string {
@@ -335,7 +364,8 @@ function ComputerAgents({ computer, state, now, handlers }: { computer: Computer
   const agents = useMemo(() => visibleAgents(state), [state]);
   const rows = useMemo(() => {
     const blocked = new Set(blockedAgents(state).map((a) => a.pane_id));
-    return sortAgents(agents, statusRank).filter((a) => !blocked.has(a.pane_id));
+    const folded = foldedWorktrees(agents);
+    return sortAgents(agents, statusRank).filter((a) => !blocked.has(a.pane_id) && !folded.has(a.pane_id));
   }, [state, agents]);
   const note =
     rows.length > 0 ? null : agents.length > 0 && state.status === "online" ? "Waiting on you, above" : (offlineNote(state) ?? "No agents running");
@@ -348,6 +378,7 @@ function ComputerAgents({ computer, state, now, handlers }: { computer: Computer
           key={agent.pane_id}
           agent={agent}
           project={projectOf(agent)}
+          worktrees={worktreesRunning(agent, agents)}
           now={now}
           onPress={() => handlers.open(computer, agent.pane_id)}
           onLongPress={() => handlers.more(computer, agent.pane_id, agent.workspace_id, agent)}
@@ -425,6 +456,7 @@ function useNow(ms: number): number {
 function AgentRow({
   agent,
   project,
+  worktrees = 0,
   now,
   onPress,
   onLongPress,
@@ -432,6 +464,8 @@ function AgentRow({
   agent: AgentInfo;
   /** Shown after the agent's name, when the list isn't grouped by project. */
   project?: string;
+  /** Its worktree agents still working, listed under it instead of on their own. */
+  worktrees?: number;
   now: number;
   onPress: () => void;
   onLongPress: () => void;
@@ -445,7 +479,7 @@ function AgentRow({
       onLongPress={onLongPress}
       style={styles.row}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${agentName(agent)}, ${statusLabels[agent.agent_status]}${subagents ? `, ${subagents} subagent${subagents === 1 ? "" : "s"} running` : ""}`}
+      accessibilityLabel={`${title}, ${agentName(agent)}, ${statusLabels[agent.agent_status]}${subagents ? `, ${subagents} subagent${subagents === 1 ? "" : "s"} running` : ""}${worktrees ? `, ${worktrees} worktree${worktrees === 1 ? "" : "s"} running` : ""}`}
       accessibilityHint="Opens the terminal. Long-press for more."
     >
       <AgentMark agent={agent.agent} size={32} />
@@ -464,6 +498,12 @@ function AgentRow({
             <View style={styles.subagents}>
               <Bot size={12} color={statusColors.working} />
               <Text style={styles.subagentsText}>{subagents}</Text>
+            </View>
+          ) : null}
+          {worktrees ? (
+            <View style={styles.subagents}>
+              <GitBranch size={12} color={statusColors.working} />
+              <Text style={styles.subagentsText}>{worktrees}</Text>
             </View>
           ) : null}
         </View>

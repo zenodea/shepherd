@@ -6,7 +6,7 @@
       "android",
       "ios"
     ],
-    "version": "0.4.1",
+    "version": "0.4.2",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
