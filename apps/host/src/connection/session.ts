@@ -14,6 +14,7 @@ import type {
 import { CLOSE_CODES, WIRE_PROTOCOL_VERSION, isPaneId, isPluginId, parseClientMessage } from "@shepherd/protocol";
 import { conversationParams, imageParams, type Conversations } from "../conversation/conversations.ts";
 import { changes, changesParams, fileDiff, fileDiffParams } from "../changes/git-changes.ts";
+import { gitPlace } from "../changes/git-place.ts";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
 import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
@@ -185,12 +186,19 @@ export class AppSession {
     });
   }
 
-  /** Each agent with when it last finished (from the activity log) and its subagents still running. */
+  /** Each agent with when it last finished (from the activity log), its subagents still running, and its git checkout. */
   private withHostInfo(agents: AgentInfo[]): AgentInfo[] {
     const { activity, runningSubagents } = this.deps;
     return agents.map((a) => {
       const running = runningSubagents?.count(a.pane_id) ?? 0;
-      return { ...a, ...(activity ? { last_done_at: activity.lastFinished(a.pane_id) } : {}), ...(running > 0 ? { subagents_running: running } : {}) };
+      const cwd = a.foreground_cwd ?? a.cwd;
+      const git = cwd ? gitPlace(cwd) : null;
+      return {
+        ...a,
+        ...(activity ? { last_done_at: activity.lastFinished(a.pane_id) } : {}),
+        ...(running > 0 ? { subagents_running: running } : {}),
+        ...(git ? { git } : {}),
+      };
     });
   }
 

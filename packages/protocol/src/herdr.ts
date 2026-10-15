@@ -27,7 +27,12 @@ export type AgentInfo = {
   last_done_at?: number | null;
   /** Added by Shepherd's host: subagents still running while the agent itself isn't working. */
   subagents_running?: number;
+  /** Added by Shepherd's host: the git checkout the agent works in, when it's in one. */
+  git?: GitPlace;
 };
+
+/** A git checkout: `repo` is the main checkout's folder, also for a linked worktree (`git worktree add`). */
+export type GitPlace = { repo: string; worktree: boolean; branch: string | null };
 
 export type WorkspaceInfo = {
   workspace_id: string;

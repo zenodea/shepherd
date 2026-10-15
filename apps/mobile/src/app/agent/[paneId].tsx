@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowDown, Bot, Cpu, Ellipsis, Images, MessageSquareText, Puzzle, Search, Sparkles, SquareTerminal } from "lucide-react-native";
+import { ArrowDown, Bot, Cpu, GitBranch, Ellipsis, Images, MessageSquareText, Puzzle, Search, Sparkles, SquareTerminal } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,6 +11,7 @@ import { stillSending, type Sending } from "../../agents/sending";
 import { ImagesContext } from "../../agents/ConversationImage";
 import { SubagentsContext } from "../../agents/SubagentCard";
 import { subagentsPill } from "../../agents/subagents";
+import { worktreesOf, worktreesPill } from "../../agents/worktrees";
 import { useImagesShown } from "../../agents/image-setting";
 import { Conversation, type ConversationHandle } from "../../agents/Conversation";
 import { useConversation } from "../../agents/use-conversation";
@@ -453,6 +454,7 @@ export default function TerminalScreen() {
   const review = useReview(`${settings?.id ?? "none"}:${paneId}`);
   const reviewNote = changed ? reviewLabel(review, changed) : null;
   const subagentsLabel = subagentsPill(conversation.subagents);
+  const worktreesLabel = agent ? worktreesPill(worktreesOf(agent, state.agents)) : null;
 
   return (
     <Screen>
@@ -490,7 +492,7 @@ export default function TerminalScreen() {
       />
 
       {/* The terminal view keeps to the terminal: these come and go, and would resize it. */}
-      {chat && (changed || subagentsLabel) ? (
+      {chat && (changed || subagentsLabel || worktreesLabel) ? (
         <View style={styles.pills}>
           {changed ? (
             <PressableScale
@@ -521,6 +523,16 @@ export default function TerminalScreen() {
             >
               <Bot size={13} color={colors.muted} />
               <Text style={[styles.changesText, styles.pillFlexible]} numberOfLines={1}>{` ${subagentsLabel}`}</Text>
+            </PressableScale>
+          ) : null}
+          {worktreesLabel ? (
+            <PressableScale
+              onPress={() => router.push({ pathname: "/worktrees/[paneId]", params: { paneId: paneId! } })}
+              style={[styles.pill, styles.pillSecond]}
+              accessibilityLabel={worktreesLabel}
+            >
+              <GitBranch size={13} color={colors.muted} />
+              <Text style={[styles.changesText, styles.pillFlexible]} numberOfLines={1}>{` ${worktreesLabel}`}</Text>
             </PressableScale>
           ) : null}
         </View>

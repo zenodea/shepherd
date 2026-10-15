@@ -102,6 +102,15 @@ describe("Shepherd window", () => {
     expect(plain(render(view({ screen: "pair", pairing: { ...pairing, expiresAt: now - 1 } }), data(), 100, 40))).toContain("This code has expired.");
   });
 
+  it("warns above the QR code when the firewall would block the phone", () => {
+    const fix = "sudo firewall-cmd --permanent --zone=public --add-port=7420/tcp && sudo firewall-cmd --reload";
+    const pairing = { qr: ["█▀▀█"], code: "p_abc", expiresAt: now + 90_000, firewall: [{ label: "Tailscale" as const, iface: "tailscale0", zone: "public", fix }] };
+    const out = plain(render(view({ screen: "pair", pairing }), data(), 160, 40));
+    expect(out).toContain("The firewall blocks Tailscale (tailscale0, zone public), so a phone can't connect over it.");
+    expect(out).toContain(`Open the port: ${fix}`);
+    expect(out.indexOf("The firewall blocks")).toBeLessThan(out.indexOf("█▀▀█"));
+  });
+
   it("lists plugins with whether they're on for phones, and what the selected one runs", () => {
     const out = plain(render(view({ screen: "plugins" }), data(), 120, 40));
     expect(out).toMatch(/› ● fence +on for phones +· 1 card · 1 action +0\.1\.0/);

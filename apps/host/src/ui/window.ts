@@ -8,6 +8,7 @@ import { HerdrClient } from "../herdr/herdr-client.ts";
 import { listInstalled, type InstalledPlugin } from "../plugins/plugins.ts";
 import { readRunningHost, restartHost, setConnections, turnOff, turnOn, type RunningHost } from "../system/daemon.ts";
 import { ROUTE_LABELS, ROUTES, routesOf, withRoute, type Route, type Routes } from "../connection/routes.ts";
+import { firewallBlocks, type FirewallBlock } from "../system/firewall.ts";
 import { readHostStatus, type ConnectedPhone, type HostStatus } from "../system/host-status.ts";
 import { Service, logTail } from "../system/service.ts";
 import { duration, frame, pad, screen, style, visibleLength, when } from "./ansi.ts";
@@ -42,7 +43,8 @@ export type WindowData = {
 };
 
 export type Flash = { text: string; tone: "ok" | "warn" | "error" };
-export type Pairing = { qr: string[]; code: string; expiresAt: number } | { error: string };
+/** `firewall`: the routes this computer's firewall would stop the phone on. */
+export type Pairing = { qr: string[]; code: string; expiresAt: number; firewall?: FirewallBlock[] } | { error: string };
 
 export type ViewState = {
   screen: Screen;
@@ -141,6 +143,10 @@ function pairScreen(view: ViewState, data: WindowData, cols: number, height: num
   if (left <= 0) return [...lines, `  ${style.yellow("This code has expired.")} Press ${style.bold("p")} for a new one.`];
   const m = Math.floor(left / 60_000);
   const s = Math.floor((left % 60_000) / 1000);
+  for (const block of pairing.firewall ?? []) {
+    lines.push(`  ${style.yellow(`The firewall blocks ${block.label} (${block.iface}, zone ${block.zone}), so a phone can't connect over it.`)}`);
+    lines.push(`  ${style.dim("Open the port:")} ${block.fix}`, "");
+  }
   lines.push(`  Scan with the Shepherd app (Host → Scan QR code). One-time code, valid for ${m}:${String(s).padStart(2, "0")}.`);
   const manual = `  ${style.dim(`Or enter it by hand: ${pairing.code}`)}`;
   const qrWidth = Math.max(...pairing.qr.map(visibleLength));
@@ -338,8 +344,11 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       const { code, expiresAt } = devices.createPairing();
       const port = data.status?.port ?? config.port;
       if (hostAddresses(config, port).length === 0) throw new Error("No reachable address: set SHEPHERD_BIND or configure a relay.");
-      const qr = (await renderQr(encodePairingLink(pairingInfo(config as HostConfig, port, code)))).trimEnd().split("\n");
-      view.pairing = { qr, code: manualCode(config, code), expiresAt: expiresAt.getTime() };
+      const [qr, firewall] = await Promise.all([
+        renderQr(encodePairingLink(pairingInfo(config as HostConfig, port, code))),
+        firewallBlocks(hostAddresses(config, port), port),
+      ]);
+      view.pairing = { qr: qr.trimEnd().split("\n"), code: manualCode(config, code), expiresAt: expiresAt.getTime(), firewall };
     } catch (err) {
       view.pairing = { error: (err as Error).message };
     }
