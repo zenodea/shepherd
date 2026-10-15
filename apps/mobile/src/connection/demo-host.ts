@@ -21,6 +21,7 @@ import type {
   ImagesResult,
   Subagent,
   SubagentsResult,
+  HandoffResult,
   ProjectsResult,
   QueuedMessage,
   StatusChange,
@@ -649,6 +650,28 @@ export class DemoHost implements HostConnection {
         return { available: true, diff: params.path === SESSION_EDIT.path ? SESSION_EDIT : { ...LOGIN_EDIT, path: String(params.path) } } satisfies FileDiffResult as T;
       case "shepherd.activity":
         return { entries: (params as { before?: number }).before ? [] : demoActivity() } as T;
+      case "shepherd.handoff":
+        return {
+          available: true,
+          from: this.state.host!.name,
+          agent: "claude",
+          cwd: "/Users/demo/code/api",
+          repo: {
+            name: "api",
+            branch: "fix/login-redirect",
+            commit: "4f2a9c1",
+            subject: "Keep the return path through login",
+            remote: "git@github.com:demo/api.git",
+            unpushed: 1,
+            uncommitted: { count: 2, files: ["src/auth/session.ts", "src/auth/session.test.ts"] },
+          },
+          brief: [
+            'I\'m handing you work that another claude agent was doing on my computer "studio". Pick it up from where it stopped.',
+            "## The code\n- Repository: api (git@github.com:demo/api.git)\n- Branch fix/login-redirect, at 4f2a9c1 \"Keep the return path through login\"",
+            "## What was asked first\n> Users land on the home page after logging in instead of where they were. Fix it.",
+            "## Where it got to (latest last)\n**Agent:** The redirect is kept now; the session test still fails on expired tokens.",
+          ].join("\n\n"),
+        } satisfies HandoffResult as T;
       case "shepherd.start_agent":
         return { paneId: "w1:p2", workspaceId: "w1", ready: true } as T;
       case "shepherd.projects":

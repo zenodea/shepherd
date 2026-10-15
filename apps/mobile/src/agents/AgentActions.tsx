@@ -1,8 +1,10 @@
 import * as Haptics from "expo-haptics";
-import { FolderPen, Pencil, X } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { FolderPen, Forward, Pencil, X } from "lucide-react-native";
 import { useState } from "react";
 import { Alert } from "react-native";
 import type { AgentInfo } from "@shepherd/protocol";
+import { useConnection } from "../connection/connection";
 import type { HostConnection } from "../connection/host-client";
 import { ActionSheet, type SheetAction } from "../ui/ActionSheet";
 import { PromptSheet } from "../ui/PromptSheet";
@@ -22,6 +24,8 @@ export function useAgentActions(
   const [target, setTarget] = useState<{ paneId: string; workspaceId: string; agent: AgentInfo | null } | null>(null);
   const [sheet, setSheet] = useState(false);
   const [renaming, setRenaming] = useState<Renaming>(null);
+  const router = useRouter();
+  const { computers } = useConnection();
 
   const show = (paneId: string, workspaceId: string, agent: AgentInfo | null) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -70,6 +74,7 @@ export function useAgentActions(
   };
 
   const agent = target?.agent ?? null;
+  const fromId = computers.find((c) => c.client === client)?.host.id ?? null;
   const element = (
     <>
       <ActionSheet
@@ -89,6 +94,17 @@ export function useAgentActions(
             onPress: () => void renameWorkspace(),
           },
           ...(opts.extra ?? []),
+          ...(agent && fromId
+            ? [
+                {
+                  icon: <Forward size={19} color={colors.text} />,
+                  title: "Hand off…",
+                  detail: computers.length > 1 ? "Carry on in a new agent, here or on another computer" : "Carry on in a new agent",
+                  onPress: () =>
+                    router.push({ pathname: "/new", params: { from: fromId, pane: target!.paneId, workspace: target!.workspaceId } }),
+                },
+              ]
+            : []),
           {
             icon: <X size={19} color={colors.danger} />,
             title: agent ? "Close agent" : "Close terminal",

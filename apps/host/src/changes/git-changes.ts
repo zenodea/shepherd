@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
-import type { ChangedFile, ChangesMode, ChangesResult, FileDiff, FileDiffResult } from "@shepherd/protocol";
+import type { ChangedFile, ChangesMode, ChangesResult, FileDiff, FileDiffResult, HandoffRepo } from "@shepherd/protocol";
 import { addedFile, parseUnifiedDiff } from "./diff.ts";
 
 const GIT_TIMEOUT_MS = 8000;
@@ -239,4 +239,35 @@ export function fileDiffParams(
   if (!isPaneId(paneId) || !MODES.includes(mode as ChangesMode)) return null;
   if (typeof path !== "string" || path.length === 0 || path.length > 4096 || path.includes("\0")) return null;
   return { paneId, path, mode: mode as ChangesMode };
+}
+
+const HANDOFF_FILES = 20;
+
+/** Where a folder's code is in git, for handing its work to another computer; null outside git or before the first commit. */
+export async function gitState(cwd: string): Promise<HandoffRepo | null> {
+  const r = await repo(cwd);
+  if (!r?.hasHead) return null;
+  const [head, remote, status, unpushed] = await Promise.all([
+    tryGit(r.root, ["log", "-1", "--format=%h%x00%s"]),
+    tryGit(r.root, ["remote", "get-url", "origin"]),
+    // Not tryGit: trimming would cut the first line's leading status column.
+    git(r.root, ["status", "--porcelain", "--untracked-files=normal"]).catch(() => ""),
+    tryGit(r.root, ["rev-list", "--count", "@{upstream}..HEAD"]),
+  ]);
+  const [commit = "", subject = ""] = (head ?? "").split("\0");
+  // An https remote can carry a token: never pass it on.
+  const safeRemote = remote ? remote.replace(/^(\w+:\/\/)[^@/]+@/, "$1") : null;
+  const files = status
+    .split("\n")
+    .filter((line) => line.length > 3)
+    .map((line) => line.slice(3).replace(/^.* -> /, ""));
+  return {
+    name: (safeRemote ? safeRemote.replace(/^.*[/:]/, "").replace(/\.git$/, "") : "") || basename(r.root),
+    branch: r.branch,
+    commit,
+    subject,
+    remote: safeRemote,
+    unpushed: unpushed === null ? null : Number(unpushed),
+    uncommitted: { count: files.length, files: files.slice(0, HANDOFF_FILES) },
+  };
 }

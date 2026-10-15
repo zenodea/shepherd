@@ -159,6 +159,7 @@ description = "pair a phone"
 - **Manage agents.** Long-press an agent (or tap ⋯) to rename it, rename its workspace, or close it.
 - **See what happened.** The activity feed shows what your agents did while you were away, and how long they waited for you.
 - **Several computers.** Pair with as many as you like and switch from the top of the agent list.
+- **Hand off an agent.** ⋯ → **Hand off…** starts a new agent with what the old one was doing: its repo, branch and commit, what you asked, and where it got to. Pick the computer, agent and project with the same pickers as starting one, and edit the message before it goes. It warns you about uncommitted or unpushed work that stays behind.
 - **App lock.** Require your fingerprint to open Shepherd (Settings).
 - **Get notified** when an agent needs input or finishes, and answer from the notification.
 
