@@ -2,6 +2,8 @@
 // Each line is {timestamp, type, payload}. The same message shows up more than
 // once (as a response_item and as a completed item), so this reads the
 // completed items, plus function calls for the agent tools that only appear there.
+// In code mode the agent's script (a custom "exec" call) runs tools: an image it views
+// is a completed ImageView (its path) and comes back, as data, in the script's output.
 import type { ContextUsage, FileDiff } from "@shepherd/protocol";
 import { addedFile, parseUnifiedDiff } from "../../../changes/diff.ts";
 import { clip, clipOutput, contentText, isRecord, num, str, toolCall, type Draft, type Parser } from "../../entries.ts";
@@ -40,9 +42,17 @@ function agentMessage(payload: Record<string, unknown>): string {
     : `Message from ${agentName(payload.author)} to ${agentName(payload.recipient)}`;
 }
 
+/** A file:// URL as a plain path. */
+const filePath = (path: unknown) => {
+  const value = str(path) ?? "";
+  return value.startsWith("file://") ? decodeURIComponent(new URL(value).pathname) : value;
+};
+
 export function codexParser(): Parser {
   let synthetic = 0;
   let context: ContextUsage | null = null;
+  // Images a script viewed, waiting for the script's output that carries them.
+  let viewed: string[] = [];
   const parse = (record: Record<string, unknown>): Draft[] => {
     const at = str(record.timestamp);
     const stamp = at ? { at } : {};
@@ -100,6 +110,9 @@ export function codexParser(): Parser {
             ];
           });
         }
+        case "ImageView":
+          viewed.push(id);
+          return [toolCall(id, "view_image", { path: filePath(item.path) }, at)];
         case "ContextCompaction":
           return [{ kind: "notice", text: "Conversation compacted", ...stamp }];
         default:
@@ -116,6 +129,13 @@ export function codexParser(): Parser {
       if (payload.type === "function_call_output") {
         const output = isRecord(payload.output) ? str(payload.output.content) ?? JSON.stringify(payload.output) : contentText(payload.output);
         return [{ kind: "tool_result", callId: str(payload.call_id) ?? "", ok: true, output: clipOutput(output), ...stamp } satisfies Draft];
+      }
+      // A script's output: the results of the images it viewed, the first carrying them (its own commands show as
+      // completed items).
+      if (payload.type === "custom_tool_call_output" && viewed.length) {
+        const results = viewed.map((callId): Draft => ({ kind: "tool_result", callId, ok: true, output: "", ...stamp }));
+        viewed = [];
+        return results;
       }
     }
     return [];
