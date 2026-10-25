@@ -99,6 +99,19 @@ describe("Codex transcripts", () => {
     expect(entries[3]).toMatchObject({ callId: "c1", ok: false });
     expect(entries[4]).toMatchObject({ name: "spawn_agent", summary: "review" });
   });
+
+  it("shows the images a code-mode script viewed, with the output that carries them", () => {
+    const output = [{ type: "input_text", text: "Script completed" }, { type: "input_image", image_url: "data:image/png;base64,AAA" }];
+    const entries = [
+      { type: "response_item", timestamp: at, payload: { type: "custom_tool_call", call_id: "s1", name: "exec", input: "await tools.view_image({path})" } },
+      { type: "event_msg", timestamp: at, payload: { type: "item_completed", item: { type: "ImageView", id: "v1", path: "file:///tmp/shot%201.png" } } },
+      { type: "response_item", timestamp: at, payload: { type: "custom_tool_call_output", call_id: "s1", output } },
+      { type: "response_item", timestamp: at, payload: { type: "custom_tool_call_output", call_id: "s2", output: "no images" } },
+    ].flatMap(codexParser());
+    expect(entries.map((e) => e.kind)).toEqual(["tool", "tool_result"]);
+    expect(entries[0]).toMatchObject({ callId: "v1", name: "view_image", summary: "/tmp/shot 1.png" });
+    expect(entries[1]).toMatchObject({ callId: "v1", ok: true });
+  });
 });
 
 describe("pi transcripts", () => {
