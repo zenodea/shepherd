@@ -17,7 +17,8 @@ function readPaneOf(pid: number): string | null {
       process.platform === "linux"
         ? readFileSync(`/proc/${pid}/environ`, "utf8").replace(/\0/g, " ")
         : execFileSync("ps", ["eww", "-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
-    return /(?:^|\s)HERDR_PANE_ID=(\S+)/.exec(env)?.[1] ?? null;
+    // herdr's pane first: herdr running inside a Rex pane passes REX_BLOCK down to its own panes.
+    return /(?:^|\s)HERDR_PANE_ID=(\S+)/.exec(env)?.[1] ?? /(?:^|\s)REX_BLOCK=(\S+)/.exec(env)?.[1] ?? null;
   } catch {
     return null;
   }
@@ -25,7 +26,7 @@ function readPaneOf(pid: number): string | null {
 
 const panes = new Map<number, string | null>();
 
-/** The herdr pane a process runs in, from the HERDR_PANE_ID herdr gives everything it starts. */
+/** The pane a process runs in, from the HERDR_PANE_ID herdr, or the REX_BLOCK Rex, gives everything it starts. */
 export function paneOfProcess(pid: number): string | null {
   if (!panes.has(pid)) {
     if (panes.size > 500) panes.clear();

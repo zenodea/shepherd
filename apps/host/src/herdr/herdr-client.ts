@@ -39,6 +39,12 @@ export function lineReader(onLine: (line: string) => void): (chunk: Buffer | str
 export type Subscription = { close: () => void; closed: Promise<void> };
 
 /**
+ * herdr's socket API as the host uses it: herdr itself (HerdrClient), or Rex
+ * answering the same methods (RexClient), picked with the backend setting.
+ */
+export type HerdrApi = Pick<HerdrClient, "socketPath" | "request" | "subscribe" | "close">;
+
+/**
  * Client for herdr's newline-delimited JSON socket API.
  *
  * herdr answers one request per connection and then closes it, so every

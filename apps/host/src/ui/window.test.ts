@@ -21,6 +21,7 @@ const data = (patch: Partial<WindowData> = {}): WindowData => ({
   },
   service: { installed: false, detail: "not loaded" },
   turnedOff: false,
+  backend: "herdr",
   devices: [
     { id: "old", name: "Old phone", tokenHash: "", createdAt: "2026-09-01T00:00:00Z", lastSeenAt: "2026-09-29T18:00:00Z" },
     { id: "new", name: "Pixel 8", tokenHash: "", createdAt: "2026-10-01T00:00:00Z" },
@@ -62,6 +63,22 @@ describe("Shepherd window", () => {
     expect(out).toContain("3 · 1 needs you · 1 working");
     expect(out).toContain("1 connected · 2 paired");
     expect(out).toContain("online");
+  });
+
+  it("shows which of herdr and Rex the agents come from, with the key that switches", () => {
+    expect(plain(render(view(), data(), 120, 40))).toMatch(/Agents from +● herdr +\[b\] +herdr 0\.9\.1 · \/tmp\/herdr\.sock/);
+    const status = { ...data().status!, herdr: { version: "rex 0.0.1", socketPath: "/tmp/rex.sock", backend: "rex" as const } };
+    expect(plain(render(view(), data({ backend: "rex", status }), 120, 40))).toMatch(/Agents from +● Rex +\[b\] +rex 0\.0\.1 · \/tmp\/rex\.sock/);
+    // Just switched: the host still runs on herdr until it has restarted.
+    expect(plain(render(view(), data({ backend: "rex" }), 120, 40))).toContain("switching to Rex…");
+    // Running, but herdr or Rex hasn't answered yet.
+    expect(plain(render(view(), data({ backend: "rex", status: null }), 120, 40))).toContain("waiting for Rex…");
+  });
+
+  it("has no plugins with Rex", () => {
+    const out = plain(render(view({ screen: "plugins" }), data({ backend: "rex" }), 120, 40));
+    expect(out).toContain("Plugins are herdr's");
+    expect(out).not.toContain("fence");
   });
 
   it("offers to turn a stopped host on, and says when it was turned off", () => {

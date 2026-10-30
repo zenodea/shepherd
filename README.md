@@ -109,7 +109,7 @@ The app tries every address in the QR code at once and uses whichever answers fi
 
 The window has five screens; switch with the letter keys or Tab:
 
-- **Overview (`o`):** whether Shepherd is on and for how long, the herdr session, your agents and how many phones are connected. `s` turns Shepherd on or off. Under **Phones connect over**, `1`, `2` and `3` switch LAN, Tailscale and the relay on or off (see [Security model](#security-model)).
+- **Overview (`o`):** whether Shepherd is on and for how long, the herdr session, your agents and how many phones are connected. `s` turns Shepherd on or off. `b` switches between herdr and Rex (see [Using Rex instead of herdr](#using-rex-instead-of-herdr)). Under **Phones connect over**, `1`, `2` and `3` switch LAN, Tailscale and the relay on or off (see [Security model](#security-model)).
 - **Pair (`p`):** the QR code, with a countdown.
 - **Phones (`d`):** every paired phone, connected ones first with how they're connected (direct or through the relay). Select one and press `x` to revoke it.
 - **Plugins (`i`):** your other herdr plugins, each on for phones unless you switch it off here with space, and what each one runs for its cards (see [Plugins on the phone](#plugins-on-the-phone)).
@@ -168,6 +168,19 @@ description = "pair a phone"
 Your other herdr plugins work from the phone without any setup. Install one with `herdr plugin install`, and it appears under an agent's menu (⋯) → **Plugins**. Tap it for its page: its herdr actions as buttons that run against that agent, and its cards. Settings → Plugins has the same for what's about the computer. A plugin whose author adds a `shepherd.toml` next to its `herdr-plugin.toml` also shows **cards**: small panels the host fills by running a command of the plugin's that prints JSON, with badges, text, lists and buttons that invoke the plugin's actions or open its panes on the phone. [docs/plugins.md](docs/plugins.md) has the whole contract, which fits on a page.
 
 To keep a plugin off phones, press `i` in the Shepherd window, select it and press space. The window also shows what each plugin's cards run.
+
+## Using Rex instead of herdr
+
+Shepherd also works with Rex: press `b` on the window's Overview, or run `shepherd backend rex` (`shepherd backend herdr` switches back). A running host restarts onto the one you picked, and phones reconnect on their own. If you never pick, Shepherd uses herdr, or Rex when Rex is running and herdr isn't.
+
+With Rex, a session is what herdr calls a workspace, a window is a tab, and each terminal pane is a pane. The phone shows the agents in every Rex session, and the alerts for an agent that needs you or has finished come from the status Claude Code, Codex and others report to Rex. Chats, answering, typing, keys, renaming and closing work as with herdr, and so does starting an agent or a shell in a folder or an existing session.
+
+What's different with Rex:
+
+- **Plugins** are herdr's, so phones show none.
+- **New worktrees** need herdr. With Rex, start the agent in the worktree's folder instead.
+- **The live terminal** is read a few times a second instead of streamed, so it can lag a little. Rex doesn't publish the format of its terminal stream.
+- **The host doesn't start with Rex** the way the plugin starts it with herdr. Keep it running with `shepherd service install`, or run `shepherd`.
 
 ## Notifications
 
@@ -263,6 +276,7 @@ shepherd status               # is the host running, addresses, devices, recent 
 shepherd restart | stop       # restart or stop a host running in the background
 shepherd on | off             # turn Shepherd on or off (off: herdr doesn't start it)
 shepherd ui                   # the Shepherd window (status, pairing, phones, log)
+shepherd backend [herdr|rex]  # use herdr or Rex for your agents (no argument: show which)
 ```
 
 | Variable | Default | |
@@ -272,6 +286,8 @@ shepherd ui                   # the Shepherd window (status, pairing, phones, lo
 | `SHEPHERD_CONFIG` | `~/.config/shepherd/host.json` | Config file |
 | `HERDR_SESSION` / `HERDR_SOCKET_PATH` | default session | Target another herdr session |
 | `HERDR_BIN` | `herdr` | herdr binary |
+| `SHEPHERD_BACKEND` | saved choice | `herdr` or `rex`, over what `backend` saved |
+| `REX_BIN` / `REX_SERVER` | `rex` / Rex's own | Rex binary, and which Rex server it talks to |
 
 ## Security model
 

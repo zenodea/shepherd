@@ -5,6 +5,13 @@ import { dirname, join } from "node:path";
 import type { Device, Pairing } from "../pairing/devices.ts";
 import { generateKeyPair, publicKeyFor, fromHex, toHex, type KeyPair } from "@shepherd/protocol";
 import { defaultSocketPath } from "../herdr/herdr-client.ts";
+import { rexAvailable } from "../rex/rex-client.ts";
+
+/** What runs the terminals and agents phones see. */
+export const BACKENDS = ["herdr", "rex"] as const;
+export type Backend = (typeof BACKENDS)[number];
+export const BACKEND_LABELS: Record<Backend, string> = { herdr: "herdr", rex: "Rex" };
+export const isBackend = (value: unknown): value is Backend => (BACKENDS as readonly unknown[]).includes(value);
 
 /** Persisted in ~/.config/shepherd/host.json (mode 0600). */
 export type StoredConfig = {
@@ -27,6 +34,8 @@ export type StoredConfig = {
   connections?: { lan?: boolean; tailscale?: boolean; relay?: boolean };
   /** herdr plugins switched off for phones in the Shepherd window; every other one is on. */
   plugins?: { off?: string[] };
+  /** Chosen in the Shepherd window or with `backend`; unset: herdr, or Rex when only Rex is there. */
+  backend?: Backend;
 };
 
 export type HostConfig = StoredConfig & {
@@ -35,6 +44,8 @@ export type HostConfig = StoredConfig & {
   bind: string;
   herdrBin: string;
   socketPath: string;
+  backend: Backend;
+  rexBin: string;
 };
 
 /**
@@ -150,7 +161,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HostConfig {
     // HERDR_BIN_PATH is the running herdr binary, set by herdr for plugin commands.
     herdrBin: env.HERDR_BIN || env.HERDR_BIN_PATH || "herdr",
     socketPath: defaultSocketPath(env),
+    backend: backendOf(stored, env),
+    rexBin: env.REX_BIN || "rex",
   };
+}
+
+/** SHEPHERD_BACKEND, else the saved choice, else herdr unless only Rex is running here. */
+export function backendOf(stored: StoredConfig, env: NodeJS.ProcessEnv = process.env): Backend {
+  const explicit = envVar(env, "BACKEND");
+  if (explicit !== undefined) {
+    if (!isBackend(explicit)) throw new Error(`invalid SHEPHERD_BACKEND: ${explicit} (herdr or rex)`);
+    return explicit;
+  }
+  if (stored.backend) return stored.backend;
+  return !existsSync(defaultSocketPath(env)) && rexAvailable(env) ? "rex" : "herdr";
+}
+
+export function setBackendChoice(configPath: string, backend: Backend): void {
+  saveStoredConfig(configPath, { ...loadOrCreateStoredConfig(configPath), backend });
 }
 
 /**

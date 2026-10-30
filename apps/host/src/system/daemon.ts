@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROUTE_LABELS, ROUTES, type Routes } from "../connection/routes.ts";
 import { isAlive } from "../conversation/panes.ts";
-import { readStoredConfig, saveStoredConfig, setDisabled } from "./config.ts";
+import { BACKEND_LABELS, readStoredConfig, saveStoredConfig, setBackendChoice, setDisabled, type Backend } from "./config.ts";
 import { Service, serviceSpec } from "./service.ts";
 
 export type RunningHost = { pid: number; socketPath: string; startedAt: string };
@@ -124,6 +124,15 @@ export async function setConnections(configPath: string, routes: Routes, service
   if (!readRunningHost(configPath) && !service.status().installed) return `Phones can connect over: ${on}.`;
   await restartHost(configPath, service);
   return `Phones can connect over: ${on}. Restarted the host; phones reconnect on their own.`;
+}
+
+/** Save which backend the host uses, and restart a running host so it switches now. */
+export async function setBackend(configPath: string, backend: Backend, service = new Service()): Promise<string> {
+  setBackendChoice(configPath, backend);
+  const name = BACKEND_LABELS[backend];
+  if (!readRunningHost(configPath) && !service.status().installed) return `Shepherd will use ${name}.`;
+  await restartHost(configPath, service);
+  return `Switched to ${name}. Restarted the host; phones reconnect on their own.`;
 }
 
 export function isTurnedOff(configPath: string): boolean {
