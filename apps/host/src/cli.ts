@@ -3,7 +3,10 @@ import { dirname, join } from "node:path";
 import type { TerminalMode } from "@shepherd/protocol";
 import { AgentTracker } from "./herdr/agent-tracker.ts";
 import {
+  BACKEND_LABELS,
+  BACKENDS,
   hostCommand,
+  isBackend,
   hostKeyPair,
   loadConfig,
   loadOrCreateStoredConfig,
@@ -11,7 +14,9 @@ import {
   type HostConfig,
 } from "./system/config.ts";
 import { DeviceRegistry } from "./pairing/devices.ts";
-import { HerdrClient } from "./herdr/herdr-client.ts";
+import { HerdrClient, type HerdrApi } from "./herdr/herdr-client.ts";
+import { RexClient } from "./rex/rex-client.ts";
+import { RexTerminalStream } from "./rex/rex-terminal.ts";
 import { ActivityLog } from "./herdr/activity-log.ts";
 import { Launcher } from "./herdr/launcher.ts";
 import { hostAddresses, printDevices, printHostInfo, printPairing } from "./pairing/pairing.ts";
@@ -31,10 +36,10 @@ import { codexModels } from "./model/vendors/codex.ts";
 import { piModels } from "./model/vendors/pi.ts";
 import { Plugins } from "./plugins/plugins.ts";
 import { SCREENS, runWindow, type Screen } from "./ui/window.ts";
-import { clearPidFile, readRunningHost, restartHost, setConnections, startDetached, stopRunningHost, turnOff, turnOn, writePidFile } from "./system/daemon.ts";
+import { clearPidFile, readRunningHost, restartHost, setBackend, setConnections, startDetached, stopRunningHost, turnOff, turnOn, writePidFile } from "./system/daemon.ts";
 import { TerminalStream } from "./herdr/terminal-stream.ts";
 
-const USAGE = `Shepherd host — bridge your herdr agents to the Shepherd mobile app
+const USAGE = `Shepherd host — bridge your herdr or Rex agents to the Shepherd mobile app
 
 Usage (from the repo root):
   npm run host                             Run the host; prints a pairing QR code
@@ -50,6 +55,7 @@ Usage (from the repo root):
   npm run host -- service uninstall|status|logs
   npm run host -- status                   Is the host running, addresses, devices, recent log
   npm run host -- ui [pair|phones|log]     The Shepherd window: status, pairing, phones, log
+  npm run host -- backend [herdr|rex]      Use herdr or Rex for your agents (no argument: show which)
 
 As a herdr plugin (herdr-plugin.toml) the host runs in the background while herdr does:
   npm run host -- ensure                   Start it in the background unless it's already running
@@ -60,8 +66,10 @@ Environment:
   SHEPHERD_PORT    Port for direct connections (default 7420)
   SHEPHERD_BIND    Address to listen on (default 0.0.0.0)
   SHEPHERD_CONFIG  Config file (default ~/.config/shepherd/host.json)
+  SHEPHERD_BACKEND herdr or rex, over what \`backend\` saved
   HERDR_BIN       herdr binary (default "herdr" on PATH)
   HERDR_SESSION / HERDR_SOCKET_PATH  Target a named herdr session or socket
+  REX_BIN         rex binary (default "rex" on PATH); REX_SERVER picks the Rex server
 `;
 
 const HERDR_WAIT_MS = 5000;
@@ -69,16 +77,17 @@ const HERDR_WAIT_MS = 5000;
 const HERDR_GONE_MS = 60_000;
 const TAILSCALE_WATCH_MS = 15_000;
 
-/** Wait for herdr to come up (e.g. the host started at login before herdr). */
-async function waitForHerdr(herdr: HerdrClient, socketPath: string): Promise<string> {
+/** Wait for herdr or Rex to come up (e.g. the host started at login before it). */
+async function waitForHerdr(herdr: HerdrApi, config: HostConfig): Promise<string> {
   let warned = false;
   for (;;) {
     try {
       return (await herdr.request<{ version: string }>("ping")).version;
     } catch (err) {
       if (!warned) {
-        console.error(`Waiting for herdr at ${socketPath} (${(err as Error).message}).`);
-        console.error("Start herdr (run `herdr`), or set HERDR_SESSION / HERDR_SOCKET_PATH.");
+        console.error(`Waiting for ${BACKEND_LABELS[config.backend]} at ${herdr.socketPath} (${(err as Error).message}).`);
+        if (config.backend === "rex") console.error(`Open Rex, or switch back to herdr with: ${hostCommand("backend herdr")}`);
+        else console.error("Start herdr (run `herdr`), or set HERDR_SESSION / HERDR_SOCKET_PATH.");
         warned = true;
       }
       await new Promise((r) => setTimeout(r, HERDR_WAIT_MS));
@@ -93,11 +102,16 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     process.exit(1);
   }
   trimLog(serviceSpec().logFile);
-  const herdr = new HerdrClient(config.socketPath);
-  const herdrVersion = await waitForHerdr(herdr, config.socketPath);
+  // Before waiting for herdr or Rex, so a host that's still waiting can be stopped, restarted and switched.
+  writePidFile(config.configPath, config.socketPath);
+  // Rex answers herdr's methods (rex-client.ts), so everything below works with either.
+  const rex = config.backend === "rex" ? new RexClient({ bin: config.rexBin }) : null;
+  const herdr: HerdrApi = rex ?? new HerdrClient(config.socketPath);
+  const backendName = BACKEND_LABELS[config.backend];
+  const herdrVersion = await waitForHerdr(herdr, config);
 
   const tracker = new AgentTracker(herdr);
-  tracker.on("error", (err) => console.error(`[herdr] ${err.message}`));
+  tracker.on("error", (err) => console.error(`[${config.backend}] ${err.message}`));
   tracker.on("status", (c) => console.log(`[agent] ${c.paneId} ${c.previous ?? "?"} → ${c.status}`));
   await tracker.start();
 
@@ -117,7 +131,9 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     hostKey: hostKeyPair(config),
     host: { name: config.name, herdrVersion },
     openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) =>
-      new TerminalStream({ herdrBin: config.herdrBin, socketPath: config.socketPath, paneId, mode, cols, rows }),
+      rex
+        ? new RexTerminalStream(rex, { paneId, mode, cols, rows })
+        : new TerminalStream({ herdrBin: config.herdrBin, socketPath: config.socketPath, paneId, mode, cols, rows }),
     launcher: new Launcher({
       herdr,
       onError: (err) => console.error(`[launch] ${err.message}`),
@@ -144,7 +160,6 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   });
   const server = { port: direct.port };
   deps.host.addresses = hostAddresses(config, server.port).map((a) => a.url);
-  writePidFile(config.configPath, config.socketPath);
 
   const agentCounts = () => {
     const list = tracker.list();
@@ -155,7 +170,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
     };
   };
   const status = new HostStatusWriter(config.configPath, {
-    herdr: { version: herdrVersion, socketPath: config.socketPath },
+    herdr: { version: herdrVersion, socketPath: herdr.socketPath, backend: config.backend },
     port: server.port,
     addresses: hostAddresses(config, server.port),
     agents: agentCounts(),
@@ -164,7 +179,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   deps.presence = status;
   tracker.on("agents", () => status.update({ agents: agentCounts() }));
   tracker.on("status", () => status.update({ agents: agentCounts() }));
-  console.log(`Shepherd host connected to herdr ${herdrVersion}, tracking ${tracker.list().length} agent(s).`);
+  console.log(`Shepherd host connected to ${rex ? herdrVersion : `herdr ${herdrVersion}`}, tracking ${tracker.list().length} agent(s).`);
   // A QR code is only useful to a person at a terminal, not in a service log.
   if (process.stdout.isTTY) await printPairing(config, devices, server.port);
   else console.log(`Pair a phone with: ${hostCommand("pair")}`);
@@ -196,7 +211,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
         () => (lastSeen = Date.now()),
         () => {
           if (Date.now() - lastSeen < HERDR_GONE_MS) return;
-          console.log(`herdr has been unreachable for ${HERDR_GONE_MS / 1000}s; stopping.`);
+          console.log(`${backendName} has been unreachable for ${HERDR_GONE_MS / 1000}s; stopping.`);
           void shutdown();
         },
       );
@@ -453,6 +468,21 @@ async function main(argv: string[]): Promise<void> {
         process.exit(2);
       }
       console.log(await setConnections(config.configPath, routes));
+      return;
+    }
+    case "backend": {
+      const config = loadConfig();
+      const wanted = argv[1]?.toLowerCase();
+      if (!wanted) {
+        console.log(`Shepherd uses ${BACKEND_LABELS[config.backend]}${config.backend === "rex" ? "" : " (herdr's plugins work only with herdr)"}.`);
+        console.log(`Switch with: ${hostCommand("backend")} <${BACKENDS.join("|")}>`);
+        return;
+      }
+      if (!isBackend(wanted)) {
+        console.error(`Unknown backend: ${wanted}. Choose from: ${BACKENDS.join(", ")}`);
+        process.exit(2);
+      }
+      console.log(await setBackend(config.configPath, wanted));
       return;
     }
     case "service":

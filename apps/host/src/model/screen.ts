@@ -1,4 +1,4 @@
-import type { HerdrClient } from "../herdr/herdr-client.ts";
+import type { HerdrApi } from "../herdr/herdr-client.ts";
 
 const POLL_MS = 120;
 const WAIT_MS = 4000;
@@ -39,10 +39,10 @@ export function menuRows(text: string, title: RegExp): MenuRow[] {
 
 /** One pane's screen through herdr: read it, press keys, wait for it to change. */
 export class PaneScreen {
-  private readonly herdr: HerdrClient;
+  private readonly herdr: HerdrApi;
   readonly paneId: string;
 
-  constructor(herdr: HerdrClient, paneId: string) {
+  constructor(herdr: HerdrApi, paneId: string) {
     this.herdr = herdr;
     this.paneId = paneId;
   }

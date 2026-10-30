@@ -13,6 +13,8 @@ const config: HostConfig = {
   bind: "0.0.0.0",
   herdrBin: "herdr",
   socketPath: "/tmp/herdr.sock",
+  backend: "herdr",
+  rexBin: "rex",
 };
 
 const iface = (address: string, internal = false) => ({

@@ -18,7 +18,7 @@ import type {
   PluginSummary,
   PluginsResult,
 } from "@shepherd/protocol";
-import type { HerdrClient } from "../herdr/herdr-client.ts";
+import { HerdrRequestError, type HerdrApi } from "../herdr/herdr-client.ts";
 import { pluginsOff, readStoredConfig } from "../system/config.ts";
 import { runCardCommand, type CardRunner } from "./card-runner.ts";
 import { SIDECAR_FILE, parseSidecar, type Sidecar, type SidecarCard } from "./sidecar.ts";
@@ -65,7 +65,7 @@ export class PluginError extends Error {
 }
 
 export type PluginsDeps = {
-  herdr: HerdrClient;
+  herdr: HerdrApi;
   configPath: string;
   tracker: { get: (paneId: string) => AgentInfo | null };
   herdrBin: string;
@@ -82,8 +82,12 @@ const OUTPUT_TAIL = 2000;
 
 export const selfPluginId = (env: NodeJS.ProcessEnv = process.env): string => env.HERDR_PLUGIN_ID || "shepherd";
 
-export async function listInstalled(herdr: HerdrClient, configPath: string, env: NodeJS.ProcessEnv = process.env): Promise<InstalledPlugin[]> {
-  const { plugins } = await herdr.request<{ plugins: HerdrPlugin[] }>("plugin.list");
+export async function listInstalled(herdr: HerdrApi, configPath: string, env: NodeJS.ProcessEnv = process.env): Promise<InstalledPlugin[]> {
+  // Plugins are herdr's: with Rex there are none, rather than an error on every screen.
+  const { plugins } = await herdr.request<{ plugins: HerdrPlugin[] }>("plugin.list").catch((err: unknown) => {
+    if (err instanceof HerdrRequestError && err.code === "unsupported") return { plugins: [] as HerdrPlugin[] };
+    throw err;
+  });
   const off = pluginsOff(readStoredConfig(configPath));
   const self = selfPluginId(env);
   return plugins

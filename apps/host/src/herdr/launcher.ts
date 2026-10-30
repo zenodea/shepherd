@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { basename, delimiter, join } from "node:path";
 import { TERMINAL_KIND, type Folder, type FoldersResult, type Project, type ProjectsResult, type StartAgentParams, type StartAgentResult } from "@shepherd/protocol";
 import { FolderError, Folders } from "./folders.ts";
-import { HerdrRequestError, type HerdrClient } from "./herdr-client.ts";
+import { HerdrRequestError, type HerdrApi } from "./herdr-client.ts";
 
 /** Shown first in the app; everything else herdr supports follows alphabetically. */
 const PREFERRED_KINDS = ["claude", "codex", "gemini", "opencode", "cursor", "copilot", "amp"];
@@ -54,13 +54,13 @@ export function sortKinds(kinds: string[]): string[] {
  * in an existing herdr workspace or a new one for a folder in your home folder.
  */
 export class Launcher {
-  private readonly herdr: HerdrClient;
+  private readonly herdr: HerdrApi;
   private readonly installed: (name: string) => boolean;
   private readonly onError: (err: Error) => void;
   private readonly folders: Folders;
   private readonly recentCwds: () => string[];
 
-  constructor(opts: { herdr: HerdrClient; installed?: (name: string) => boolean; onError?: (err: Error) => void; folders?: Folders; recentCwds?: () => string[] }) {
+  constructor(opts: { herdr: HerdrApi; installed?: (name: string) => boolean; onError?: (err: Error) => void; folders?: Folders; recentCwds?: () => string[] }) {
     this.herdr = opts.herdr;
     this.folders = opts.folders ?? new Folders();
     this.recentCwds = opts.recentCwds ?? (() => []);

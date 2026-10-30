@@ -3,10 +3,10 @@
 import { encodePairingLink } from "@shepherd/protocol";
 import { DeviceRegistry, type Device } from "../pairing/devices.ts";
 import { hostAddresses, manualCode, pairingInfo, renderQr, type HostAddress } from "../pairing/pairing.ts";
-import { loadConfig, setPluginOff, type HostConfig } from "../system/config.ts";
+import { BACKEND_LABELS, BACKENDS, loadConfig, setPluginOff, type Backend, type HostConfig } from "../system/config.ts";
 import { HerdrClient } from "../herdr/herdr-client.ts";
 import { listInstalled, type InstalledPlugin } from "../plugins/plugins.ts";
-import { readRunningHost, restartHost, setConnections, turnOff, turnOn, type RunningHost } from "../system/daemon.ts";
+import { readRunningHost, restartHost, setBackend, setConnections, turnOff, turnOn, type RunningHost } from "../system/daemon.ts";
 import { ROUTE_LABELS, ROUTES, routesOf, withRoute, type Route, type Routes } from "../connection/routes.ts";
 import { firewallBlocks, type FirewallBlock } from "../system/firewall.ts";
 import { readHostStatus, type ConnectedPhone, type HostStatus } from "../system/host-status.ts";
@@ -32,6 +32,8 @@ export type WindowData = {
   service: { installed: boolean; detail: string };
   /** Turned off here: the host is stopped and herdr won't start it. */
   turnedOff: boolean;
+  /** What the host is set to use; the running one may still be on the other until it restarts. */
+  backend: Backend;
   devices: Device[];
   addresses: HostAddress[];
   routes: Routes;
@@ -98,7 +100,7 @@ function overview(data: WindowData, now: number): string[] {
     lines.push(switchRow("Shepherd", slider(false, true), key, style.red("not running")));
   }
   if (data.service.installed) lines.push(`  ${label("")}${style.dim(`Run by the background service (${data.service.detail})`)}`);
-  lines.push(`  ${label("herdr")}${status ? `${status.herdr.version}${style.dim(` · ${status.herdr.socketPath}`)}` : style.dim("—")}`);
+  lines.push(switchRow("Agents from", backendChoice(data.backend), "b", backendText(data)));
   if (status) {
     const { total, blocked, working } = status.agents;
     const parts = [`${total}`, blocked ? style.yellow(`${blocked} need${blocked === 1 ? "s" : ""} you`) : "", working ? `${working} working` : ""];
@@ -118,6 +120,18 @@ function overview(data: WindowData, now: number): string[] {
     if (route !== "relay") for (const url of urls.slice(1)) lines.push(`  ${label("")}${" ".repeat(16)}${url}`);
   }
   return lines;
+}
+
+/** The backend in use, as wide as a slider so the keys line up. */
+const backendChoice = (backend: Backend) => style.green(pad(`● ${BACKEND_LABELS[backend]}`, 8));
+
+function backendText(data: WindowData): string {
+  const { status } = data;
+  if (!status) return data.running ? style.yellow(`waiting for ${BACKEND_LABELS[data.backend]}…`) : style.dim("—");
+  const running = status.herdr.backend ?? "herdr";
+  if (running !== data.backend) return style.yellow(`switching to ${BACKEND_LABELS[data.backend]}…`);
+  // Rex's version already says "rex".
+  return `${running === "herdr" ? "herdr " : ""}${status.herdr.version}${style.dim(` · ${status.herdr.socketPath}`)}`;
 }
 
 function relayText(data: WindowData): string {
@@ -178,6 +192,7 @@ function phonesScreen(view: ViewState, data: WindowData, now: number): string[] 
 }
 
 function pluginsScreen(view: ViewState, data: WindowData): string[] {
+  if (data.backend === "rex") return ["  Plugins are herdr's, so phones don't show any while Shepherd uses Rex.", "", style.dim(`  Switch to herdr with ${keycap("b")} on the Overview.`)];
   if (!data.plugins) return [style.dim("  Asking herdr for its plugins…")];
   const { list, error } = data.plugins;
   const lines: string[] = [];
@@ -212,7 +227,7 @@ function logScreen(data: WindowData, height: number): string[] {
 }
 
 const HINTS: Record<Screen, [string, string][]> = {
-  overview: [["s", "shepherd on/off"], ["1-3", "connections"], ["r", "restart"], ["q", "close"]],
+  overview: [["s", "shepherd on/off"], ["b", "herdr/Rex"], ["1-3", "connections"], ["r", "restart"], ["q", "close"]],
   pair: [["p", "new code"], ["r", "restart"], ["q", "close"]],
   phones: [["↑↓", "select"], ["x", "revoke"], ["p", "pair"], ["q", "close"]],
   plugins: [["↑↓", "select"], ["space", "on/off for phones"], ["q", "close"]],
@@ -288,6 +303,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
       status,
       service: { installed: svc.installed, detail: svc.detail },
       turnedOff: config.disabled === true,
+      backend: config.backend,
       devices: devices.list(),
       addresses: status?.addresses ?? hostAddresses(config, config.port),
       routes: routesOf(config),
@@ -298,6 +314,7 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
     };
   };
   const refreshPlugins = async () => {
+    if (config.backend === "rex") return;
     try {
       plugins = { list: await listInstalled(herdr, config.configPath), error: null };
     } catch (err) {
@@ -414,6 +431,21 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
     refresh(true);
     setTimeout(() => refresh(true), 1500);
   };
+  const toggleBackend = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const next = BACKENDS[(BACKENDS.indexOf(config.backend) + 1) % BACKENDS.length]!;
+      flash(`Switching to ${BACKEND_LABELS[next]}…`, "warn");
+      flash(await setBackend(config.configPath, next, service));
+      config = loadConfig();
+    } catch (err) {
+      flash((err as Error).message, "error");
+    }
+    busy = false;
+    refresh(true);
+    setTimeout(() => refresh(true), 1500);
+  };
   const togglePlugin = () => {
     const plugin = data.plugins?.list[view.selected];
     if (!plugin) return;
@@ -468,6 +500,9 @@ export async function runWindow(initial: Screen = "overview"): Promise<void> {
         return void restart();
       case "s":
         if (view.screen === "overview" && !data.service.installed) void toggleShepherd();
+        return;
+      case "b":
+        if (view.screen === "overview") void toggleBackend();
         return;
       case "1":
       case "2":

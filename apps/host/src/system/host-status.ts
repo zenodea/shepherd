@@ -4,14 +4,15 @@
 import { readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { HostAddress } from "../pairing/pairing.ts";
-import { writeJsonAtomic } from "./config.ts";
+import { writeJsonAtomic, type Backend } from "./config.ts";
 
 export type ConnectedPhone = { deviceId: string; via: "direct" | "relay"; since: string };
 
 export type HostStatus = {
   pid: number;
   startedAt: string;
-  herdr: { version: string; socketPath: string };
+  /** What the host talks to: herdr, or Rex when `backend` is "rex" (unset by hosts from before Rex). */
+  herdr: { version: string; socketPath: string; backend?: Backend };
   port: number;
   addresses: HostAddress[];
   agents: { total: number; blocked: number; working: number };

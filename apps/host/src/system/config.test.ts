@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultConfigPath, envVar, hostCommand, loadOrCreateStoredConfig, pluginsOff, readStoredConfig, setDisabled, setPluginOff } from "./config.ts";
+import { backendOf, defaultConfigPath, envVar, hostCommand, loadOrCreateStoredConfig, pluginsOff, readStoredConfig, setDisabled, setPluginOff } from "./config.ts";
 
 describe("config location", () => {
   const dirs: string[] = [];
@@ -87,5 +87,33 @@ describe("plugins for phones", () => {
     setPluginOff(path, "graphdiff", false);
     expect(readStoredConfig(path)).not.toHaveProperty("plugins");
     expect(pluginsOff(null).size).toBe(0);
+  });
+});
+
+describe("backend", () => {
+  const dirs: string[] = [];
+  afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+  const home = () => {
+    const dir = mkdtempSync(join(tmpdir(), "shepherd-backend-"));
+    dirs.push(dir);
+    return dir;
+  };
+  const stored = { hostId: "h", name: "n" };
+
+  it("is herdr unless only Rex is running here", () => {
+    const config = home();
+    // Neither herdr's socket nor Rex: herdr, as before Rex.
+    expect(backendOf(stored, { XDG_CONFIG_HOME: config, HOME: config })).toBe("herdr");
+    expect(backendOf(stored, { XDG_CONFIG_HOME: config, HOME: config, REX_SERVER: "unix:///tmp/rex.sock" })).toBe("rex");
+    mkdirSync(join(config, "herdr"));
+    writeFileSync(join(config, "herdr", "herdr.sock"), "");
+    expect(backendOf(stored, { XDG_CONFIG_HOME: config, HOME: config, REX_SERVER: "unix:///tmp/rex.sock" })).toBe("herdr");
+  });
+
+  it("keeps the saved choice, and SHEPHERD_BACKEND wins over it", () => {
+    const config = home();
+    expect(backendOf({ ...stored, backend: "rex" }, { XDG_CONFIG_HOME: config })).toBe("rex");
+    expect(backendOf({ ...stored, backend: "rex" }, { XDG_CONFIG_HOME: config, SHEPHERD_BACKEND: "herdr" })).toBe("herdr");
+    expect(() => backendOf(stored, { SHEPHERD_BACKEND: "tmux" })).toThrow(/herdr or rex/);
   });
 });

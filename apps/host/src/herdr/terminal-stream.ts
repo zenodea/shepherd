@@ -15,10 +15,13 @@ export type TerminalStreamOptions = {
 
 type Frame = Extract<HerdrTerminalRecord, { type: "terminal.frame" }>;
 
-type StreamEvents = {
+export type StreamEvents = {
   frame: [Frame];
   closed: [string];
 };
+
+/** A live pane screen: herdr's `terminal session`, or Rex's screen read again and again. */
+export type TerminalSource = Pick<EventEmitter<StreamEvents>, "on" | "once"> & Pick<TerminalStream, "mode" | "send" | "close">;
 
 export type Spawner = (bin: string, args: string[], env: NodeJS.ProcessEnv) => ChildProcessWithoutNullStreams;
 

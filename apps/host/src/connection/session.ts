@@ -17,7 +17,7 @@ import { changes, changesParams, fileDiff, fileDiffParams } from "../changes/git
 import { gitPlace } from "../changes/git-place.ts";
 import type { AgentTracker } from "../herdr/agent-tracker.ts";
 import type { Device, DeviceRegistry } from "../pairing/devices.ts";
-import { HerdrRequestError, type HerdrClient } from "../herdr/herdr-client.ts";
+import { HerdrRequestError, type HerdrApi } from "../herdr/herdr-client.ts";
 import type { ActivityLog } from "../herdr/activity-log.ts";
 import type { SlashCommands } from "../commands/slash-commands.ts";
 import type { RunningSubagents } from "../conversation/running-subagents.ts";
@@ -27,7 +27,7 @@ import { ScreenError } from "../model/screen.ts";
 import { LaunchError, type Launcher } from "../herdr/launcher.ts";
 import { ScreenRenderer } from "../herdr/screen-renderer.ts";
 import { PluginError, type Plugins } from "../plugins/plugins.ts";
-import type { TerminalStream } from "../herdr/terminal-stream.ts";
+import type { TerminalSource } from "../herdr/terminal-stream.ts";
 import { hostCommand } from "../system/config.ts";
 import { handoff } from "../handoff.ts";
 
@@ -45,13 +45,13 @@ export const AUTH_TIMEOUT_MS = 10_000;
 type Size = { cols: number; rows: number };
 
 export type SessionDeps = {
-  herdr: HerdrClient;
+  herdr: HerdrApi;
   tracker: AgentTracker;
   host: HostInfo;
   /** This host's static key pair for end-to-end encryption. */
   hostKey: KeyPair;
   devices: DeviceRegistry;
-  openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) => TerminalStream;
+  openTerminal: (paneId: string, mode: TerminalMode, cols: number, rows: number) => TerminalSource;
   /** Implements `shepherd.*` methods; without it they report unsupported. */
   launcher?: Launcher;
   /** Backs `shepherd.activity`; without it the feed is empty. */
@@ -88,7 +88,7 @@ export type SessionTransport = {
  * accepted and nothing about the host is sent.
  */
 export class AppSession {
-  private streams = new Map<string, TerminalStream>();
+  private streams = new Map<string, TerminalSource>();
   private opening = new Set<string>();
   private closed = false;
   private device: Device | null = null;

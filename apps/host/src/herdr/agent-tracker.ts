@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { AgentInfo, AgentStatus, PaneAgentStatusChanged, StatusChange } from "@shepherd/protocol";
 import { isAgentStatus } from "@shepherd/protocol";
-import type { HerdrClient, Subscription } from "./herdr-client.ts";
+import type { HerdrApi, Subscription } from "./herdr-client.ts";
 
 const LIFECYCLE_SUBSCRIPTIONS = [
   { type: "pane.created" },
@@ -40,9 +40,9 @@ export class AgentTracker extends EventEmitter<TrackerEvents> {
   private refreshQueued = false;
   private retryMs = 500;
   private stopped = true;
-  private readonly herdr: HerdrClient;
+  private readonly herdr: HerdrApi;
 
-  constructor(herdr: HerdrClient) {
+  constructor(herdr: HerdrApi) {
     super();
     this.herdr = herdr;
   }

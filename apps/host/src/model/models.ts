@@ -1,5 +1,5 @@
 import { choiceId, type AgentInfo, type ModelChoice, type ModelResult, type SetModelParams } from "@shepherd/protocol";
-import type { HerdrClient } from "../herdr/herdr-client.ts";
+import type { HerdrApi } from "../herdr/herdr-client.ts";
 import { PaneScreen } from "./screen.ts";
 
 /** An agent's choices and what it's using now: a `choiceId` of a model and an effort's label. */
@@ -35,14 +35,14 @@ const agentName = (agent: AgentInfo) => agent.display_agent ?? agent.agent ?? "t
 
 /** Models and effort for agents, read and switched by driving each agent's own menus. */
 export class Models {
-  private readonly herdr: HerdrClient;
+  private readonly herdr: HerdrApi;
   private readonly vendors: ModelVendor[];
   private readonly transcriptModel: (agent: AgentInfo) => string | null;
   private readonly menus = new Map<string, { menu: ModelMenu; at: number }>();
   private readonly panes = new Map<string, ModelMenu>();
   private readonly busy = new Set<string>();
 
-  constructor(opts: { herdr: HerdrClient; vendors: ModelVendor[]; transcriptModel?: (agent: AgentInfo) => string | null }) {
+  constructor(opts: { herdr: HerdrApi; vendors: ModelVendor[]; transcriptModel?: (agent: AgentInfo) => string | null }) {
     this.herdr = opts.herdr;
     this.vendors = opts.vendors;
     this.transcriptModel = opts.transcriptModel ?? (() => null);
