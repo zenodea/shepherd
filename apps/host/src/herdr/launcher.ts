@@ -59,9 +59,19 @@ export class Launcher {
   private readonly onError: (err: Error) => void;
   private readonly folders: Folders;
   private readonly recentCwds: () => string[];
+  private readonly hideAgents: boolean;
 
-  constructor(opts: { herdr: HerdrApi; installed?: (name: string) => boolean; onError?: (err: Error) => void; folders?: Folders; recentCwds?: () => string[] }) {
+  /** `hideAgents`: start agents where the desktop doesn't show them until asked (Rex only; herdr has no such place). */
+  constructor(opts: {
+    herdr: HerdrApi;
+    installed?: (name: string) => boolean;
+    onError?: (err: Error) => void;
+    folders?: Folders;
+    recentCwds?: () => string[];
+    hideAgents?: boolean;
+  }) {
     this.herdr = opts.herdr;
+    this.hideAgents = opts.hideAgents ?? false;
     this.folders = opts.folders ?? new Folders();
     this.recentCwds = opts.recentCwds ?? (() => []);
     this.installed = opts.installed ?? ((name) => isOnPath(name));
@@ -114,7 +124,10 @@ export class Launcher {
     const terminal = kind === TERMINAL_KIND;
     if (!terminal && !(await this.kinds()).includes(kind)) throw new LaunchError("unknown_kind", `${kind} is not installed on this computer`);
 
-    const created = typeof folder === "string" ? await this.inNewWorkspace(folder) : await this.inWorkspace(params.workspaceId!, newWorktree, terminal ? null : kind);
+    // A terminal stays on the desktop: the phone lists only agents, so it couldn't find a hidden one again.
+    const hidden = this.hideAgents && !terminal;
+    const created =
+      typeof folder === "string" ? await this.inNewWorkspace(folder, hidden) : await this.inWorkspace(params.workspaceId!, newWorktree, terminal ? null : kind, hidden);
     const pane = created.root_pane;
 
     if (terminal) {
@@ -138,6 +151,7 @@ export class Launcher {
         ready = false;
       } else {
         if (folder !== undefined) await this.herdr.request("workspace.close", { workspace_id: pane.workspace_id }).catch(() => {});
+        else if (hidden) await this.herdr.request("pane.close", { pane_id: pane.pane_id }).catch(() => {});
         else if (!newWorktree) await this.herdr.request("tab.close", { tab_id: pane.tab_id }).catch(() => {});
         throw err;
       }
@@ -148,25 +162,25 @@ export class Launcher {
   }
 
   /** A new herdr workspace for a folder in your home folder, named after it. */
-  private async inNewWorkspace(folder: string): Promise<CreatedPane> {
+  private async inNewWorkspace(folder: string, hidden: boolean): Promise<CreatedPane> {
     let cwd: string;
     try {
       cwd = this.folders.resolve(folder);
     } catch (err) {
       throw new LaunchError("invalid_folder", (err as Error).message);
     }
-    return this.herdr.request<CreatedPane>("workspace.create", { cwd, label: basename(cwd), focus: false });
+    return this.herdr.request<CreatedPane>("workspace.create", { cwd, label: basename(cwd), focus: false, ...(hidden ? { hidden } : {}) });
   }
 
   /** A new tab, or a new git worktree, in an existing workspace. */
-  private async inWorkspace(workspaceId: string, newWorktree: boolean, label: string | null): Promise<CreatedPane> {
+  private async inWorkspace(workspaceId: string, newWorktree: boolean, label: string | null, hidden: boolean): Promise<CreatedPane> {
     const snapshot = await this.snapshot();
     if (!snapshot.workspaces.some((ws) => ws.workspace_id === workspaceId)) {
       throw new LaunchError("unknown_workspace", "That workspace no longer exists");
     }
     return newWorktree
       ? this.herdr.request<CreatedPane>("worktree.create", { workspace_id: workspaceId, focus: false })
-      : this.herdr.request<CreatedPane>("tab.create", { workspace_id: workspaceId, cwd: workspaceCwd(snapshot, workspaceId), label, focus: false });
+      : this.herdr.request<CreatedPane>("tab.create", { workspace_id: workspaceId, cwd: workspaceCwd(snapshot, workspaceId), label, focus: false, ...(hidden ? { hidden } : {}) });
   }
 
   private async sendWhenReady(paneId: string, prompt: string, ready: boolean): Promise<void> {

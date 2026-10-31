@@ -8,6 +8,7 @@ import {
   sealJson,
   toHex,
   WIRE_PROTOCOL_VERSION,
+  type AgentCopy,
   type AgentInfo,
   type CallMethod,
   type ClientMessage,
@@ -135,7 +136,7 @@ function toBytes(data: unknown): Uint8Array | null {
 /** What screens use; implemented by HostClient and by the demo host. */
 export type HostConnection = Pick<
   HostClient,
-  "getState" | "subscribe" | "onStatusChange" | "start" | "stop" | "reconnectNow" | "checkConnection" | "setNetwork" | "call" | "openTerminal"
+  "getState" | "subscribe" | "onStatusChange" | "onCopied" | "start" | "stop" | "reconnectNow" | "checkConnection" | "setNetwork" | "call" | "openTerminal"
 >;
 
 /**
@@ -150,6 +151,7 @@ export class HostClient {
   private state: HostState;
   private listeners = new Set<() => void>();
   private statusListeners = new Set<(change: StatusChange) => void>();
+  private copyListeners = new Set<(copy: AgentCopy) => void>();
   private terminals = new Map<string, TerminalHandlers>();
   private pending = new Map<string, Pending>();
   private nextId = 0;
@@ -186,6 +188,12 @@ export class HostClient {
   onStatusChange(listener: (change: StatusChange) => void): () => void {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
+  }
+
+  /** Text a program in an agent's pane copied on the computer (hosts on Rex only). */
+  onCopied(listener: (copy: AgentCopy) => void): () => void {
+    this.copyListeners.add(listener);
+    return () => this.copyListeners.delete(listener);
   }
 
   start(): void {
@@ -478,6 +486,9 @@ export class HostClient {
         return;
       case "agent.status":
         for (const listener of this.statusListeners) listener(msg);
+        return;
+      case "agent.copied":
+        for (const listener of this.copyListeners) listener(msg);
         return;
       case "terminal.frame":
         this.terminals.get(msg.streamId)?.onFrame?.(msg);

@@ -1,5 +1,5 @@
 // What's worth a notification, and what it says. No native code here, so it can be tested.
-import type { AgentInfo, BlockedPrompt, PromptOption, StatusChange } from "@shepherd/protocol";
+import type { AgentInfo, BlockedOn, BlockedPrompt, PromptOption, StatusChange } from "@shepherd/protocol";
 
 /** The same agent going blocked → working → blocked quickly notifies once. */
 export const COOLDOWN_MS = 20_000;
@@ -11,6 +11,8 @@ export type AgentAlert = { paneId: string; kind: "blocked" | "done"; title: stri
 export type AlertAction = Pick<PromptOption, "key" | "label">;
 /** How long the excerpt of a finished agent's last reply can be. */
 const EXCERPT_CHARS = 180;
+/** What a blocked agent waits for, when its computer says (Rex does). */
+const BLOCKED_VERBS: Record<BlockedOn, string> = { permission: "needs permission", question: "has a question", auth: "needs a password" };
 
 export function agentLabel(agent: AgentInfo | null, paneId: string): string {
   return agent?.name || agent?.display_agent || agent?.agent || paneId;
@@ -26,8 +28,11 @@ export function alertFor(change: StatusChange, hostName: string): AgentAlert | n
   // Finished: after working, or after a question (answered somewhere, then it carried on and finished).
   if (finished && change.previous !== "working" && change.previous !== "blocked") return null;
   const agent = change.agent;
-  const detail = agent?.terminal_title_stripped || agent?.title || agent?.cwd?.split("/").filter(Boolean).pop() || change.paneId;
-  const verb = change.status === "blocked" ? "needs input" : "finished";
+  const blocked = change.status === "blocked";
+  // A blocked agent's own line says what it wants, which beats its title.
+  const doing = blocked ? agent?.status_text?.trim() : null;
+  const detail = doing || agent?.terminal_title_stripped || agent?.title || agent?.cwd?.split("/").filter(Boolean).pop() || change.paneId;
+  const verb = blocked ? ((agent?.blocked_on && BLOCKED_VERBS[agent.blocked_on]) ?? "needs input") : "finished";
   return { paneId: change.paneId, kind: finished ? "done" : "blocked", title: `${agentLabel(agent, change.paneId)} ${verb}`, body: `${detail} · ${hostName}` };
 }
 

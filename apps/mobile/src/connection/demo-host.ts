@@ -25,6 +25,7 @@ import type {
   ProjectsResult,
   QueuedMessage,
   StatusChange,
+  AgentCopy,
 } from "@shepherd/protocol";
 import type { ConnectionSettings, HostConnection, HostState, TerminalHandle, TerminalHandlers } from "./host-client";
 import { parseAnsi, toStyledLines } from "../agents/ansi";
@@ -519,6 +520,11 @@ export class DemoHost implements HostConnection {
   onStatusChange(listener: (c: StatusChange) => void) {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
+  }
+
+  /** The demo's agents never copy anything. */
+  onCopied(_listener: (c: AgentCopy) => void) {
+    return () => {};
   }
 
   start(): void {}

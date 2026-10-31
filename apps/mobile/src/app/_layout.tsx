@@ -3,6 +3,7 @@ import { useFonts } from "expo-font";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { Fragment, useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
+import { CopiedBanner } from "../agents/CopiedBanner";
 import { ConnectionProvider, useConnection } from "../connection/connection";
 import { BackgroundNotifications } from "../notifications/BackgroundNotifications";
 import { WidgetUpdater } from "../notifications/WidgetUpdater";
@@ -63,6 +64,8 @@ function App() {
         >
           <Stack.Screen name="scan" options={{ presentation: "modal", animation: "slide_from_bottom" }} />
         </Stack>
+        {/* After the screens, so it shows above them. */}
+        <CopiedBanner />
       </ConnectionProvider>
     </AppLockProvider>
   );

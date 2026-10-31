@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { FolderPen, Forward, Pencil, X } from "lucide-react-native";
+import { FolderPen, Forward, MonitorUp, Pencil, X } from "lucide-react-native";
 import { useState } from "react";
 import { Alert } from "react-native";
 import type { AgentInfo } from "@shepherd/protocol";
@@ -93,6 +93,16 @@ export function useAgentActions(
             detail: "Its name in herdr's sidebar",
             onPress: () => void renameWorkspace(),
           },
+          ...(agent?.hidden
+            ? [
+                {
+                  icon: <MonitorUp size={19} color={colors.text} />,
+                  title: "Show on desktop",
+                  detail: "It runs on your computer in no window yet: open one for it",
+                  onPress: () => void client?.call("shepherd.show_on_desktop", { paneId: target!.paneId }).catch(fail("show it on the desktop")),
+                },
+              ]
+            : []),
           ...(opts.extra ?? []),
           ...(agent && fromId
             ? [

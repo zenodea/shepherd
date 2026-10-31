@@ -1,5 +1,6 @@
 import type {
   ActivityParams,
+  AgentCopy,
   AgentInfo,
   CallMethod,
   ClientMessage,
@@ -103,6 +104,7 @@ export class AppSession {
     // The list went out just before this change was logged: send it again with the new "last done".
     if (change.previous === "working" && (change.status === "done" || change.status === "idle")) this.onAgents(this.deps.tracker.list());
   };
+  private readonly onCopied = (copy: AgentCopy) => this.send(copy);
   private readonly onDevicesChanged = () => {
     if (this.device && !this.deps.devices.get(this.device.id)) {
       this.reject("revoked", "This device was removed on the host. Scan a new pairing QR code.", CLOSE_CODES.revoked);
@@ -149,6 +151,7 @@ export class AppSession {
     this.releasePresence?.();
     this.deps.tracker.off("agents", this.onAgents);
     this.deps.tracker.off("status", this.onStatus);
+    this.deps.tracker.off("copied", this.onCopied);
     this.deps.runningSubagents?.off("changed", this.onSubagents);
     this.deps.devices.off("changed", this.onDevicesChanged);
     for (const stream of [...this.streams.values()]) stream.close();
@@ -176,6 +179,7 @@ export class AppSession {
     this.deps.runningSubagents?.on("changed", this.onSubagents);
     this.deps.tracker.on("agents", this.onAgents);
     this.deps.tracker.on("status", this.onStatus);
+    this.deps.tracker.on("copied", this.onCopied);
     this.deps.devices.on("changed", this.onDevicesChanged);
     this.send({
       type: "hello",
@@ -309,6 +313,11 @@ export class AppSession {
       if (typeof params.text !== "string") return Promise.reject(new LaunchError("invalid_params", "shepherd.log needs text"));
       console.log(`[phone ${this.device?.name ?? "?"}] ${params.text.replace(/[\u0000-\u001f]/g, " ").slice(0, 300)}`);
       return Promise.resolve({});
+    }
+    if (method === "shepherd.show_on_desktop") {
+      const agent = isPaneId(params.paneId) ? this.deps.tracker.get(params.paneId) : null;
+      if (!agent) return Promise.reject(new LaunchError("invalid_params", "shepherd.show_on_desktop needs an agent's paneId"));
+      return this.deps.herdr.request("pane.place", { pane_id: agent.pane_id, label: agent.name || agent.agent || undefined }).then(() => ({}));
     }
     if (method === "shepherd.commands") {
       if (!isPaneId(params.paneId)) return Promise.reject(new LaunchError("invalid_params", "shepherd.commands needs a paneId"));

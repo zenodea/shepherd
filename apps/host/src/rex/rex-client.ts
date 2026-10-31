@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import type { AgentInfo, AgentStatus, HerdrPushedEvent, PaneReadResult, ReadSource, WorkspaceInfo } from "@shepherd/protocol";
+import type { AgentInfo, AgentStatus, BlockedOn, HerdrPushedEvent, PaneReadResult, ReadSource, WorkspaceInfo } from "@shepherd/protocol";
 import { HerdrRequestError, lineReader, type Subscription } from "../herdr/herdr-client.ts";
 
 const TERMINAL = "com.superlogical.terminal";
@@ -17,6 +17,9 @@ const EVENTS_READY_MS = 300;
 const PASTE_SETTLE_MS = 100;
 const MAX_READ_LINES = 5000;
 const KEY = /^[A-Za-z0-9+_[\]-]{1,32}$/;
+const MAX_STATUS_TEXT = 200;
+/** Characters of copied text sent on to the phone. */
+const MAX_COPY = 16_000;
 
 /** What each program calls itself, to the agent kind Shepherd knows it as. */
 const KINDS: Record<string, string> = {
@@ -57,14 +60,14 @@ export type RexRunner = (args: string[], timeoutMs: number) => Promise<string>;
 export type RexEventSource = (onLine: (line: string) => void, onExit: (detail: string) => void) => { close: () => void };
 
 type Proc = { pid?: number; name?: string; path?: string; invoked_path?: string; argv0?: string; cwd?: string };
-type StatusRecord = { id?: string; state?: string; app?: string; effective_app?: string; owner?: { pid: number; name: string } | null };
-type ViewBlock = { block_id: string; label?: string; creator_name?: string };
+type StatusRecord = { id?: string; state?: string; app?: string; effective_app?: string; msg?: string; kind?: string; owner?: { pid: number; name: string } | null };
+type ViewBlock = { block_id: string; label?: string; creator_name?: string; placement?: string };
 type View = {
   revision: number;
   session_id: string;
   label: string;
   active_window_id?: string;
-  windows: { window_id: string; label?: string; focused_block_id?: string; layers?: { blocks?: ViewBlock[] }[] }[];
+  windows?: { window_id: string; label?: string; focused_block_id?: string; layers?: { blocks?: ViewBlock[] }[] }[];
 };
 
 export type RexPane = {
@@ -77,6 +80,11 @@ export type RexPane = {
   focused: boolean;
   agent: string | null;
   status: AgentStatus;
+  /** What the agent last said it's doing, and for a blocked one, what it waits for. */
+  statusText: string | null;
+  blockedOn: BlockedOn | null;
+  /** In no window: started from the phone and not yet placed on the desktop. */
+  hidden: boolean;
 };
 type RexTab = { tab_id: string; workspace_id: string; number: number; label: string; focused: boolean };
 type RexWorkspace = { workspace_id: string; number: number; label: string; active_tab_id: string; revision: number };
@@ -99,6 +107,18 @@ export function kindOf(proc: Proc | null | undefined, records: StatusRecord[]): 
     if (kind) return kind;
   }
   return null;
+}
+
+/** What a blocked program says it waits for; a value Rex adds later counts as unsaid. */
+export function blockedOn(kind: string | undefined): BlockedOn | null {
+  return kind === "permission" || kind === "question" || kind === "auth" ? kind : null;
+}
+
+/** A program's own status record, as the fields of herdr's status event and Shepherd's additions. */
+function statusFields(record: StatusRecord): { agent_status: AgentStatus; status_text: string | null; blocked_on: BlockedOn | null } {
+  const agent_status = statusOf(record.state);
+  const text = record.msg?.trim();
+  return { agent_status, status_text: text ? text.slice(0, MAX_STATUS_TEXT) : null, blocked_on: agent_status === "blocked" ? blockedOn(record.kind) : null };
 }
 
 const rank: Record<AgentStatus, number> = { blocked: 4, working: 3, done: 2, idle: 1, unknown: 0 };
@@ -169,7 +189,7 @@ export function translateEvent(raw: Record<string, unknown>): HerdrPushedEvent[]
       return [{ event: "pane.updated", data: { workspace_id } }];
     case "block_event": {
       if (data.creator_name !== TERMINAL) return [];
-      const event = (data.payload ?? {}) as { id?: string; record?: StatusRecord };
+      const event = (data.payload ?? {}) as { id?: string; record?: StatusRecord; text?: string; bytes?: number };
       switch (data.name) {
         case "process_changed":
           return [{ event: "pane.agent_detected", data: { pane_id, workspace_id } }];
@@ -178,7 +198,14 @@ export function translateEvent(raw: Record<string, unknown>): HerdrPushedEvent[]
         case "program_status_changed":
           // Only the program's own status, not the tasks it reports under it.
           if (event.id || !event.record) return [];
-          return [{ event: "pane.agent_status_changed", data: { pane_id, workspace_id, agent_status: statusOf(event.record.state) } }];
+          return [{ event: "pane.agent_status_changed", data: { pane_id, workspace_id, ...statusFields(event.record) } }];
+        case "clipboard_written": {
+          // Rex leaves the text out of an event when it's too long for one.
+          if (typeof event.text !== "string" || !event.text) return [];
+          const text = event.text.slice(0, MAX_COPY);
+          const truncated = text.length < event.text.length || (typeof event.bytes === "number" && event.bytes > Buffer.byteLength(event.text));
+          return [{ event: "pane.clipboard_written", data: { pane_id, workspace_id, text, truncated } }];
+        }
         case "program_status_removed":
           return [{ event: "pane.updated", data: { pane_id, workspace_id } }];
       }
@@ -280,13 +307,22 @@ export class RexClient {
 
   private async doScan(): Promise<RexWorld> {
     const { sessions } = await this.api<{ sessions: { session_id: string; label: string }[] | null }>("session.list", {});
-    const views = await mapLimit(sessions ?? [], SCAN_CONCURRENCY, (s) => this.api<View>("session.view", { session_id: s.session_id }).catch(() => null));
+    const views = await mapLimit(sessions ?? [], SCAN_CONCURRENCY, async (s) => {
+      const [view, all] = await Promise.all([
+        this.api<View>("session.view", { session_id: s.session_id }),
+        // A view shows only placed blocks; this also lists the ones in no window.
+        this.api<{ blocks: ViewBlock[] | null }>("session.list_blocks", { session_id: s.session_id }).catch(() => ({ blocks: [] })),
+      ]).catch(() => [null, null] as const);
+      return view && { view, detached: (all?.blocks ?? []).filter((b) => b.placement !== "placed") };
+    });
     const world: RexWorld = { workspaces: [], tabs: [], panes: [] };
-    const blocks: { view: View; window: View["windows"][number]; block: ViewBlock }[] = [];
-    views.forEach((view, i) => {
-      if (!view) return;
+    const blocks: { view: View; window: NonNullable<View["windows"]>[number] | null; block: ViewBlock }[] = [];
+    views.forEach((found, i) => {
+      if (!found) return;
+      const { view, detached } = found;
+      for (const block of detached) if (block.creator_name === TERMINAL) blocks.push({ view, window: null, block });
       world.workspaces.push({ workspace_id: view.session_id, number: i + 1, label: view.label, active_tab_id: view.active_window_id ?? "", revision: view.revision });
-      view.windows.forEach((window, w) => {
+      (view.windows ?? []).forEach((window, w) => {
         const number = w + 1;
         world.tabs.push({
           tab_id: window.window_id,
@@ -308,16 +344,20 @@ export class RexClient {
       const records = status?.records ?? [];
       const agent = kindOf(process?.foreground, records);
       const own = records.find((r) => !r.id) ?? records.find((r) => r.owner?.pid === process?.foreground?.pid);
+      const fields = agent && own ? statusFields(own) : null;
       return {
         pane_id: block.block_id,
-        tab_id: window.window_id,
+        tab_id: window?.window_id ?? "",
         workspace_id: view.session_id,
         label: block.label && block.label !== DEFAULT_BLOCK_LABEL ? block.label : null,
         title: title?.title || null,
         cwd: process?.foreground?.cwd ?? null,
-        focused: window.window_id === view.active_window_id && window.focused_block_id === block.block_id,
+        focused: window !== null && window.window_id === view.active_window_id && window.focused_block_id === block.block_id,
         agent,
-        status: agent ? statusOf(own?.state) : "unknown",
+        status: fields?.agent_status ?? "unknown",
+        statusText: fields?.status_text ?? null,
+        blockedOn: fields?.blocked_on ?? null,
+        hidden: window === null,
       };
     });
     return world;
@@ -425,6 +465,10 @@ export class RexClient {
       case "server.agent_manifests":
         return { type: "agent_manifests", manifests: STARTABLE.map((agent) => ({ agent })) };
       case "workspace.create": {
+        if (params.hidden === true) {
+          const { session_id } = await this.api<{ session_id: string }>("session.create", typeof params.label === "string" ? { label: params.label } : {});
+          return { type: "workspace_created", root_pane: await this.hiddenShell(session_id, params.cwd) };
+        }
         const created = await this.api<{ session_id: string; initial_windows: { window_id: string; block_ids: string[] }[] }>("session.create", {
           ...(typeof params.label === "string" ? { label: params.label } : {}),
           initial_windows: [{ layout: shellIn(params.cwd) }],
@@ -435,6 +479,7 @@ export class RexClient {
       }
       case "tab.create": {
         if (typeof params.workspace_id !== "string") throw new HerdrRequestError("invalid_params", "tab.create needs a workspace_id");
+        if (params.hidden === true) return { type: "tab_created", root_pane: await this.hiddenShell(params.workspace_id, params.cwd) };
         const created = await this.api<{ window_id: string; block_ids: string[] }>("session.new_window", {
           session_id: params.workspace_id,
           ...(typeof params.label === "string" ? { window_label: params.label } : {}),
@@ -447,7 +492,9 @@ export class RexClient {
       case "agent.start": {
         const pane = await this.pane(params.pane_id);
         if (typeof params.kind !== "string" || !STARTABLE.includes(params.kind)) throw new HerdrRequestError("invalid_params", "unknown agent kind");
-        await this.blockMethod(pane, "write", { data: `${params.kind}\r` });
+        // A hidden agent's shell goes when the agent does, so nothing is left running out of sight.
+        // Not `exec`: the agent would stay in login's process group, and Rex would report login in front.
+        await this.blockMethod(pane, "write", { data: `${params.kind}${pane.hidden ? "; exit" : ""}\r` });
         // The launcher waits with agent.wait, then sends the first prompt.
         throw new HerdrRequestError("agent_not_ready", `${params.kind} is starting`);
       }
@@ -465,10 +512,44 @@ export class RexClient {
         this.world = null;
         return { type: "ok" };
       }
+      case "pane.place": {
+        const pane = await this.pane(params.pane_id);
+        if (!pane.hidden) return { type: "ok" };
+        await this.place(pane, typeof params.label === "string" ? params.label : undefined);
+        return { type: "ok" };
+      }
       case "worktree.create":
         throw new HerdrRequestError("unsupported", "New worktrees need herdr; with Rex, start the agent in a folder instead");
     }
     throw new HerdrRequestError("unsupported", `${method} isn't available with Rex yet`);
+  }
+
+  /** A shell in no window of the session, so it shows on the phone and not on the desktop. */
+  private async hiddenShell(sessionId: string, cwd: unknown): Promise<{ pane_id: string; workspace_id: string; tab_id: string }> {
+    const { block_id } = await this.api<{ block_id: string }>("session.new_block", { session_id: sessionId, ...shellIn(cwd).block });
+    this.world = null;
+    return { pane_id: block_id, workspace_id: sessionId, tab_id: "" };
+  }
+
+  /**
+   * Put a hidden pane in a window of its own. A new window needs a block of its
+   * own, so it opens with a stand-in shell that the pane then replaces.
+   */
+  private async place(pane: RexPane, label: string | undefined): Promise<void> {
+    const at = { session_id: pane.workspace_id };
+    const window = await this.api<{ block_ids: string[] }>("session.new_window", {
+      ...at,
+      focus: false,
+      ...(label ? { window_label: label.slice(0, 128) } : {}),
+      layout: shellIn(pane.cwd),
+    });
+    const standIn = window.block_ids[0]!;
+    try {
+      await this.api("session.move_block", { ...at, block_id: pane.pane_id, anchor_block_id: standIn });
+    } finally {
+      await this.api("block.close", { ...at, block_id: standIn }).catch(() => {});
+      this.world = null;
+    }
   }
 
   /** The pane's screen as escape sequences, its size, and where the cursor is. */
@@ -529,6 +610,9 @@ export class RexClient {
         terminal_title: p.title,
         terminal_title_stripped: p.title,
         revision: revision.get(p.workspace_id) ?? 0,
+        status_text: p.statusText,
+        blocked_on: p.blockedOn,
+        hidden: p.hidden,
       }));
   }
 

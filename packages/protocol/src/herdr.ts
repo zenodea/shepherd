@@ -29,7 +29,15 @@ export type AgentInfo = {
   subagents_running?: number;
   /** Added by Shepherd's host: the git checkout the agent works in, when it's in one. */
   git?: GitPlace;
+  /** From Rex, not herdr: one line the agent reports about what it's doing now. Plain text. */
+  status_text?: string | null;
+  /** From Rex: what a blocked agent waits for, when it says. */
+  blocked_on?: BlockedOn | null;
+  /** From Rex: the agent runs in no window, so it shows only on the phone until it's placed on the desktop. */
+  hidden?: boolean;
 };
+
+export type BlockedOn = "permission" | "question" | "auth";
 
 /** A git checkout: `repo` is the main checkout's folder, also for a linked worktree (`git worktree add`). */
 export type GitPlace = { repo: string; worktree: boolean; branch: string | null };
@@ -84,7 +92,13 @@ export type PaneAgentStatusChanged = {
   agent?: string | null;
   display_agent?: string | null;
   title?: string | null;
+  /** Rex only, as AgentInfo's. */
+  status_text?: string | null;
+  blocked_on?: BlockedOn | null;
 };
+
+/** Rex only: a program in the pane copied text, as with OSC 52. */
+export type PaneClipboardWritten = { pane_id: string; workspace_id: string; text: string; truncated?: boolean };
 
 /** Record printed by `herdr terminal session observe|control`. */
 export type HerdrTerminalRecord =
