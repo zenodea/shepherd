@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { AgentInfo, AgentStatus, PaneAgentStatusChanged, StatusChange } from "@shepherd/protocol";
+import type { AgentCopy, AgentInfo, AgentStatus, PaneAgentStatusChanged, PaneClipboardWritten, StatusChange } from "@shepherd/protocol";
 import { isAgentStatus } from "@shepherd/protocol";
 import type { HerdrApi, Subscription } from "./herdr-client.ts";
 
@@ -12,6 +12,8 @@ const LIFECYCLE_SUBSCRIPTIONS = [
 ];
 
 const REFRESH_DEBOUNCE_MS = 150;
+/** An agent's status line changes with every step; phones get the list at most this often for it. */
+const STATUS_TEXT_DEBOUNCE_MS = 1000;
 const MAX_RETRY_MS = 30_000;
 /** After a failed read or status subscription while herdr is otherwise reachable. */
 const REFRESH_RETRY_MS = 3000;
@@ -19,6 +21,8 @@ const REFRESH_RETRY_MS = 3000;
 type TrackerEvents = {
   agents: [AgentInfo[]];
   status: [StatusChange];
+  /** Text a program in an agent's pane copied (Rex only). */
+  copied: [AgentCopy];
   error: [Error];
 };
 
@@ -40,11 +44,15 @@ export class AgentTracker extends EventEmitter<TrackerEvents> {
   private refreshQueued = false;
   private retryMs = 500;
   private stopped = true;
+  private textTimer: NodeJS.Timeout | null = null;
   private readonly herdr: HerdrApi;
+  private readonly copies: boolean;
 
-  constructor(herdr: HerdrApi) {
+  /** `copies`: also watch for text programs copy, which only Rex reports (herdr refuses the subscription). */
+  constructor(herdr: HerdrApi, { copies = false }: { copies?: boolean } = {}) {
     super();
     this.herdr = herdr;
+    this.copies = copies;
   }
 
   list(): AgentInfo[] {
@@ -63,6 +71,8 @@ export class AgentTracker extends EventEmitter<TrackerEvents> {
   stop(): void {
     this.stopped = true;
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    if (this.textTimer) clearTimeout(this.textTimer);
+    this.textTimer = null;
     this.lifecycle?.close();
     this.statusSub?.close();
     this.lifecycle = null;
@@ -168,9 +178,13 @@ export class AgentTracker extends EventEmitter<TrackerEvents> {
 
     try {
       const sub = await this.herdr.subscribe(
-        paneIds.map((pane_id) => ({ type: "pane.agent_status_changed", pane_id })),
+        paneIds.flatMap((pane_id) => [
+          { type: "pane.agent_status_changed", pane_id },
+          ...(this.copies ? [{ type: "pane.clipboard_written", pane_id }] : []),
+        ]),
         (event) => {
           if (event.event === "pane.agent_status_changed") this.onStatusEvent(event.data as PaneAgentStatusChanged);
+          if (event.event === "pane.clipboard_written") this.onCopy(event.data as PaneClipboardWritten);
         },
       );
       if (this.statusPaneKey !== key || this.stopped) {
@@ -200,12 +214,34 @@ export class AgentTracker extends EventEmitter<TrackerEvents> {
       this.scheduleRefresh();
       return;
     }
-    if (agent.agent_status === data.agent_status) return;
+    // herdr leaves these out; Rex sends them with every report.
+    const status_text = data.status_text !== undefined ? data.status_text : agent.status_text;
+    const blocked_on = data.blocked_on !== undefined ? data.blocked_on : agent.blocked_on;
+    if (agent.agent_status === data.agent_status) {
+      if ((status_text ?? null) === (agent.status_text ?? null) && (blocked_on ?? null) === (agent.blocked_on ?? null)) return;
+      this.agents.set(data.pane_id, { ...agent, status_text, blocked_on });
+      this.scheduleTextUpdate();
+      return;
+    }
     const previous = agent.agent_status;
-    const updated: AgentInfo = { ...agent, agent_status: data.agent_status };
+    const updated: AgentInfo = { ...agent, agent_status: data.agent_status, status_text, blocked_on };
     this.agents.set(data.pane_id, updated);
     this.emitStatus(data.pane_id, data.agent_status, previous, updated);
     this.emit("agents", this.list());
+  }
+
+  /** Only the status line changed: send the list once things settle, not on every step. */
+  private scheduleTextUpdate(): void {
+    if (this.textTimer || this.stopped) return;
+    this.textTimer = setTimeout(() => {
+      this.textTimer = null;
+      this.emit("agents", this.list());
+    }, STATUS_TEXT_DEBOUNCE_MS);
+  }
+
+  private onCopy(data: PaneClipboardWritten): void {
+    if (!this.agents.has(data.pane_id) || typeof data.text !== "string" || !data.text) return;
+    this.emit("copied", { type: "agent.copied", paneId: data.pane_id, text: data.text, truncated: data.truncated === true });
   }
 
   private emitStatus(paneId: string, status: AgentStatus, previous: AgentStatus | null, agent: AgentInfo): void {

@@ -5,7 +5,7 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View }
 import type { AgentInfo, BlockedPrompt } from "@shepherd/protocol";
 import { useAgentActions } from "../agents/AgentActions";
 import { agoLabel } from "../agents/activity";
-import { agentName, agentTitle, projectOf } from "../agents/agents";
+import { agentName, agentTitle, blockedLabel, doingNow, projectOf } from "../agents/agents";
 import { PromptCard } from "../agents/PromptCard";
 import { useActivity } from "../agents/use-activity";
 import { useBlockedPrompts } from "../agents/use-blocked-prompts";
@@ -473,13 +473,15 @@ function AgentRow({
   const title = agentTitle(agent) ?? agentName(agent);
   // Finished or waiting, but subagents it started are still at work.
   const subagents = agent.agent_status === "working" ? 0 : (agent.subagents_running ?? 0);
+  const status = blockedLabel(agent) ?? statusLabels[agent.agent_status];
+  const doing = doingNow(agent);
   return (
     <PressableScale
       onPress={onPress}
       onLongPress={onLongPress}
       style={styles.row}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${agentName(agent)}, ${statusLabels[agent.agent_status]}${subagents ? `, ${subagents} subagent${subagents === 1 ? "" : "s"} running` : ""}${worktrees ? `, ${worktrees} worktree${worktrees === 1 ? "" : "s"} running` : ""}`}
+      accessibilityLabel={`${title}, ${agentName(agent)}, ${status}${doing ? `, ${doing}` : ""}${agent.hidden ? ", not on the desktop" : ""}${subagents ? `, ${subagents} subagent${subagents === 1 ? "" : "s"} running` : ""}${worktrees ? `, ${worktrees} worktree${worktrees === 1 ? "" : "s"} running` : ""}`}
       accessibilityHint="Opens the terminal. Long-press for more."
     >
       <AgentMark agent={agent.agent} size={32} />
@@ -490,9 +492,9 @@ function AgentRow({
         <View style={styles.metaRow}>
           <Text style={[type.sub, { flexShrink: 1 }]} numberOfLines={1}>
             <Text style={{ color: agent.agent_status === "idle" ? colors.subtle : statusColors[agent.agent_status] }}>
-              {statusLabels[agent.agent_status]}
+              {status}
             </Text>
-            {`  ·  ${agentName(agent)}${project ? `  ·  ${project}` : ""}`}
+            {`  ·  ${agentName(agent)}${project ? `  ·  ${project}` : ""}${agent.hidden ? "  ·  phone only" : ""}`}
           </Text>
           {subagents ? (
             <View style={styles.subagents}>
@@ -507,7 +509,11 @@ function AgentRow({
             </View>
           ) : null}
         </View>
-        {agent.last_done_at ? (
+        {doing ? (
+          <Text style={styles.lastDone} numberOfLines={1}>
+            {doing}
+          </Text>
+        ) : agent.last_done_at ? (
           <Text style={styles.lastDone} numberOfLines={1}>
             Last done: {agoLabel(agent.last_done_at, now)}
           </Text>

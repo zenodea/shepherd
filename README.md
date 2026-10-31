@@ -175,6 +175,12 @@ Shepherd also works with Rex: press `b` on the window's Overview, or run `shephe
 
 With Rex, a session is what herdr calls a workspace, a window is a tab, and each terminal pane is a pane. The phone shows the agents in every Rex session, and the alerts for an agent that needs you or has finished come from the status Claude Code, Codex and others report to Rex. Chats, answering, typing, keys, renaming and closing work as with herdr, and so does starting an agent or a shell in a folder or an existing session.
 
+What Rex adds:
+
+- **What each agent is doing now.** Under each agent, the list shows the line it reports to Rex, such as "Running npm test". When it's blocked it says what it's waiting for ("Needs permission", "Has a question", "Needs a password"), and so do its notifications.
+- **What an agent copies.** When a program in an agent's pane copies text on your computer, the app offers it at the top of the screen. Tap **Copy** to put it on your phone's clipboard.
+- **Agents you start from the phone stay off your desktop.** They run in a Rex terminal that no window shows, and they're marked "phone only" in the list. To see one on your computer, long-press it and choose **Show on desktop**, which gives it a window of its own. `rex block ls` lists them too. A hidden agent's terminal closes when the agent exits. Plain terminals you start from the phone still open in a window.
+
 What's different with Rex:
 
 - **Plugins** are herdr's, so phones show none.

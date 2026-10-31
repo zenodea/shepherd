@@ -110,6 +110,8 @@ export const HOST_METHODS = [
   "shepherd.plugin_action",
   "shepherd.plugin_pane",
   "shepherd.plugin_log",
+  // Rex only: put an agent started from the phone, which no window shows yet, on the desktop.
+  "shepherd.show_on_desktop",
 ] as const;
 export type HostMethod = (typeof HOST_METHODS)[number];
 export type CallMethod = ForwardedMethod | HostMethod;
@@ -426,6 +428,8 @@ export type ServerMessage =
   | { type: "error"; id: string | null; error: { code: string; message: string } }
   | { type: "agents"; agents: AgentInfo[] }
   | { type: "agent.status"; paneId: string; status: AgentStatus; previous: AgentStatus | null; agent: AgentInfo | null }
+  /** Text a program in an agent's pane copied, for the phone to offer (hosts on Rex only). */
+  | { type: "agent.copied"; paneId: string; text: string; /** Only the start of a long copy. */ truncated: boolean }
   | {
       type: "terminal.frame";
       streamId: string;
@@ -450,6 +454,7 @@ export type ServerMessage =
   | { type: "pong"; t: number };
 
 export type StatusChange = Extract<ServerMessage, { type: "agent.status" }>;
+export type AgentCopy = Extract<ServerMessage, { type: "agent.copied" }>;
 
 // herdr ids look like `w9:p2`; also rejects a leading `-` so an id can never be
 // read as a CLI flag when passed to `herdr terminal session …`.

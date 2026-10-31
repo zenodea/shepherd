@@ -114,6 +114,24 @@ describe("Launcher", () => {
     expect(calls("pane.send_input")).toEqual([{ pane_id: "w1:p9", text: "npm run dev", keys: ["enter"] }]);
   });
 
+  it("with hideAgents, starts agents hidden but terminals in a tab, and closes a hidden one that fails", async () => {
+    const hiding = new Launcher({ herdr: client, installed: () => true, hideAgents: true });
+    herdr.handlers["pane.send_input"] = () => ({ type: "ok" });
+    herdr.handlers["pane.close"] = () => ({ type: "ok" });
+    herdr.handlers["tab.create"] = (p) => ({ type: "tab_created", root_pane: { pane_id: "w1:p9", workspace_id: p.workspace_id, tab_id: p.hidden ? "" : "w1:t9" } });
+    await hiding.start({ kind: "claude", workspaceId: "w1" });
+    await hiding.start({ kind: "terminal", workspaceId: "w1" });
+    expect(calls("tab.create")).toEqual([
+      { workspace_id: "w1", cwd: "/code/api/src", label: "claude", focus: false, hidden: true },
+      { workspace_id: "w1", cwd: "/code/api/src", label: null, focus: false },
+    ]);
+
+    herdr.errorFor = (method) => (method === "agent.start" ? { code: "agent_start_failed", message: "no shell" } : null);
+    await expect(hiding.start({ kind: "claude", workspaceId: "w1" })).rejects.toMatchObject({ code: "agent_start_failed" });
+    expect(calls("pane.close")).toEqual([{ pane_id: "w1:p9" }]);
+    expect(calls("tab.close")).toEqual([]);
+  });
+
   it("refuses kinds that aren't installed and unknown workspaces", async () => {
     await expect(launcher.start({ kind: "gemini", workspaceId: "w1" })).rejects.toMatchObject({ code: "unknown_kind" });
     await expect(launcher.start({ kind: "bash", workspaceId: "w1" })).rejects.toMatchObject({ code: "unknown_kind" });

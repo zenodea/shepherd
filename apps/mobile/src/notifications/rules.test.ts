@@ -15,6 +15,14 @@ describe("alertFor", () => {
     expect(alertFor({ ...change("idle", "working"), agent: { ...change("idle", "working").agent!, focused: true } }, "studio")).toBeNull();
   });
 
+  it("says what a blocked agent waits for, and what it's doing, when Rex reports them", () => {
+    const rex = { ...agent, blocked_on: "permission", status_text: "Wants to run npm test" } as AgentInfo;
+    expect(alertFor({ ...change("blocked", "working"), agent: rex }, "studio")).toMatchObject({ title: "claude needs permission", body: "Wants to run npm test · studio" });
+    expect(alertFor({ ...change("blocked", "working"), agent: { ...rex, blocked_on: "auth" } }, "studio")?.title).toBe("claude needs a password");
+    // Done: the line said what it was doing, not what it did.
+    expect(alertFor({ ...change("done", "working"), agent: rex }, "studio")?.body).toBe("Fix login test · studio");
+  });
+
   it("stays quiet otherwise", () => {
     expect(alertFor(change("working", "idle"), "studio")).toBeNull();
     expect(alertFor(change("done", "idle"), "studio")).toBeNull();

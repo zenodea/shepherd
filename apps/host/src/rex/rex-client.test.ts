@@ -11,6 +11,7 @@ const W2 = "window:02";
 const CLAUDE = "block:claude";
 const CODEX = "block:codex";
 const SHELL = "block:shell";
+const HIDDEN = "block:hidden";
 
 type Block = { process: Record<string, unknown>; records?: Record<string, unknown>[]; title?: string; content?: string; rows?: number };
 
@@ -20,7 +21,7 @@ class FakeRex {
   blocks: Record<string, Block> = {
     [CLAUDE]: {
       process: { pid: 10, name: "2.1.314", argv0: "claude", invoked_path: "/Users/me/.local/bin/claude", cwd: "/work/app" },
-      records: [{ state: "blocked", app: "claude-code", owner: { pid: 10, name: "2.1.314" } }],
+      records: [{ state: "blocked", kind: "permission", msg: "  Running npm test  ", app: "claude-code", owner: { pid: 10, name: "2.1.314" } }],
       title: "Fix the login",
       content: "one\r\ntwo\r\nthree\r\nfour\r\n",
       rows: 2,
@@ -28,7 +29,10 @@ class FakeRex {
     // Codex runs under node here, so only the status it reports says what it is.
     [CODEX]: { process: { pid: 20, name: "node", argv0: "node", cwd: "/work/api" }, records: [{ state: "working", app: "codex", owner: { pid: 20, name: "node" } }] },
     [SHELL]: { process: { pid: 30, name: "zsh", argv0: "-zsh", cwd: "/work" }, records: [{ state: "done", app: "claude-code", owner: { pid: 99, name: "gone" } }] },
+    // Started from the phone, in no window.
+    [HIDDEN]: { process: { pid: 50, name: "codex", argv0: "codex", cwd: "/work/web" }, records: [{ state: "working", msg: "Reading files", app: "codex", owner: { pid: 50, name: "codex" } }] },
   };
+  created = 0;
   lines: ((line: string) => void)[] = [];
 
   run: RexRunner = async (args) => {
@@ -57,6 +61,17 @@ class FakeRex {
             { window_id: W2, label: "api", focused_block_id: CODEX, layers: [{ blocks: [{ block_id: CODEX, creator_name: "com.superlogical.terminal" }] }] },
           ],
         });
+      case "session.list_blocks":
+        return JSON.stringify({
+          blocks: [
+            { block_id: CLAUDE, creator_name: "com.superlogical.terminal", placement: "placed", window_id: W1 },
+            { block_id: HIDDEN, creator_name: "com.superlogical.terminal", placement: "detached" },
+          ],
+        });
+      case "session.new_block":
+        return JSON.stringify({ block_id: `block:new${++this.created}`, revision: 7 });
+      case "session.new_window":
+        return JSON.stringify({ window_id: "window:new", block_ids: ["block:standin"], revision: 8 });
       case "block.method": {
         const block = this.blocks[params.block_id as string];
         if (!block) throw rexError("Error: block not found (status=404 code=not_found)");
@@ -88,10 +103,11 @@ class FakeRex {
   }
 }
 
-const statusEvent = (block: string, state: string, id = "") => ({
+const blockEvent = (block: string, name: string, payload: Record<string, unknown>) => ({
   type: "session_event",
-  payload: { session_id: S1, event: { type: "block_event", payload: { block_id: block, creator_name: "com.superlogical.terminal", name: "program_status_changed", payload: { id, record: { state } } } } },
+  payload: { session_id: S1, event: { type: "block_event", payload: { block_id: block, creator_name: "com.superlogical.terminal", name, payload } } },
 });
+const statusEvent = (block: string, state: string, id = "", more: Record<string, unknown> = {}) => blockEvent(block, "program_status_changed", { id, record: { state, ...more } });
 
 const client = (rex = new FakeRex()) => ({ rex, client: new RexClient({ run: rex.run, events: rex.events, server: "/tmp/rex.sock" }) });
 
@@ -100,10 +116,50 @@ describe("RexClient", () => {
     const { client: c } = client();
     const { agents } = await c.request<{ agents: AgentInfo[] }>("agent.list");
     expect(agents.map((a) => [a.pane_id, a.agent, a.agent_status])).toEqual([
+      [HIDDEN, "codex", "working"],
       [CLAUDE, "claude", "blocked"],
       [CODEX, "codex", "working"],
     ]);
-    expect(agents[0]).toMatchObject({ workspace_id: S1, tab_id: W1, cwd: "/work/app", title: "Fix the login", name: null, focused: true, revision: 7 });
+    expect(agents[1]).toMatchObject({ workspace_id: S1, tab_id: W1, cwd: "/work/app", title: "Fix the login", name: null, focused: true, revision: 7, hidden: false });
+  });
+
+  it("says what each agent is doing now, and what a blocked one waits for", async () => {
+    const { client: c } = client();
+    const { agents } = await c.request<{ agents: AgentInfo[] }>("agent.list");
+    expect(agents.map((a) => [a.pane_id, a.status_text, a.blocked_on])).toEqual([
+      [HIDDEN, "Reading files", null],
+      [CLAUDE, "Running npm test", "permission"],
+      [CODEX, null, null],
+    ]);
+  });
+
+  it("lists agents in no window as hidden, outside any tab", async () => {
+    const { client: c } = client();
+    const { agents } = await c.request<{ agents: AgentInfo[] }>("agent.list");
+    expect(agents[0]).toMatchObject({ pane_id: HIDDEN, tab_id: "", hidden: true, focused: false });
+  });
+
+  it("starts a hidden agent in a shell of no window, which goes when the agent does", async () => {
+    const { rex, client: c } = client();
+    const created = await c.request<{ root_pane: { pane_id: string; tab_id: string } }>("tab.create", { workspace_id: S1, cwd: "/work", hidden: true });
+    expect(created.root_pane).toEqual({ pane_id: "block:new1", workspace_id: S1, tab_id: "" });
+    expect(JSON.parse(rex.calls.find((a) => a[2] === "session.new_block")![3]!)).toEqual({ session_id: S1, flavor: "com.superlogical.terminal.shell", options: { cwd: "/work" } });
+
+    rex.blocks[HIDDEN]!.process = { pid: 51, name: "zsh", argv0: "-zsh", cwd: "/work" };
+    await expect(c.request("agent.start", { kind: "claude", pane_id: HIDDEN })).rejects.toMatchObject({ code: "agent_not_ready" });
+    const write = rex.calls.find((a) => a[2] === "block.method" && JSON.parse(a[3]!).method === "write")!;
+    expect(JSON.parse(write[3]!).args).toEqual({ data: "claude; exit\r" });
+  });
+
+  it("puts a hidden agent on the desktop in a window of its own", async () => {
+    const { rex, client: c } = client();
+    await c.request("pane.place", { pane_id: HIDDEN, label: "codex" });
+    const calls = rex.calls.filter((a) => a[0] === "api" && /^session\.(new_window|move_block)$|^block\.close$/.test(a[2]!)).map((a) => [a[2], JSON.parse(a[3]!)]);
+    expect(calls).toEqual([
+      ["session.new_window", { session_id: S1, focus: false, window_label: "codex", layout: { block: { flavor: "com.superlogical.terminal.shell", options: { cwd: "/work/web" } } } }],
+      ["session.move_block", { session_id: S1, block_id: HIDDEN, anchor_block_id: "block:standin" }],
+      ["block.close", { session_id: S1, block_id: "block:standin" }],
+    ]);
   });
 
   it("doesn't take a shell for an agent from a status its last program left behind", () => {
@@ -115,6 +171,7 @@ describe("RexClient", () => {
     const { snapshot } = await c.request<{ snapshot: { tabs: { label: string }[]; panes: { pane_id: string; label: string | null }[] } }>("session.snapshot");
     expect(snapshot.tabs.map((t) => t.label)).toEqual(["1", "api"]);
     expect(snapshot.panes.map((p) => [p.pane_id, p.label])).toEqual([
+      [HIDDEN, null],
       [CLAUDE, null],
       [SHELL, "logs"],
       [CODEX, null],
@@ -168,13 +225,26 @@ describe("RexClient", () => {
 
 describe("Rex events", () => {
   it("become herdr's: status from the program's own record, panes opening and closing", () => {
-    expect(translateEvent(statusEvent(CLAUDE, "blocked"))).toEqual([{ event: "pane.agent_status_changed", data: { pane_id: CLAUDE, workspace_id: S1, agent_status: "blocked" } }]);
+    expect(translateEvent(statusEvent(CLAUDE, "blocked", "", { kind: "question", msg: "Which database?" }))).toEqual([
+      { event: "pane.agent_status_changed", data: { pane_id: CLAUDE, workspace_id: S1, agent_status: "blocked", status_text: "Which database?", blocked_on: "question" } },
+    ]);
     // A task the program reports under itself isn't the program's status.
     expect(translateEvent(statusEvent(CLAUDE, "working", "build/test"))).toEqual([]);
     expect(translateEvent({ type: "session_event", payload: { session_id: S1, event: { type: "block_closed", payload: { block_id: SHELL } } } })).toEqual([
       { event: "pane.closed", data: { pane_id: SHELL, workspace_id: S1 } },
     ]);
     expect(translateEvent({ type: "client_joined", payload: {} })).toEqual([]);
+  });
+
+  it("pass on what a program copies, cut short when it's long", () => {
+    expect(translateEvent(blockEvent(CLAUDE, "clipboard_written", { text: "npm run dev", id: 1, bytes: 11 }))).toEqual([
+      { event: "pane.clipboard_written", data: { pane_id: CLAUDE, workspace_id: S1, text: "npm run dev", truncated: false } },
+    ]);
+    const [long] = translateEvent(blockEvent(CLAUDE, "clipboard_written", { text: "x".repeat(20_000), id: 2, bytes: 20_000 }));
+    expect(long!.data).toMatchObject({ truncated: true });
+    expect((long!.data.text as string).length).toBe(16_000);
+    // Too long for the event: Rex sends no text at all.
+    expect(translateEvent(blockEvent(CLAUDE, "clipboard_written", { id: 3, bytes: 2_000_000 }))).toEqual([]);
   });
 
   it("reach the tracker, which reports the change", async () => {
@@ -190,6 +260,31 @@ describe("Rex events", () => {
     rex.push(statusEvent(CLAUDE, "working"));
     await until(() => changes.length > 0);
     expect(changes[0]).toMatchObject({ paneId: CLAUDE, status: "working", previous: "blocked" });
+    tracker.stop();
+  });
+
+  it("send the list again when only the status line changes, without a status change", async () => {
+    const { rex, client: c } = client();
+    const tracker = new AgentTracker(c, { copies: true });
+    const changes: StatusChange[] = [];
+    const lists: AgentInfo[][] = [];
+    const copies: unknown[] = [];
+    tracker.on("status", (s) => changes.push(s));
+    tracker.on("agents", (a) => lists.push(a));
+    tracker.on("copied", (c) => copies.push(c));
+    await tracker.start();
+    await until(() => rex.lines.length === 2);
+    await new Promise((r) => setTimeout(r, 350));
+    const before = lists.length;
+
+    rex.push(statusEvent(CLAUDE, "blocked", "", { kind: "permission", msg: "Editing login.ts" }));
+    await until(() => lists.length > before, 3000);
+    expect(changes).toEqual([]);
+    expect(tracker.get(CLAUDE)).toMatchObject({ status_text: "Editing login.ts", blocked_on: "permission" });
+
+    rex.push(blockEvent(CLAUDE, "clipboard_written", { text: "https://example.com/pr/1", id: 1, bytes: 24 }));
+    await until(() => copies.length === 1);
+    expect(copies[0]).toEqual({ type: "agent.copied", paneId: CLAUDE, text: "https://example.com/pr/1", truncated: false });
     tracker.stop();
   });
 });

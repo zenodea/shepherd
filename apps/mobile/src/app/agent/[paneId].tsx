@@ -5,7 +5,7 @@ import { Alert, StyleSheet, Text, View, useWindowDimensions } from "react-native
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TERMINAL_KIND, type ChangesResult, type PaneReadResult, type SlashCommand, type StartAgentResult, type StyledLine } from "@shepherd/protocol";
 import { useAgentActions } from "../../agents/AgentActions";
-import { agentName, agentTitle, projectOf } from "../../agents/agents";
+import { agentName, agentTitle, blockedLabel, projectOf } from "../../agents/agents";
 import { Composer } from "../../agents/Composer";
 import { stillSending, type Sending } from "../../agents/sending";
 import { ImagesContext } from "../../agents/ConversationImage";
@@ -464,7 +464,7 @@ export default function TerminalScreen() {
         meta={
           agent ? (
             <>
-              <Text style={{ color: agent.agent_status === "idle" ? colors.subtle : statusColors[agent.agent_status] }}>{statusLabels[agent.agent_status]}</Text>
+              <Text style={{ color: agent.agent_status === "idle" ? colors.subtle : statusColors[agent.agent_status] }}>{blockedLabel(agent) ?? statusLabels[agent.agent_status]}</Text>
               {`  ·  ${agentName(agent)}  ·  ${projectOf(agent)}`}
               {usage ? <Text style={usage.high ? { color: statusColors.blocked } : undefined}>{`  ·  ${usage.text}`}</Text> : null}
             </>

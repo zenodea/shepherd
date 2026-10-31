@@ -110,7 +110,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
   const backendName = BACKEND_LABELS[config.backend];
   const herdrVersion = await waitForHerdr(herdr, config);
 
-  const tracker = new AgentTracker(herdr);
+  const tracker = new AgentTracker(herdr, { copies: rex !== null });
   tracker.on("error", (err) => console.error(`[${config.backend}] ${err.message}`));
   tracker.on("status", (c) => console.log(`[agent] ${c.paneId} ${c.previous ?? "?"} → ${c.status}`));
   await tracker.start();
@@ -136,6 +136,7 @@ async function serve(config: HostConfig, { followHerdr = false } = {}): Promise<
         : new TerminalStream({ herdrBin: config.herdrBin, socketPath: config.socketPath, paneId, mode, cols, rows }),
     launcher: new Launcher({
       herdr,
+      hideAgents: rex !== null,
       onError: (err) => console.error(`[launch] ${err.message}`),
       recentCwds: () => activity.page({ limit: 200 }).entries.flatMap((e) => (e.cwd ? [e.cwd] : [])),
     }),
